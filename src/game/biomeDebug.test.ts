@@ -1,27 +1,27 @@
 import { describe, expect, it } from "vitest";
 
 import { BIOME_IDS, sampleBiome } from "../world/biomes";
+import { worldRiverSpine } from "../world/worldRiverSpine";
 import { directionToOverlayEdge, findNearestBiomes, formatBiomeDistance, riverIndicatorDirection, worldToOverlayDisplacement } from "./biomeDebug";
 
 describe("riverIndicatorDirection", () => {
-  it("points toward the closest edge of the river chunk column", () => {
-    expect(riverIndicatorDirection(-16, 25)).toMatchObject({ x: 16, y: 0 });
-    expect(riverIndicatorDirection(32, 25)).toMatchObject({ x: -16, y: 0 });
+  it("points toward the nearest world-river point outside the legacy column", () => {
+    const player = { x: 90, z: 40 };
+    const nearest = worldRiverSpine.nearestPointToRiver(player.x, player.z);
+    expect(riverIndicatorDirection(player.x, player.z)).toEqual(worldToOverlayDisplacement(player.x, player.z, nearest.position.x, nearest.position.z));
   });
 
   it("rotates the river direction with the free-look camera", () => {
-    const facingEast = riverIndicatorDirection(-16, 25, Math.PI / 2);
-    const facingWest = riverIndicatorDirection(-16, 25, -Math.PI / 2);
+    const facingEast = riverIndicatorDirection(90, 40, Math.PI / 2)!;
+    const facingWest = riverIndicatorDirection(90, 40, -Math.PI / 2)!;
 
-    expect(facingEast?.x).toBeCloseTo(0);
-    expect(facingEast?.y).toBeCloseTo(-16);
-    expect(facingWest?.x).toBeCloseTo(0);
-    expect(facingWest?.y).toBeCloseTo(16);
+    expect(facingEast.x).toBeCloseTo(-facingWest.x);
+    expect(facingEast.y).toBeCloseTo(-facingWest.y);
   });
 
-  it("does not glow while the player is inside the river chunk column", () => {
-    expect(riverIndicatorDirection(0, 0)).toBeNull();
-    expect(riverIndicatorDirection(15.999, 0)).toBeNull();
+  it("does not glow while the player is inside the world-river environment", () => {
+    const point = worldRiverSpine.samplePosition(.5);
+    expect(riverIndicatorDirection(point.x, point.z)).toBeNull();
   });
 });
 

@@ -93,7 +93,7 @@ describe("POI footprints and exclusions", () => {
   });
 
   it("recognizes river intersections from global samplers", () => {
-    expect(footprintIntersectsRiver(123, { kind: "circle", x: 8, z: 8, radius: 12 })).toBe(true);
+    expect(footprintIntersectsRiver(123, { kind: "circle", x: 12, z: -8, radius: 3 })).toBe(true);
     expect(footprintIntersectsRiver(123, { kind: "circle", x: 80, z: 8, radius: 1 })).toBe(false);
   });
 

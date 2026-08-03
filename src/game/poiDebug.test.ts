@@ -103,6 +103,13 @@ describe("findNearestPoiTypes", () => {
 
     expect(findNearestPoiTypes(repository, 0, 0).get("stone-bridge")).toMatchObject({ distance: 13, x: 12, z: 5 });
   });
+
+  it("targets a stored access anchor rather than the POI centre", () => {
+    const repository = new GeneratedChunkRepository();
+    const anchored = { ...poi("forest-cabin", 100, 100), navigationAnchor: { x: 3, y: 0, z: 4, kind: "entrance" as const } };
+    repository.set("6,6", chunk([anchored]));
+    expect(findNearestPoiTypes(repository, 0, 0).get("forest-cabin")).toEqual({ typeId: "forest-cabin", x: 3, z: 4, distance: 5 });
+  });
 });
 
 describe("poiIndicatorTransform", () => {

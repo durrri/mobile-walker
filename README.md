@@ -69,8 +69,8 @@ and `interpolateTransform` functions provide unit-testable math boundaries.
 the portion of the world they cover. R1 (world-space ownership) and R2 (an
 arbitrary smooth manual test spine) are implemented as an isolated future source
 in `worldRiverSpine`. The world spine now drives authoritative terrain carving,
-water, banks, bridges, vegetation, collectibles, and wetland-pool exclusion;
-legacy POI/navigation and gameplay consumers remain for R5c/R5d.
+water, banks, bridges, vegetation, collectibles, wetland-pool exclusion, POI
+hydrology, and navigation; legacy gameplay consumers remain for R5d.
 
 The editable architectural fixture uses world-unit control points `(-24,96)`,
 `(-8,70)`, `(20,48)`, `(48,38)`, `(65,36)`, `(45,12)`, `(12,-8)`, `(-25,-22)`,
@@ -83,8 +83,11 @@ prebuilt approximate arc-length table; the left normal is `(-tangent.z,
 tangent.x)`. Nearest queries choose candidates from the reusable world-bounds
 segment grid, project onto its polyline, then refine on the spline. Bounds queries
 return ordered, potentially shared intervals and accept a margin. R5a world-river
-bridges and R5b ordinary-object exclusion are complete; R5c POIs/navigation is
-next, followed by R5d gameplay queries and remaining legacy removal.
+bridges, R5b ordinary-object exclusion, and R5c POIs/navigation are complete.
+R5d gameplay queries and final legacy removal are next; R6 then performs full
+seam, streaming, regeneration, and generation-order validation. All active river
+consumers must use the world-owned river before procedural paths, secondary
+meanders, variable width, or river lakes are introduced.
 
 The debug selector is production-default Off. Spine adds controls/helpers and
 the curve; Ribbon adds a constant-width, presentation-only ribbon and diagnostic
