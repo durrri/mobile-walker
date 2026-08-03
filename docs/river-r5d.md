@@ -17,7 +17,9 @@ No historical production module remains.
 
 Water remains visual and classificatory only: the authoritative carved terrain is the collision/grounding surface, including below water. Entering water does not snap the player to the water datum and adds no swimming, current, drowning, stamina, or speed rule. Structure collision runs before terrain grounding. A reachable bridge deck remains the support surface; otherwise terrain is used, so the river below a deck and an available underpass remain independently classifiable.
 
-Restored-position search rejects world-river water, standalone-lake water, wetland pool ellipses, and collision solids. Walkable banks and outer falloff are treated like ordinary terrain. The existing deterministic nearest-ring search, terrain grounding, yaw preservation, and bounded fallback remain unchanged. Structure decks are valid when the structure collision owner reports a walkable support; structure supports/solids are not inferred from river shape.
+Restored-position search rejects world-river water, standalone-lake water, wetland pool ellipses, and collision solids. Walkable banks and outer falloff are treated like ordinary terrain. The existing deterministic nearest-ring search, terrain grounding, yaw preservation, and bounded fallback remain unchanged. Structure decks are valid when the unified structure collision owner reports a walkable support; supports, railings, foundations, walls, and other solids take precedence when they overlap a walkable slab.
+
+Restoration happens before `ChunkStreamingSystem` has populated its repository. The production entry point therefore creates a bounded canonical structure-safety query that deterministically generates and caches bridge and POI collision definitions by owner chunk. These are the same presentation-neutral definitions later stored in `GeneratedChunkRepository`; no scene object or rendered mesh is consulted. Once chunks stream, movement continues to consume those definitions through `queryStructureCollisions`. Integration tests compare pre-stream canonical classification with classification over the equivalent resident records.
 
 ## Performance
 

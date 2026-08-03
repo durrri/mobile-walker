@@ -4,6 +4,8 @@ import { CHUNK_SIZE, worldToChunk } from "./chunkCoordinates";
 import { chunkId } from "./chunkId";
 import type { GeneratedChunkRepository } from "./GeneratedChunkRepository";
 import type { StructureBoxCollider, StructureCollisionDefinition, StructureSurfaceRecord } from "./structureTypes";
+import { generatePois } from "./poi";
+import { generateBridges } from "./bridges";
 
 export const PLAYER_STRUCTURE_COLLISION_HEIGHT=1.5;
 export const STRUCTURE_STEP_UP_HEIGHT=.42;
@@ -24,6 +26,34 @@ export function queryStructureCollisions(repository:GeneratedChunkRepository,fro
 export const queryBridgeCollisions=queryStructureCollisions;
 
 function surfaceHeight(surface:StructureSurfaceRecord,x:number,z:number,radius=0):number|undefined{const dx=x-surface.centre.x,dz=z-surface.centre.z,u=dx*surface.direction.x+dz*surface.direction.z,v=-dx*surface.direction.z+dz*surface.direction.x;if(Math.abs(u)>surface.length/2+radius||Math.abs(v)>surface.width/2+radius)return;const t=Math.max(0,Math.min(1,u/surface.length+.5));return surface.startHeight+(surface.endHeight-surface.startHeight)*t+surface.crownHeight*4*t*(1-t);}
+
+export type StructureRestorationSafety = Readonly<{ kind:"walkable";height:number }|{ kind:"solid" }> | undefined;
+
+/** Two-dimensional restoration policy over the authoritative collision records.
+ * Blocking primitives deliberately win over broad walkable slabs (for example a
+ * bridge railing at the edge of its deck). */
+export function classifyStructureRestorationSafety(
+ collisions:readonly StructureCollisionDefinition[],x:number,z:number,radius:number,
+):StructureRestorationSafety {
+ let walkableHeight:number|undefined;
+ for(const structure of collisions){
+  if(structure.bounds.maxX<x-radius||structure.bounds.minX>x+radius||structure.bounds.maxZ<z-radius||structure.bounds.minZ>z+radius)continue;
+  for(const circle of structure.circles)if(Math.hypot(x-circle.centre.x,z-circle.centre.z)<radius+circle.radius)return{kind:"solid"};
+  for(const box of structure.boxes)if(circleBox(x,z,box,radius))return{kind:"solid"};
+  for(const segment of structure.segments)if(circleSegment(x,z,segment.start.x,segment.start.z,segment.end.x,segment.end.z,radius+segment.thickness/2))return{kind:"solid"};
+  for(const surface of structure.surfaces){const height=surfaceHeight(surface,x,z,radius*.2);if(height===undefined)continue;if(!surface.walkable)return{kind:"solid"};if(walkableHeight===undefined||height>walkableHeight)walkableHeight=height;}
+ }
+ return walkableHeight===undefined?undefined:{kind:"walkable",height:walkableHeight};
+}
+
+/** Canonical pre-streaming structure query. Generation is deterministic and
+ * cached by owner chunk, so restoration sees the same records later installed
+ * in GeneratedChunkRepository without requiring rendered or resident chunks. */
+export function createCanonicalStructureSafetyQuery(seed:number|string):(x:number,z:number,radius:number)=>StructureRestorationSafety {
+ const cache=new Map<string,readonly StructureCollisionDefinition[]>();
+ const owned=(x:number,z:number):readonly StructureCollisionDefinition[]=>{const id=`${x},${z}`,hit=cache.get(id);if(hit)return hit;const coordinate={x,z},pois=generatePois(seed,coordinate).pois.map(p=>p.structure),bridges=generateBridges(seed,coordinate).bridges.map(b=>b.collision),value=Object.freeze([...pois,...bridges]);cache.set(id,value);return value;};
+ return(x,z,radius)=>{const min=worldToChunk(x-radius-CHUNK_SIZE,z-radius-CHUNK_SIZE),max=worldToChunk(x+radius+CHUNK_SIZE,z+radius+CHUNK_SIZE),definitions:StructureCollisionDefinition[]=[],ids=new Set<string>();for(let cz=min.z;cz<=max.z;cz++)for(let cx=min.x;cx<=max.x;cx++)for(const definition of owned(cx,cz))if(!ids.has(definition.structureId)){ids.add(definition.structureId);definitions.push(definition);}return classifyStructureRestorationSafety(definitions,x,z,radius);};
+}
 export function selectStructureSupport(collisions:readonly StructureCollisionDefinition[],x:number,z:number,feetY:number,verticalVelocity:number,previousSupportId:string|undefined,radius=.38):StructureSupport|undefined{let best:StructureSupport|undefined;for(const structure of collisions)for(const surface of structure.surfaces){if(!surface.walkable)continue;const height=surfaceHeight(surface,x,z,radius*.2);if(height===undefined)continue;const retained=verticalVelocity<=0&&previousSupportId===surface.id&&Math.abs(feetY-height)<=STRUCTURE_STEP_UP_HEIGHT+.18,reachable=verticalVelocity<=0&&height<=feetY+STRUCTURE_STEP_UP_HEIGHT&&height>=feetY-.32;if(!retained&&!reachable)continue;if(!best||Math.abs(height-feetY)<Math.abs(best.height-feetY))best={id:surface.id,kind:surface.kind,height};}return best;}
 function circleSegment(x:number,z:number,ax:number,az:number,bx:number,bz:number,radius:number){const dx=bx-ax,dz=bz-az,l2=dx*dx+dz*dz,t=l2?Math.max(0,Math.min(1,((x-ax)*dx+(z-az)*dz)/l2)):0,qx=ax+dx*t,qz=az+dz*t,ox=x-qx,oz=z-qz,d=Math.hypot(ox,oz),length=Math.sqrt(l2);return d<radius?{x:d?ox/d:length?-dz/length:1,z:d?oz/d:length?dx/length:0,depth:radius-d}:undefined;}
 function circleBox(x:number,z:number,box:StructureBoxCollider,radius:number){const dx=x-box.centre.x,dz=z-box.centre.z,u=dx*box.direction.x+dz*box.direction.z,v=-dx*box.direction.z+dz*box.direction.x,cu=Math.max(-box.length/2,Math.min(box.length/2,u)),cv=Math.max(-box.width/2,Math.min(box.width/2,v)),du=u-cu,dv=v-cv,dist=Math.hypot(du,dv);if(dist>=radius)return;let nu:number,nv:number,depth:number;if(dist){nu=du/dist;nv=dv/dist;depth=radius-dist;}else{const eu=box.length/2+radius-Math.abs(u),ev=box.width/2+radius-Math.abs(v);if(eu<ev){nu=Math.sign(u)||1;nv=0;depth=eu;}else{nu=0;nv=Math.sign(v)||1;depth=ev;}}return{x:nu*box.direction.x-nv*box.direction.z,z:nu*box.direction.z+nv*box.direction.x,depth};}

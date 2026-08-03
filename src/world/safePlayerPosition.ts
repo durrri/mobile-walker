@@ -4,6 +4,7 @@ import { overlapsGeneratedTreeTrunk } from "./treeCollision";
 import { isInsideWorldRiverWater } from "./worldRiverGameplay";
 import { worldToChunk } from "./chunkCoordinates";
 import { generateWetlandPools } from "./wetlands";
+import { createCanonicalStructureSafetyQuery } from "./structureCollision";
 
 export const DEFAULT_PLAYER_SPAWN: TransformComponent = { x: 0, y: 0.76, z: 0, yaw: 0 };
 
@@ -89,4 +90,14 @@ export function findSafeRestoredTransform(
     seed, fallback, heightOffset, collisionRadius, searchStep, maximumSearchRadius, overlapsTrunk, structureSafety,
   )
     ?? grounded(seed, fallback, heightOffset);
+}
+
+/** Production restoration entry point. Canonical collision records are
+ * available synchronously before the streaming repository is populated. */
+export function findSafeRestoredTransformFromCanonicalWorld(
+  seed:number|string,saved:TransformComponent,heightOffset:number,collisionRadius:number,
+  searchStep=.5,maximumSearchRadius=5,
+):TransformComponent {
+  return findSafeRestoredTransform(seed,saved,heightOffset,collisionRadius,searchStep,maximumSearchRadius,
+    undefined,createCanonicalStructureSafetyQuery(seed));
 }
