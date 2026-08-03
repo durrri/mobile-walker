@@ -5,7 +5,8 @@ import { createPlayerCentredFogController } from "./playerCentredFog";
 
 const MAX_PIXEL_RATIO = 2;
 export const MAX_DRAW_DISTANCE = 225;
-export const FOG_DEPTH = 20;
+export const FOG_NEAR_DISTANCE = 130;
+export const FOG_FAR_DISTANCE = 150;
 export const FOG_COLOR = 0xd9ead8;
 const SUNLIGHT_DISTANCE = 10;
 
@@ -40,7 +41,7 @@ export class ThreeRenderer {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, MAX_PIXEL_RATIO));
     this.scene.background = new THREE.Color(FOG_COLOR);
-    this.scene.fog = new THREE.Fog(FOG_COLOR, MAX_DRAW_DISTANCE - FOG_DEPTH, MAX_DRAW_DISTANCE);
+    this.scene.fog = new THREE.Fog(FOG_COLOR, FOG_NEAR_DISTANCE, FOG_FAR_DISTANCE);
     this.playerCentredFog = createPlayerCentredFogController(this.scene.fog);
 
     this.camera.position.set(6, 5, 8);

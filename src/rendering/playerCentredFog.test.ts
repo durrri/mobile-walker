@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import * as THREE from "three";
-import { FOG_COLOR, FOG_DEPTH, MAX_DRAW_DISTANCE } from "./ThreeRenderer";
+import { FOG_COLOR, FOG_FAR_DISTANCE, FOG_NEAR_DISTANCE } from "./ThreeRenderer";
 import { createPlayerCentredFogController, horizontalFogDistance, linearFogFactor } from "./playerCentredFog";
 
 describe("player-centred cylindrical fog math", () => {
@@ -15,7 +15,7 @@ describe("player-centred cylindrical fog math", () => {
   });
 
   it("retains the configured smooth linear transition", () => {
-    const near = MAX_DRAW_DISTANCE - FOG_DEPTH, far = MAX_DRAW_DISTANCE;
+    const near = FOG_NEAR_DISTANCE, far = FOG_FAR_DISTANCE;
     expect(FOG_COLOR).toBe(0xd9ead8);
     expect(linearFogFactor(near - 1, near, far)).toBe(0);
     expect(linearFogFactor(near, near, far)).toBe(0);
