@@ -63,6 +63,38 @@ and `interpolateTransform` functions provide unit-testable math boundaries.
 
 ## Deterministic world generation
 
+### River and Night Milestone
+
+**Governing rule:** The river exists in world space. Chunks only query and render
+the portion of the world they cover. R1 (world-space ownership) and R2 (an
+arbitrary smooth manual test spine) are implemented as an isolated future source
+in `worldRiverSpine`; the legacy chunk-column river still drives terrain carving,
+water, banks, bridges, vegetation, and gameplay until later migrations.
+
+The editable architectural fixture uses world-unit control points `(-24,96)`,
+`(-8,70)`, `(20,48)`, `(48,38)`, `(65,36)`, `(45,12)`, `(12,-8)`, `(-25,-22)`,
+`(-52,-45)`, `(-44,-72)`, and `(-12,-112)`. It is a centripetal Catmull–Rom
+chain (square-root chord knots and extrapolated endpoints), deliberately a full
+2D `P(s)={x,z}` rather than `x=f(z)`, so horizontal reaches and arbitrary chunk
+edge crossings remain representable. Normalized public progress follows the
+prebuilt approximate arc-length table; the left normal is `(-tangent.z,
+tangent.x)`. Nearest queries choose candidates from the reusable world-bounds
+segment grid, project onto its polyline, then refine on the spline. Bounds queries
+return ordered, potentially shared intervals and accept a margin.
+
+The debug selector is production-default Off. Spine adds controls/helpers and
+the curve; Ribbon adds a constant-width, presentation-only ribbon and diagnostic
+chunk grid; Detailed adds uniform-distance marks, tangent/normal indicators, and
+index bounds. Objects are created lazily and disposed on every mode change.
+Terrain integration is deferred specifically to keep R1/R2 independently
+testable and avoid baking old north/south or fixed-column assumptions into the API.
+
+Planned phases are: **R1** world-space river ownership; **R2** arbitrary smooth
+manual test spine; R3 chunk-independent terrain carving; R4 chunk-independent
+water and banks; R5 downstream systems adaptation; R6 seam and generation-order
+validation; R7 procedural macro spine; R8 secondary meanders; R9 variable width;
+and R10 river lakes.
+
 `generateChunk(seed, coordinate)` is a pure data boundary: the normalized seed
 and integer `(x, z)` coordinate completely determine its plain-object result.
 Random-looking values are addressed by global integer lattice keys, rather than
