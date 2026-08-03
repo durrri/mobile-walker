@@ -7,6 +7,7 @@ import {
   BRIDGE_MAX_CURVATURE_RADIANS,
   createBridgeCollision,
   generateBridges,
+  getBridgeDeckTopElevation,
   queryWorldRiverBridgeCandidates,
 } from "./bridges";
 import { pointInFootprint } from "./poi";
@@ -26,6 +27,8 @@ describe("world-owned river bridges", () => {
       expect(candidates[index]!.riverDistance - candidates[index - 1]!.riverDistance).toBeCloseTo(BRIDGE_CANDIDATE_SPACING);
       expect(candidates[index]!.id).toContain(`:d${candidates[index]!.latticeIndex}`);
     }
+    const accepted=candidates.filter(candidate=>generateBridges(7,candidate.ownerChunk).candidates.find(value=>value.id===candidate.id)?.accepted);
+    for(let index=1;index<accepted.length;index+=1)expect(accepted[index]!.riverDistance-accepted[index-1]!.riverDistance).toBeGreaterThanOrEqual(BRIDGE_CANDIDATE_SPACING);
     const candidate = candidates[2]!;
     const aroundOwner = queryWorldRiverBridgeCandidates(7, {
       minX: candidate.ownerChunk.x * CHUNK_SIZE,
@@ -35,6 +38,16 @@ describe("world-owned river bridges", () => {
     });
     expect(aroundOwner.some(value => value.id === candidate.id)).toBe(true);
     expect(generateBridges(7, candidate.ownerChunk)).toEqual(generateBridges(7, candidate.ownerChunk));
+  });
+
+  it.each(["pedestrian-footbridge","heavy-timber-bridge","stone-bridge"] as const)("uses the actual %s deck top for terrain, collision and rendering",archetype=>{
+    const candidate=all().find(value=>generateBridges(7,value.ownerChunk).candidates.find(item=>item.id===value.id)?.accepted)!;
+    const source=generateBridges(7,candidate.ownerChunk).bridges.find(value=>value.id===candidate.id)!;
+    const profileHeight=archetype==="stone-bridge"?.65:archetype==="heavy-timber-bridge"?.22:.3;
+    const structural={...source,archetype,scale:{...source.scale,profileHeight},crossingCentre:{...source.crossingCentre,y:candidate.proposedDeckElevation-profileHeight*.28-.11}};
+    const collision=createBridgeCollision(structural),deckTop=getBridgeDeckTopElevation(structural);
+    expect(deckTop).toBeCloseTo(candidate.proposedDeckElevation);expect(deckTop).toBeGreaterThan(WORLD_RIVER_CARVING.surfaceElevation);expect(deckTop).toBeGreaterThanOrEqual(Math.max(candidate.landingHeights.left,candidate.landingHeights.right));
+    expect(candidate.approachSlope).toBeLessThanOrEqual(.22);expect(collision.surfaces[0]!.startHeight).toBeCloseTo(deckTop);expect(collision.surfaces[0]!.endHeight).toBeCloseTo(deckTop);
   });
 
   it("derives orientation, span, landings, elevation and ownership from the world river", () => {

@@ -2,7 +2,7 @@ import type * as THREE from "three";
 import { describe, expect, it } from "vitest";
 
 import { BridgeMeshFactory } from "./bridgeMeshes";
-import { createBridgeCollision, type BridgeArchetype, type GeneratedBridge } from "./bridges";
+import { createBridgeCollision, generateBridges, type BridgeArchetype, type GeneratedBridge } from "./bridges";
 
 function bridge(archetype:BridgeArchetype):GeneratedBridge{const structural:Omit<GeneratedBridge,"collision">={
  id:`test-${archetype}`,ownerChunk:{x:0,z:0},crossingCentre:{x:0,y:2.18,z:0},riverTangent:{x:0,z:1},crossingDirection:{x:1,z:0},
@@ -29,6 +29,20 @@ describe("bridge entry ramps",()=>{
   expect(Math.abs(left.rotation.z)).toBeLessThan(Math.PI/6);
   expect((left as THREE.Mesh).material).toBe((deck as THREE.Mesh).material);
   expect((right as THREE.Mesh).material).toBe((deck as THREE.Mesh).material);
+  factory.dispose();
+ });
+});
+
+describe("world-river bridge diagnostics",()=>{
+ it("renders bounded candidate frames, status, owner bounds and diagnostic readouts",()=>{
+  const candidates=generateBridges(7,{x:0,z:3}).candidates;
+  const factory=new BridgeMeshFactory(),debug=factory.createDebug(candidates);
+  expect(candidates.length).toBeGreaterThan(0);
+  expect(debug.getObjectByName("bridge-debug:tangents")).toBeDefined();
+  expect(debug.getObjectByName("bridge-debug:axes-landings-approaches")).toBeDefined();
+  expect(debug.getObjectByName("bridge-debug:owners")).toBeDefined();
+  expect(debug.getObjectByName(candidates[0]!.accepted?"bridge-debug:accepted":"bridge-debug:rejected")).toBeDefined();
+  expect(debug.userData.diagnostics[0]).toMatchObject({id:candidates[0]!.id,accepted:candidates[0]!.accepted,ownerChunk:candidates[0]!.ownerChunk,reason:candidates[0]!.reason});
   factory.dispose();
  });
 });

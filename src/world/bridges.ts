@@ -32,7 +32,7 @@ export type BridgeBoxCollider=StructureBoxCollider;
 export type BridgeRailingCollider=StructureSegmentCollider;
 /** Plain generated structure data: neither collision nor tests require Three.js. */
 export interface BridgeCollisionDefinition extends StructureCollisionDefinition {readonly bridgeId:string;readonly centre:BridgePoint;readonly direction:Readonly<{x:number;z:number}>;readonly deckWidth:number;readonly deckLength:number;readonly deckThickness:number;readonly railings:readonly BridgeRailingCollider[];readonly solids:readonly BridgeBoxCollider[]}
-export type BridgeRejectionReason="rarity"|"near river endpoint"|"river too curved"|"approach slope too high"|"unstable banks"|"building conflict"|"bridge spacing";
+export type BridgeRejectionReason="rarity"|"near river endpoint"|"river too curved"|"approach slope too high"|"unstable banks"|"building conflict";
 export interface BridgeCrossingCandidate {readonly id:string;readonly latticeIndex:number;readonly riverDistance:number;readonly riverProgress:number;readonly ownerChunk:ChunkCoordinate;readonly centre:Readonly<{x:number;z:number}>;readonly riverTangent:Readonly<{x:number;z:number}>;readonly crossingDirection:Readonly<{x:number;z:number}>;readonly waterHalfWidth:number;readonly bankExtent:number;readonly leftBankAnchor:BridgePoint;readonly rightBankAnchor:BridgePoint;readonly landingHeights:Readonly<{left:number;right:number}>;readonly proposedDeckElevation:number;readonly approachPoints:Readonly<{left:BridgePoint;right:BridgePoint}>;readonly spanLength:number;readonly bounds:WorldBounds2D;readonly curvatureRadians:number;readonly approachSlope:number;readonly bankStability:number;readonly biome:BiomeId;readonly accepted:boolean;readonly reason?:BridgeRejectionReason;readonly archetype?:BridgeArchetype}
 
 const BIOME_SCORE:Record<BiomeId,Record<BridgeArchetype,number>>={
@@ -88,9 +88,10 @@ export function queryWorldRiverBridgeCandidates(seedInput:number|string,bounds:W
 }
 
 /** Builds collision and rendering inputs together so structural dimensions cannot drift. */
+export function getBridgeDeckTopElevation(bridge:Pick<GeneratedBridge,"crossingCentre"|"scale">):number{return bridge.crossingCentre.y+bridge.scale.profileHeight*.28+.11}
 export function createBridgeCollision(bridge:Omit<GeneratedBridge,"collision">):BridgeCollisionDefinition {
  const d=bridge.crossingDirection,n={x:-d.z,z:d.x},stone=bridge.archetype==="stone-bridge",heavy=bridge.archetype==="heavy-timber-bridge";
- const deckTop=bridge.crossingCentre.y+bridge.scale.profileHeight*.28+.11,thickness=.22;
+ const deckTop=getBridgeDeckTopElevation(bridge),thickness=.22;
  const point=(along:number,side:number,y:number):BridgePoint=>({x:bridge.crossingCentre.x+d.x*along+n.x*side,y,z:bridge.crossingCentre.z+d.z*along+n.z*side});
  const crown=bridge.variant==="hump-backed-stone"?bridge.scale.profileHeight*.32:stone?bridge.scale.profileHeight*.12:0;
  const surfaces:BridgeSurfaceRecord[]=[{id:`${bridge.id}:deck`,kind:"deck",centre:point(0,0,deckTop),length:bridge.spanLength,width:bridge.deckWidth,direction:d,startHeight:deckTop,endHeight:deckTop,crownHeight:crown,thickness,solid:true,walkable:true,overhead:true}];

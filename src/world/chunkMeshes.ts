@@ -642,7 +642,7 @@ export class ChunkMeshFactory {
       group.add(this.poiMeshes.createDebug(data.pois, data.candidates ?? [], level));
       group.add(this.bridgeMeshes.createDebug((group.userData.bridgeDebugData as GeneratedChunkData["bridgeCandidates"])??[]));
     }
-    if(level==="off"&&bridgeDebug)group.remove(bridgeDebug);
+    if((level==="off"||poiDebug?.userData.level!==level)&&bridgeDebug){group.remove(bridgeDebug);bridgeDebug.traverse(object=>{if(object instanceof THREE.Line){object.geometry.dispose();(object.material as THREE.Material).dispose();}});}
     group.traverse((object) => {
       if (!(object instanceof THREE.Mesh) || object.userData.isTerrainSurface !== true) return;
       const terrain = object;

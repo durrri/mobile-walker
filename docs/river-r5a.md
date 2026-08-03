@@ -12,7 +12,7 @@ Active legacy records are deliberately retained for R5b vegetation/object exclus
 
 ## World-river bridge rules
 
-* **Candidate lattice:** one candidate every 40 world units of global arc length with a deterministic seed phase. Identity is `bridge:<seed hex>:d<global lattice index>`. Spatial queries use the river segment index and bounded distance indices; the lattice never restarts per chunk.
+* **Candidate lattice:** one candidate every 40 world units of global arc length with a deterministic seed phase. Identity is `bridge:<seed hex>:d<global lattice index>`. Spatial queries use the river segment index and bounded distance indices; the lattice never restarts per chunk. Spacing is structural—accepted bridges are a subset of lattice points—rather than a separate rejection rule.
 * **Frame:** tangent points along increasing river distance. The deterministic left normal `(-tangent.z, tangent.x)` is both the bridge longitudinal axis and the left-bank direction. Meshes, collision, landings, debug guides, shadows, and oriented zones share it.
 * **Span:** `2 × (water half-width + complete authoritative bank width + 0.75 landing/foundation margin)`. It is currently constant but the candidate stores local water half-width and bank extent for a future width provider.
 * **Elevation:** authoritative terrain is sampled at both bank landings and beyond both approaches. Deck top is the higher landing (or water plus clearance) plus 0.18. Foundations and ramps share these sampled landing heights. This prevents burial and water intersection; unusually mismatched terrain is rejected rather than floated.
@@ -22,6 +22,6 @@ Active legacy records are deliberately retained for R5b vegetation/object exclus
 
 ## Debug and performance
 
-Detailed POI debug mode lazily creates disposable line geometry for candidate tangents, bridge axes, bank landings, and approaches. Candidate records additionally expose arc distance/progress, local width, landing/deck heights, curvature, bounds, owner, acceptance and rejection reason. Debug objects remain presentation-only and are absent from normal generated output.
+Detailed POI debug mode lazily creates disposable, terrain-readable line batches: cyan river tangents, yellow crossing axes/bank landings/approaches, green or red candidate-centre marks for acceptance state, and purple owner-chunk bounds. The presentation record exposes rejection reason, arc distance, proposed deck height and landing heights for debug readouts. Candidate records additionally expose arc distance/progress, local width, landing/deck heights, curvature, bounds, owner, acceptance and rejection reason. Debug objects remain presentation-only and are absent from normal generated output.
 
 Candidate lookup is bounded by the spatial river index. It does not traverse the scene, regenerate per frame, or scan the complete spine per chunk. Existing shared bridge materials and one component group per accepted bridge are unchanged, so R5a adds no draw calls, rendered components, or collision records per bridge; candidate records are transient except when debug data is requested. The fixture counts and timings are reported with validation results for this change.
