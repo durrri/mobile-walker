@@ -15,6 +15,7 @@ import {
   TERRAIN_SEGMENTS,
 } from "./terrainSampling";
 import { createWorldRiverCarvingContext } from "./worldRiverCarving";
+import { sampleWorldRiverCarving, WORLD_RIVER_MAX_CARVING_RADIUS } from "./worldRiverCarving";
 import { generateVegetation, type GeneratedVegetation } from "./vegetation";
 import { generatePois, isVegetationExcluded, type GeneratedPoi, type PoiDebugCandidate } from "./poi";
 import { generateWetlandPools, type WetlandPoolPlacement } from "./wetlands";
@@ -195,16 +196,53 @@ export function generateChunk(
   // R3 mixed state: the legacy river still supplies water/banks/bridges and
   // downstream data, but it no longer replaces or carves the terrain mesh.
   // R4/R5 will migrate those remaining systems to the world spine.
-  const irregularTerrain: GeneratedChunkData["irregularTerrain"] = undefined;
-  const meshVertices = terrainHeights.map((height, vertexIndex) => ({
+  let irregularTerrain: GeneratedChunkData["irregularTerrain"] = undefined;
+  let meshVertices = terrainHeights.map((height, vertexIndex) => ({
     x: coordinate.x * CHUNK_SIZE + vertexIndex % verticesPerSide * CHUNK_SIZE / terrainSegments,
     z: coordinate.z * CHUNK_SIZE + Math.floor(vertexIndex / verticesPerSide) * CHUNK_SIZE / terrainSegments,
     height,
   }));
-  const meshIndices: number[] = [];
+  let meshIndices: number[] = [];
   for (let z = 0; z < terrainSegments; z++) for (let x = 0; x < terrainSegments; x++) {
     const topLeft = z * verticesPerSide + x;
     meshIndices.push(topLeft, topLeft + verticesPerSide, topLeft + 1, topLeft + 1, topLeft + verticesPerSide, topLeft + verticesPerSide + 1);
+  }
+  if (riverCarvingContext.hasRiver) {
+    // R4.5 refines only coarse cells in a narrow corridor. Keeping each cell
+    // self-contained permits deterministic mixed resolution; the expanded
+    // selection boundary lies beyond the bank falloff where fine edge samples
+    // reduce exactly to the original piecewise-linear natural terrain.
+    const vertices: IrregularTerrainVertex[] = [];
+    const indices: number[] = [];
+    const coarseStep = CHUNK_SIZE / terrainSegments;
+    for (let cellZ = 0; cellZ < terrainSegments; cellZ++) for (let cellX = 0; cellX < terrainSegments; cellX++) {
+      const cellMinX = minX + cellX * coarseStep, cellMinZ = minZ + cellZ * coarseStep;
+      const centreSample = sampleWorldRiverCarving(
+        cellMinX + coarseStep / 2, cellMinZ + coarseStep / 2, riverCarvingContext,
+      );
+      const refine = centreSample !== undefined
+        && centreSample.distanceToCentreline <= WORLD_RIVER_MAX_CARVING_RADIUS + coarseStep * Math.SQRT1_2;
+      const divisions = refine ? 4 : 1;
+      const base = vertices.length;
+      for (let localZ = 0; localZ <= divisions; localZ++) for (let localX = 0; localX <= divisions; localX++) {
+        const worldX = cellMinX + coarseStep * localX / divisions;
+        const worldZ = cellMinZ + coarseStep * localZ / divisions;
+        const height = sampleAuthoritativeHeight(worldX, worldZ);
+        vertices.push({
+          x: worldX, z: worldZ, height,
+          biomeWeights: sampleBiome(seed, worldX, worldZ).weights,
+          occlusion: sampleTerrainOcclusion(worldX, worldZ, height, sampleAuthoritativeHeight, occlusionOptions),
+        });
+      }
+      const row = divisions + 1;
+      for (let localZ = 0; localZ < divisions; localZ++) for (let localX = 0; localX < divisions; localX++) {
+        const topLeft = base + localZ * row + localX;
+        indices.push(topLeft, topLeft + row, topLeft + 1, topLeft + 1, topLeft + row, topLeft + row + 1);
+      }
+    }
+    irregularTerrain = { vertices, indices };
+    meshVertices = vertices;
+    meshIndices = indices;
   }
   const positions = new Float32Array(meshVertices.length * 3);
   meshVertices.forEach((vertex, index) => positions.set([vertex.x, vertex.height, vertex.z], index * 3));

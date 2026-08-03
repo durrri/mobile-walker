@@ -81,13 +81,22 @@ describe("world river carving field", () => {
     expect(centreBeds[2]).toBeCloseTo(centreBeds[0]!, 12);
   });
 
-  it("lowers high terrain but never raises terrain already below the target bed", () => {
-    const point = worldRiverSpine.samplePosition(0.5);
-    const sample = sampleWorldRiverCarving(point.x, point.z)!;
-    expect(applyWorldRiverCarving(20, sample)).toBeCloseTo(sample.targetBedHeight, 12);
-    expect(applyWorldRiverCarving(sample.targetBedHeight - 3, sample)).toBe(sample.targetBedHeight - 3);
-    for (const base of [-20, -1, 0, 20]) {
-      expect(applyWorldRiverCarving(base, sample)).toBeLessThanOrEqual(base);
-    }
+  it("creates an authoritative raised lip and walkable bank without flattening the outer terrain", () => {
+    const frame = worldRiverSpine.sampleFrame(0.5);
+    const at = (offset: number) => sampleWorldRiverCarving(
+      frame.position.x + frame.normal.x * offset,
+      frame.position.z + frame.normal.z * offset,
+    )!;
+    const edge = at(WORLD_RIVER_CARVING.halfWidth);
+    expect(applyWorldRiverCarving(20, edge)).toBeCloseTo(
+      WORLD_RIVER_CARVING.surfaceElevation + WORLD_RIVER_CARVING.lipHeight, 12,
+    );
+    expect(applyWorldRiverCarving(-20, edge)).toBeCloseTo(applyWorldRiverCarving(20, edge), 12);
+    const inner = at(WORLD_RIVER_CARVING.halfWidth + WORLD_RIVER_CARVING.bankWidth);
+    expect(applyWorldRiverCarving(20, inner)).toBeCloseTo(
+      WORLD_RIVER_CARVING.surfaceElevation + WORLD_RIVER_CARVING.lipHeight
+        + WORLD_RIVER_CARVING.innerBankRise, 12,
+    );
+    expect(applyWorldRiverCarving(20, at(WORLD_RIVER_MAX_CARVING_RADIUS + 0.01))).toBe(20);
   });
 });

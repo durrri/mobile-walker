@@ -14,6 +14,10 @@ export const WORLD_RIVER_CARVING = Object.freeze({
   surfaceElevation: -0.18,
   nominalBedDepth: 0.55,
   floorCurvature: 0.08,
+  /** Authoritative dry ground at the mathematical water boundary. */
+  lipHeight: 0.12,
+  /** Gentle rise across the walkable inner bank before natural terrain resumes. */
+  innerBankRise: 0.28,
 });
 
 export const WORLD_RIVER_MAX_CARVING_RADIUS =
@@ -42,6 +46,7 @@ export interface WorldRiverCarvingSample {
   readonly channelInfluence: number;
   readonly bankInfluence: number;
   readonly targetBedHeight: number;
+  readonly targetBankHeight: number;
   readonly surfaceElevation: number;
   readonly nominalBedDepth: number;
   readonly insideChannel: boolean;
@@ -107,13 +112,12 @@ export function sampleWorldRiverCarving(
   const signedSide = (worldX - nearestX) * normalX + (worldZ - nearestZ) * normalZ;
   const distanceToCentreline = Math.sqrt(nearest.squared);
   const progress = segment.start.progress + (segment.end.progress - segment.start.progress) * t;
-  const { halfWidth, bankWidth, falloffWidth, surfaceElevation, nominalBedDepth, floorCurvature } =
+  const { halfWidth, bankWidth, falloffWidth, surfaceElevation, nominalBedDepth, floorCurvature,
+    lipHeight, innerBankRise } =
     WORLD_RIVER_CARVING;
   const innerEnd = halfWidth + bankWidth;
   const outerEnd = innerEnd + falloffWidth;
-  const channelInfluence = distanceToCentreline <= halfWidth
-    ? 1
-    : 1 - 0.65 * smoothstep((distanceToCentreline - halfWidth) / bankWidth);
+  const channelInfluence = distanceToCentreline <= halfWidth ? 1 : 0;
   const bankInfluence = distanceToCentreline <= innerEnd
     ? 1
     : 1 - smoothstep((distanceToCentreline - innerEnd) / falloffWidth);
@@ -124,20 +128,32 @@ export function sampleWorldRiverCarving(
   // constant-elevation reaches, but multiple reaches are outside this scope.
   const centreBedElevation = surfaceElevation - nominalBedDepth;
   const floorShape = floorCurvature * nominalBedDepth * Math.min(1, distanceToCentreline / halfWidth) ** 2;
-  const targetBedHeight = centreBedElevation + floorShape;
+  const deepBedHeight = centreBedElevation + floorShape;
+  // The submerged half of the profile meets exactly the same raised lip as the
+  // land half. This prevents the precise water ribbon from exposing a coarse,
+  // unrelated terrain edge while retaining the existing walkable river bed.
+  const submergedBank = smoothstep(Math.max(0,
+    (distanceToCentreline / halfWidth - 0.55) / 0.45));
+  const targetBedHeight = deepBedHeight
+    + (surfaceElevation + lipHeight - deepBedHeight) * submergedBank;
+  const landDistance = Math.max(0, distanceToCentreline - halfWidth);
+  const targetBankHeight = surfaceElevation + lipHeight
+    + innerBankRise * smoothstep(landDistance / bankWidth);
   return {
     nearestX, nearestZ, progress, distanceAlongRiver: progress * context.spine.totalLength,
     distanceToCentreline, signedSide, tangentX, tangentZ, normalX, normalZ,
     halfWidth, bankWidth, falloffWidth, channelInfluence, bankInfluence,
-    targetBedHeight, surfaceElevation, nominalBedDepth,
+    targetBedHeight, targetBankHeight, surfaceElevation, nominalBedDepth,
     insideChannel: distanceToCentreline <= halfWidth,
     insideCarvingFalloff: distanceToCentreline <= outerEnd,
   };
 }
 
-/** The sole R3 carving formula: never raises terrain, and is C1 at all profile boundaries. */
+/** R4.5 authoritative bed, raised lip, walkable bank, and C1 natural-terrain blend. */
 export function applyWorldRiverCarving(baseHeight: number, sample: WorldRiverCarvingSample | undefined): number {
   if (!sample || !sample.insideCarvingFalloff) return baseHeight;
-  const influence = sample.insideCarvingFalloff ? sample.channelInfluence * sample.bankInfluence : 0;
-  return baseHeight + (Math.min(baseHeight, sample.targetBedHeight) - baseHeight) * influence;
+  if (sample.insideChannel) return sample.targetBedHeight;
+  const landDistance = sample.distanceToCentreline - sample.halfWidth;
+  if (landDistance <= sample.bankWidth) return sample.targetBankHeight;
+  return baseHeight + (sample.targetBankHeight - baseHeight) * sample.bankInfluence;
 }

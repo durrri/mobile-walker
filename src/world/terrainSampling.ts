@@ -205,6 +205,12 @@ export function sampleChannelTerrainHeightInContext(
  */
 export function sampleTerrainHeight(seedInput: number | string, worldX: number, worldZ: number): number {
   const seed = normalizeSeed(seedInput);
+  const river = sampleWorldRiverCarving(worldX, worldZ);
+  if (river?.insideCarvingFalloff) {
+    // The locally refined river terrain samples this exact authoritative field;
+    // movement must not interpolate the old coarse lattice across its bank.
+    return sampleChannelTerrainHeight(seed, worldX, worldZ);
+  }
   const spacing = CHUNK_SIZE / TERRAIN_SEGMENTS;
   const latticeX = worldX / spacing;
   const latticeZ = worldZ / spacing;

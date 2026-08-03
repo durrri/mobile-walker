@@ -16,6 +16,8 @@ export const RIVER_DEBUG_STYLE = {
   indexedBounds: { color: 0xffe600, width: 0.12, offset: 0.16 },
   chunkGrid: { color: 0x766cff, width: 0.065, offset: 0.1 },
   channelEdge: { color: 0x2dff9a, width: 0.16, offset: 0.2 },
+  lipEdge: { color: 0xffffff, width: 0.1, offset: 0.25 },
+  innerBankEdge: { color: 0xffd23f, width: 0.13, offset: 0.23 },
   falloffEdge: { color: 0xff4d67, width: 0.13, offset: 0.22 },
   ribbonOpacity: 0.72,
   detailedRibbonOpacity: 0.3,
@@ -78,6 +80,10 @@ export class RiverSpineDebugView {
       const outer = WORLD_RIVER_CARVING.halfWidth + WORLD_RIVER_CARVING.bankWidth + WORLD_RIVER_CARVING.falloffWidth;
       const falloffEdges = [outer, -outer].flatMap(offset => this.segmentPairs(offsetGuide(offset)));
       root.add(this.thickSegments(channelEdges, RIVER_DEBUG_STYLE.channelEdge, "debug:river-channel-edges"));
+      root.add(this.thickSegments(channelEdges, RIVER_DEBUG_STYLE.lipEdge, "debug:river-lip-edges"));
+      const inner = WORLD_RIVER_CARVING.halfWidth + WORLD_RIVER_CARVING.bankWidth;
+      const innerBankEdges = [inner, -inner].flatMap(offset => this.segmentPairs(offsetGuide(offset)));
+      root.add(this.thickSegments(innerBankEdges, RIVER_DEBUG_STYLE.innerBankEdge, "debug:river-inner-bank-edges"));
       root.add(this.thickSegments(falloffEdges, RIVER_DEBUG_STYLE.falloffEdge, "debug:river-falloff-edges"));
       const marks = Array.from(
         { length: Math.floor(this.spine.totalLength / WORLD_RIVER_WATER_SAMPLE_SPACING) + 1 },
