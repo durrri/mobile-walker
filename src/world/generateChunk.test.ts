@@ -6,6 +6,7 @@ import {
   isRiverAt,
   sampleRiverCrossSection,
   sampleChannelTerrainHeight,
+  sampleTerrainHeight,
   sampleNaturalTerrainHeight,
   TERRAIN_SEGMENTS,
 } from "./terrainSampling";
@@ -111,7 +112,7 @@ describe("deterministic chunk generation", () => {
     }
   });
 
-  it("keeps the base terrain resolution outside the river column", () => {
+  it("keeps coarse height data while refining only chunks touched by the world river", () => {
     const dryChunk = generateChunk("local-river-detail", { x: 1, z: 0 });
     const riverChunk = generateChunk("local-river-detail", { x: 0, z: 0 });
 
@@ -119,7 +120,8 @@ describe("deterministic chunk generation", () => {
     expect(riverChunk.terrainVerticesPerSide).toBe(TERRAIN_SEGMENTS + 1);
     expect(dryChunk.terrainHeights).toHaveLength((TERRAIN_SEGMENTS + 1) ** 2);
     expect(riverChunk.terrainHeights.length).toBeLessThanOrEqual(dryChunk.terrainHeights.length);
-    expect(riverChunk.irregularTerrain).toBeUndefined();
+    expect(riverChunk.irregularTerrain).toBeDefined();
+    expect(riverChunk.irregularTerrain!.vertices.length).toBeGreaterThan(riverChunk.terrainHeights.length);
   });
 
   it("keeps river-column edges on the neighboring coarse edge", () => {
@@ -131,6 +133,17 @@ describe("deterministic chunk generation", () => {
     for (let coarseZ = 0; coarseZ < coarseSide; coarseZ += 1) {
       expect(riverChunk.terrainHeights[coarseZ * riverSide + riverSide - 1])
         .toBe(eastChunk.terrainHeights[coarseZ * coarseSide]);
+    }
+  });
+
+  it("keeps locally refined rendered vertices on the random-access movement field", () => {
+    const chunk = generateChunk("refined-movement-agreement", { x: 3, z: 2 });
+    const refined = chunk.irregularTerrain!.vertices.filter(vertex =>
+      sampleWorldRiverCarving(vertex.x, vertex.z)?.insideCarvingFalloff);
+    expect(refined.length).toBeGreaterThan(20);
+    for (let index = 7; index < refined.length; index += 17) {
+      const vertex = refined[index]!;
+      expect(vertex.height).toBeCloseTo(sampleTerrainHeight(chunk.seed, vertex.x, vertex.z), 12);
     }
   });
 

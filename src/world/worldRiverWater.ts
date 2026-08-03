@@ -19,14 +19,14 @@ export interface WorldRiverWaterSample {
 
 export function sampleWorldRiverWater(x: number, z: number, spine: RiverSpine = worldRiverSpine): WorldRiverWaterSample {
   const nearest = spine.nearestPointToRiver(x, z);
-  const signedDistanceToEdge = nearest.distanceToRiver - WORLD_RIVER_CARVING.halfWidth;
+  const signedDistanceToEdge = nearest.distanceToRiver - WORLD_RIVER_CARVING.waterHalfWidth;
   return {
     inside: signedDistanceToEdge <= 0,
     signedDistanceToEdge,
     distanceToCentreline: nearest.distanceToRiver,
     signedSide: nearest.signedSide,
     surfaceElevation: WORLD_RIVER_CARVING.surfaceElevation,
-    halfWidth: WORLD_RIVER_CARVING.halfWidth,
+    halfWidth: WORLD_RIVER_CARVING.waterHalfWidth,
     progress: nearest.progress,
     distanceAlongRiver: nearest.distanceAlongRiver,
   };
@@ -94,7 +94,7 @@ function waterLattice(spine: RiverSpine): WaterLattice {
   for (let index = 0; index <= count; index += 1) {
     const distance = Math.min(index * spacing, spine.totalLength);
     const frame = spine.sampleFrame(spine.progressAtDistance(distance));
-    const half = WORLD_RIVER_CARVING.halfWidth, y = WORLD_RIVER_CARVING.surfaceElevation;
+    const half = WORLD_RIVER_CARVING.waterHalfWidth, y = WORLD_RIVER_CARVING.surfaceElevation;
     frames.push({ distance,
       left: { x: frame.position.x + frame.normal.x * half, y, z: frame.position.z + frame.normal.z * half, u: distance, v: 0 },
       right: { x: frame.position.x - frame.normal.x * half, y, z: frame.position.z - frame.normal.z * half, u: distance, v: 1 },

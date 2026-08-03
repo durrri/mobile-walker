@@ -29,6 +29,8 @@ describe("RiverSpineDebugView", () => {
       "debug:river-indexed-bounds",
       "debug:river-chunk-grid",
       "debug:river-channel-edges",
+      "debug:river-lip-edges",
+      "debug:river-inner-bank-edges",
       "debug:river-falloff-edges",
     ];
     for (const name of categories) {

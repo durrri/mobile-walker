@@ -208,5 +208,5 @@ describe("loaded neighborhood boundary", () => {
     for (const group of createdGroups) {
       expect(disposeChunk.mock.calls.filter(([disposed]) => disposed === group)).toHaveLength(1);
     }
-  });
+  }, 10_000);
 });

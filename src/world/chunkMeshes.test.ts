@@ -23,7 +23,7 @@ describe("river ribbon geometry", () => {
     factory.disposeChunk(curvedReach); factory.disposeChunk(absentReach); factory.dispose();
   });
 
-  it("keeps the authoritative terrain grid and disables legacy presentation", () => {
+  it("renders locally refined authoritative terrain and disables legacy presentation", () => {
     const factory = new ChunkMeshFactory();
     const data = generateChunk("open-channel", { x: 4, z: 2 });
     const group = factory.create(data);
@@ -32,8 +32,8 @@ describe("river ribbon geometry", () => {
     expect(group.getObjectByName("river-channel")).toBeUndefined();
     expect(group.getObjectByName("river")).toBeUndefined();
     expect(water).toBeInstanceOf(THREE.Mesh);
-    expect(terrain.geometry.getAttribute("position").count).toBe(data.terrainHeights.length);
-    expect(data.irregularTerrain).toBeUndefined();
+    expect(terrain.geometry.getAttribute("position").count).toBe(data.irregularTerrain!.vertices.length);
+    expect(data.irregularTerrain!.vertices.length).toBeGreaterThan(data.terrainHeights.length);
 
     factory.disposeChunk(group);
     factory.dispose();
@@ -333,14 +333,17 @@ describe("terrain biome colors", () => {
     const right = terrainOf(factory, "color-continuity", 2, 2);
     const leftColors = left.terrain.geometry.getAttribute("color");
     const rightColors = right.terrain.geometry.getAttribute("color");
-    const side = left.data.terrainVerticesPerSide;
-
-    for (let z = 0; z < side; z += 1) {
-      const leftIndex = z * side + side - 1;
-      const rightIndex = z * side;
-      expect([leftColors.getX(leftIndex), leftColors.getY(leftIndex), leftColors.getZ(leftIndex)])
-        .toEqual([rightColors.getX(rightIndex), rightColors.getY(rightIndex), rightColors.getZ(rightIndex)]);
-    }
+    const boundaryX = 2 * left.data.size;
+    const boundaryColors = (data: typeof left.data, colors: THREE.BufferAttribute | THREE.InterleavedBufferAttribute) => {
+      const vertices = data.irregularTerrain?.vertices;
+      if (!vertices) throw new Error("expected refined river fixture");
+      return new Map(vertices.flatMap((vertex, index) => vertex.x === boundaryX
+        ? [[vertex.z, [colors.getX(index), colors.getY(index), colors.getZ(index)]] as const]
+        : []));
+    };
+    const leftBoundary = boundaryColors(left.data, leftColors);
+    const rightBoundary = boundaryColors(right.data, rightColors);
+    for (const [z, color] of leftBoundary) expect(rightBoundary.get(z)).toEqual(color);
 
     factory.disposeChunk(left.group);
     factory.disposeChunk(right.group);
