@@ -4,6 +4,9 @@ import { generateTrees } from "./forest";
 import { findSafeRestoredTransform } from "./safePlayerPosition";
 import { sampleTerrain } from "./terrainSampling";
 import { overlapsGeneratedTreeTrunk, PLAYER_COLLISION_RADIUS } from "./treeCollision";
+import { worldRiverSpine } from "./worldRiverSpine";
+import { WORLD_RIVER_LIP_CREST_DISTANCE, WORLD_RIVER_MAX_CARVING_RADIUS } from "./worldRiverCarving";
+import { isInsideWorldRiverWater } from "./worldRiverGameplay";
 
 describe("findSafeRestoredTransform", () => {
   const seed = "tree-collision-test";
@@ -50,6 +53,31 @@ describe("findSafeRestoredTransform", () => {
   it("preserves saved yaw after relocation", () => {
     expect(findSafeRestoredTransform(seed, { ...tree, yaw: 2.7 }, offset, PLAYER_COLLISION_RADIUS, 0.5, 5).yaw)
       .toBe(2.7);
+  });
+
+  it("rejects river water while accepting banks and outer falloff", () => {
+    const frame = worldRiverSpine.sampleFrame(0.62);
+    const at = (offset: number) => ({ x: frame.position.x + frame.normal.x * offset, y: 99,
+      z: frame.position.z + frame.normal.z * offset, yaw: 0 });
+    const neverBlocked = () => false;
+    const water = findSafeRestoredTransform(seed, at(0), offset, PLAYER_COLLISION_RADIUS, 0.5, 5, neverBlocked);
+    expect(isInsideWorldRiverWater(water.x, water.z)).toBe(false);
+    for (const distance of [WORLD_RIVER_LIP_CREST_DISTANCE + 0.1, WORLD_RIVER_MAX_CARVING_RADIUS - 0.1]) {
+      const origin = at(distance);
+      expect(findSafeRestoredTransform(seed, origin, offset, PLAYER_COLLISION_RADIUS, 0.5, 5, neverBlocked))
+        .toMatchObject({ x: origin.x, z: origin.z });
+    }
+  });
+
+  it("lets a walkable structure deck override water and rejects structure solids", () => {
+    const p = worldRiverSpine.samplePosition(0.35), neverBlocked = () => false;
+    const saved = { x: p.x, y: 0, z: p.z, yaw: 0 };
+    const deck = findSafeRestoredTransform(seed, saved, offset, PLAYER_COLLISION_RADIUS, 0.5, 1,
+      neverBlocked, () => ({ kind: "walkable", height: 3 }));
+    expect(deck).toEqual({ ...saved, y: 3 + offset });
+    const solid = findSafeRestoredTransform(seed, saved, offset, PLAYER_COLLISION_RADIUS, 0.5, 1,
+      neverBlocked, (x) => x === saved.x ? { kind: "solid" } : undefined);
+    expect([solid.x, solid.z]).not.toEqual([saved.x, saved.z]);
   });
 
   it("uses the bounded grounded fallback when the area is entirely blocked", () => {

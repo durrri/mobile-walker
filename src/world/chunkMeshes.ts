@@ -5,10 +5,9 @@ import { blobShadowProjectionForCaster, SunlightDirection } from "../rendering/s
 
 import { BIOME_DEBUG_COLORS, type BiomeId, type BiomeWeights } from "./biomes";
 import { TREE_TRUNK_RADIUS } from "./forest";
-import type { GeneratedChunkData, RiverChannelSection } from "./generateChunk";
-import type { RiverPoint } from "./river";
+import type { GeneratedChunkData } from "./generateChunk";
 import { LEAF_TREE_TRUNK_RADIUS } from "./vegetation";
-import { LAKE_SURFACE_ELEVATION, LAKE_WATER_WEIGHT, mountainSnowCoverage, RIVER_BED_DEPTH, sampleTerrainHeight } from "./terrainSampling";
+import { LAKE_SURFACE_ELEVATION, LAKE_WATER_WEIGHT, mountainSnowCoverage, sampleTerrainHeight } from "./terrainSampling";
 import { terrainDarkening } from "./terrainOcclusion";
 import { PoiMeshFactory } from "./poiMeshes";
 import { BridgeMeshFactory } from "./bridgeMeshes";
@@ -105,72 +104,6 @@ function addTerrainPresentationAttributes(
   geometry.setAttribute("color", rendered);
   geometry.setAttribute("debugColor", new THREE.Float32BufferAttribute(debugColors, 3));
   geometry.setAttribute("occlusionColor", new THREE.Float32BufferAttribute(occlusionColors, 3));
-}
-
-/** Builds the shared river ribbon with front faces and normals pointing upward. */
-export function createRiverRibbonGeometry(
-  spine: readonly RiverPoint[],
-  elevationOffset = 0,
-): THREE.BufferGeometry {
-  const positions: number[] = [];
-  const indices: number[] = [];
-  for (const point of spine) {
-    const elevation = point.surfaceElevation + elevationOffset;
-    positions.push(
-      point.x - point.width / 2, elevation, point.z,
-      point.x + point.width / 2, elevation, point.z,
-    );
-  }
-  for (let index = 0; index < spine.length - 1; index += 1) {
-    const left = index * 2;
-    indices.push(left, left + 2, left + 1, left + 1, left + 2, left + 3);
-  }
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-  geometry.setIndex(indices);
-  geometry.computeVertexNormals();
-  return geometry;
-}
-
-/** Builds the banks and bed as one deliberately faceted six-vertex strip. */
-export function createRiverChannelGeometry(
-  sections: readonly RiverChannelSection[],
-  maximumDarkening = 0,
-): THREE.BufferGeometry {
-  const positions: number[] = [];
-  const presentationVertices: TerrainPresentationVertex[] = [];
-  const indices: number[] = [];
-  for (const section of sections) {
-    const westWater = section.centerX - section.waterHalfWidth;
-    const eastWater = section.centerX + section.waterHalfWidth;
-    const bedHeight = section.surfaceElevation - RIVER_BED_DEPTH;
-    const lipHeight = section.surfaceElevation + 0.04;
-    positions.push(
-      westWater - section.bankWidth, section.westShoulderHeight, section.z,
-      westWater, lipHeight, section.z,
-      westWater + section.waterHalfWidth * 0.1, bedHeight, section.z,
-      eastWater - section.waterHalfWidth * 0.1, bedHeight, section.z,
-      eastWater, lipHeight, section.z,
-      eastWater + section.bankWidth, section.eastShoulderHeight, section.z,
-    );
-    section.terrainVertices.forEach((vertex, index) => presentationVertices.push({
-      ...vertex,
-      height: positions[(positions.length / 3 - 6 + index) * 3 + 1]!,
-    }));
-  }
-  for (let section = 0; section < sections.length - 1; section += 1) {
-    for (let cross = 0; cross < 5; cross += 1) {
-      const current = section * 6 + cross;
-      const next = current + 6;
-      indices.push(current, next, current + 1, current + 1, next, next + 1);
-    }
-  }
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-  addTerrainPresentationAttributes(geometry, presentationVertices, maximumDarkening);
-  geometry.setIndex(indices);
-  geometry.computeVertexNormals();
-  return geometry;
 }
 
 /** Presentation-only conversion of plain generated data into disposable Three.js objects. */
