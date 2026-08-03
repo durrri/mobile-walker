@@ -2,6 +2,11 @@ import { CHUNK_SIZE, worldToChunk } from "./chunkCoordinates";
 import { sampleBiome, type BiomeId, type BiomeWeights } from "./biomes";
 import { hashFloat, normalizeSeed } from "./random";
 import { isRiverColumn, sampleRiverSpine } from "./river";
+import {
+  applyWorldRiverCarving,
+  sampleWorldRiverCarving,
+  type WorldRiverCarvingContext,
+} from "./worldRiverCarving";
 
 export type TerrainSurface = "land" | "river" | "lake";
 /** Default chunk resolution; dry chunks retain the original generation cost. */
@@ -175,28 +180,23 @@ export function sampleChannelTerrainHeight(seed: number, worldX: number, worldZ:
     const bedHeight = LAKE_SURFACE_ELEVATION - LAKE_BED_DEPTH;
     shapedHeight = naturalHeight + (Math.min(naturalHeight, bedHeight) - naturalHeight) * basinBlend;
   }
-  const crossSection = sampleRiverCrossSection(seed, worldX, worldZ);
-  if (!crossSection) return shapedHeight;
+  return applyWorldRiverCarving(shapedHeight, sampleWorldRiverCarving(worldX, worldZ));
+}
 
-  const halfWidth = crossSection.waterWidth / 2;
-  const distanceFromWater = Math.max(0, Math.abs(worldX - crossSection.centerX) - halfWidth);
-  if (distanceFromWater >= RIVER_BANK_WIDTH + RIVER_TRANSITION_WIDTH) return shapedHeight;
-
-  // The slight bowl avoids a mechanically flat bed while remaining safely
-  // below the water right up to the collision/rendered water boundary.
-  const bedHeight = crossSection.surfaceElevation - RIVER_BED_DEPTH
-    + RIVER_BED_DEPTH * 0.08 * Math.min(1, crossSection.normalizedLateralDistance) ** 2;
-  if (crossSection.normalizedLateralDistance <= 1) return Math.min(naturalHeight, bedHeight);
-
-  if (distanceFromWater <= RIVER_BANK_WIDTH) {
-    const bankBlend = smoothstep(distanceFromWater / RIVER_BANK_WIDTH) * 0.7;
-    return Math.min(naturalHeight, bedHeight + (naturalHeight - bedHeight) * bankBlend);
-  }
-  const transitionBlend = smoothstep(
-    (distanceFromWater - RIVER_BANK_WIDTH) / RIVER_TRANSITION_WIDTH,
-  );
-  const bankShoulder = bedHeight + (naturalHeight - bedHeight) * 0.7;
-  return Math.min(naturalHeight, bankShoulder + (naturalHeight - bankShoulder) * transitionBlend);
+/** Bounded variant used by chunk generation; it never invokes the global diagnostic scan. */
+export function sampleChannelTerrainHeightInContext(
+  seed: number,
+  worldX: number,
+  worldZ: number,
+  riverContext: WorldRiverCarvingContext,
+): number {
+  const naturalHeight = sampleNaturalTerrainHeight(seed, worldX, worldZ);
+  const lakeWeight = sampleBiome(seed, worldX, worldZ).weights.lake;
+  const shapedHeight = lakeWeight > LAKE_BANK_WEIGHT
+    ? naturalHeight + (Math.min(naturalHeight, LAKE_SURFACE_ELEVATION - LAKE_BED_DEPTH) - naturalHeight)
+      * smoothstep((lakeWeight - LAKE_BANK_WEIGHT) / (LAKE_WATER_WEIGHT - LAKE_BANK_WEIGHT))
+    : naturalHeight;
+  return applyWorldRiverCarving(shapedHeight, sampleWorldRiverCarving(worldX, worldZ, riverContext));
 }
 
 /**

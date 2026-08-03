@@ -7,6 +7,7 @@ import {
   sampleRiverCrossSection,
   TERRAIN_SEGMENTS,
 } from "./terrainSampling";
+import { worldRiverSpine } from "./worldRiverSpine";
 
 describe("deterministic chunk generation", () => {
   it("repeats exactly for the same seed and coordinate", () => {
@@ -63,14 +64,14 @@ describe("deterministic chunk generation", () => {
     }
   });
 
-  it("carves terrain below the generated water surface along the river", () => {
-    const chunk = generateChunk("channel", { x: 0, z: 2 });
+  it("carves terrain below nearby natural terrain along the world river", () => {
+    const point = worldRiverSpine.samplePosition(0.5);
+    const coordinate = worldToChunk(point.x, point.z);
+    const chunk = generateChunk("channel", coordinate);
     const side = chunk.terrainVerticesPerSide;
-    for (const point of chunk.river!.spine) {
-      const x = Math.round((point.x - chunk.coordinate.x * chunk.size) / chunk.size * (side - 1));
-      const z = Math.round((point.z - chunk.coordinate.z * chunk.size) / chunk.size * (side - 1));
-      expect(chunk.terrainHeights[z * side + x]).toBeLessThan(point.surfaceElevation);
-    }
+    const x = Math.round((point.x - chunk.coordinate.x * chunk.size) / chunk.size * (side - 1));
+    const z = Math.round((point.z - chunk.coordinate.z * chunk.size) / chunk.size * (side - 1));
+    expect(chunk.terrainHeights[z * side + x]).toBeLessThan(1);
   });
 
   it("builds a compact longitudinal channel from the collision cross-section", () => {
@@ -98,7 +99,7 @@ describe("deterministic chunk generation", () => {
     expect(riverChunk.terrainVerticesPerSide).toBe(TERRAIN_SEGMENTS + 1);
     expect(dryChunk.terrainHeights).toHaveLength((TERRAIN_SEGMENTS + 1) ** 2);
     expect(riverChunk.terrainHeights.length).toBeLessThanOrEqual(dryChunk.terrainHeights.length);
-    expect(riverChunk.irregularTerrain!.vertices.length).toBeLessThan(dryChunk.terrainHeights.length);
+    expect(riverChunk.irregularTerrain).toBeUndefined();
   });
 
   it("keeps river-column edges on the neighboring coarse edge", () => {

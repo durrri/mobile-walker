@@ -1,0 +1,78 @@
+import { describe, expect, it } from "vitest";
+import { RiverSpine, worldRiverSpine } from "./worldRiverSpine";
+import {
+  applyWorldRiverCarving,
+  createWorldRiverCarvingContext,
+  sampleWorldRiverCarving,
+  WORLD_RIVER_CARVING,
+  WORLD_RIVER_MAX_CARVING_RADIUS,
+} from "./worldRiverCarving";
+
+describe("world river carving field", () => {
+  it("is symmetric, signed, monotonic, continuous and deterministic", () => {
+    const frame = worldRiverSpine.sampleFrame(0.45);
+    const at = (offset: number) => sampleWorldRiverCarving(
+      frame.position.x + frame.normal.x * offset,
+      frame.position.z + frame.normal.z * offset,
+    )!;
+    expect(at(0).channelInfluence).toBe(1);
+    expect(at(1).channelInfluence).toBe(at(-1).channelInfluence);
+    expect(Math.sign(at(1).signedSide)).toBe(-Math.sign(at(-1).signedSide));
+    const values = Array.from({ length: 41 }, (_, i) => {
+      const sample = at(i * WORLD_RIVER_MAX_CARVING_RADIUS / 40);
+      return applyWorldRiverCarving(2, sample);
+    });
+    for (let i = 1; i < values.length; i++) expect(values[i]!).toBeGreaterThanOrEqual(values[i - 1]! - 1e-9);
+    expect(at(WORLD_RIVER_MAX_CARVING_RADIUS + 0.01).insideCarvingFalloff).toBe(false);
+    expect(applyWorldRiverCarving(2, at(WORLD_RIVER_MAX_CARVING_RADIUS + 0.01))).toBe(2);
+    for (const boundary of [WORLD_RIVER_CARVING.halfWidth,
+      WORLD_RIVER_CARVING.halfWidth + WORLD_RIVER_CARVING.bankWidth,
+      WORLD_RIVER_MAX_CARVING_RADIUS]) {
+      expect(Math.abs(applyWorldRiverCarving(2, at(boundary - 1e-5))
+        - applyWorldRiverCarving(2, at(boundary + 1e-5)))).toBeLessThan(1e-4);
+    }
+    expect(at(3.2)).toEqual(at(3.2));
+  });
+
+  it("works for both principal orientations and has valid constants", () => {
+    for (const spine of [new RiverSpine([{ x: -10, z: 0 }, { x: 10, z: 0 }]),
+      new RiverSpine([{ x: 0, z: -10 }, { x: 0, z: 10 }])]) {
+      const context = { spine, segments: spine.indexedSegments, hasRiver: true } as const;
+      expect(sampleWorldRiverCarving(0, 0, context)!.channelInfluence).toBe(1);
+      expect(Number.isFinite(sampleWorldRiverCarving(2.5, 2.5, context)!.targetBedHeight)).toBe(true);
+    }
+    expect(Object.values(WORLD_RIVER_CARVING).every(Number.isFinite)).toBe(true);
+    expect(WORLD_RIVER_CARVING.halfWidth).toBeGreaterThan(0);
+    expect(WORLD_RIVER_CARVING.bankWidth).toBeGreaterThan(0);
+    expect(WORLD_RIVER_CARVING.falloffWidth).toBeGreaterThan(0);
+  });
+
+  it("uses deterministic bounded candidate contexts and an empty fast path", () => {
+    const far = createWorldRiverCarvingContext({ minX: 1000, maxX: 1016, minZ: 1000, maxZ: 1016 });
+    expect(far.hasRiver).toBe(false);
+    expect(sampleWorldRiverCarving(1008, 1008, far)).toBeUndefined();
+    const frame = worldRiverSpine.sampleFrame(0.5);
+    const local = createWorldRiverCarvingContext({
+      minX: frame.position.x - 8, maxX: frame.position.x + 8,
+      minZ: frame.position.z - 8, maxZ: frame.position.z + 8,
+    });
+    expect(local.segments.length).toBeGreaterThan(0);
+    expect(local.segments.length).toBeLessThan(worldRiverSpine.indexedSegments.length);
+    expect(local.segments.map(segment => segment.index)).toEqual(
+      [...local.segments].map(segment => segment.index).sort((a, b) => a - b),
+    );
+    expect(sampleWorldRiverCarving(frame.position.x, frame.position.z, local))
+      .toEqual(sampleWorldRiverCarving(frame.position.x, frame.position.z));
+  });
+
+  it("has a finite continuous longitudinal grade built once", () => {
+    const beds = Array.from({ length: 1001 }, (_, index) => {
+      const p = worldRiverSpine.samplePosition(index / 1000);
+      return sampleWorldRiverCarving(p.x, p.z)!.targetBedHeight;
+    });
+    expect(beds.every(Number.isFinite)).toBe(true);
+    expect(Math.max(...beds.slice(1).map((bed, i) => Math.abs(bed - beds[i]!)))).toBeLessThan(0.01);
+    expect(worldRiverSpine.lookupBuildCount).toBe(1);
+    expect(beds.at(-1)!).toBeLessThan(beds[0]!);
+  });
+});

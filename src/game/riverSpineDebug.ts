@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { CHUNK_SIZE } from "../world/chunkCoordinates";
 import { worldRiverSpine, type RiverSpine } from "../world/worldRiverSpine";
+import { WORLD_RIVER_CARVING } from "../world/worldRiverCarving";
 
 export type RiverSpineDebugMode = "off" | "spine" | "ribbon" | "detailed";
 export type TerrainHeightSampler = (worldX: number, worldZ: number) => number;
@@ -13,6 +14,8 @@ export const RIVER_DEBUG_STYLE = {
   normal: { color: 0xff45e6, width: 0.18, offset: 0.34 },
   indexedBounds: { color: 0xffe600, width: 0.12, offset: 0.16 },
   chunkGrid: { color: 0x766cff, width: 0.065, offset: 0.1 },
+  channelEdge: { color: 0x2dff9a, width: 0.16, offset: 0.2 },
+  falloffEdge: { color: 0xff4d67, width: 0.13, offset: 0.22 },
   ribbonOpacity: 0.72,
   detailedRibbonOpacity: 0.3,
 } as const;
@@ -57,11 +60,24 @@ export class RiverSpineDebugView {
     ));
 
     if (mode === "ribbon" || mode === "detailed") {
-      root.add(this.ribbon(4, mode === "detailed" ? RIVER_DEBUG_STYLE.detailedRibbonOpacity : RIVER_DEBUG_STYLE.ribbonOpacity));
+      root.add(this.ribbon(WORLD_RIVER_CARVING.halfWidth * 2, mode === "detailed" ? RIVER_DEBUG_STYLE.detailedRibbonOpacity : RIVER_DEBUG_STYLE.ribbonOpacity));
       root.add(this.chunkGrid());
     }
 
     if (mode === "detailed") {
+      const offsetGuide = (offset: number): { x: number; z: number }[] => Array.from(
+        { length: 401 },
+        (_, index) => {
+          const frame = this.spine.sampleFrame(index / 400);
+          return { x: frame.position.x + frame.normal.x * offset, z: frame.position.z + frame.normal.z * offset };
+        },
+      );
+      const channelEdges = [WORLD_RIVER_CARVING.halfWidth, -WORLD_RIVER_CARVING.halfWidth]
+        .flatMap(offset => this.segmentPairs(offsetGuide(offset)));
+      const outer = WORLD_RIVER_CARVING.halfWidth + WORLD_RIVER_CARVING.bankWidth + WORLD_RIVER_CARVING.falloffWidth;
+      const falloffEdges = [outer, -outer].flatMap(offset => this.segmentPairs(offsetGuide(offset)));
+      root.add(this.thickSegments(channelEdges, RIVER_DEBUG_STYLE.channelEdge, "debug:river-channel-edges"));
+      root.add(this.thickSegments(falloffEdges, RIVER_DEBUG_STYLE.falloffEdge, "debug:river-falloff-edges"));
       const marks = Array.from(
         { length: Math.floor(this.spine.totalLength / 8) + 1 },
         (_, index) => this.spine.sampleAtDistance(index * 8),

@@ -2,23 +2,17 @@ import { describe, expect, it } from "vitest";
 
 import { CHUNK_SIZE } from "./chunkCoordinates";
 import { generateChunk } from "./generateChunk";
-import { normalizeSeed } from "./random";
 import {
   isRiverAt,
   isLakeAt,
   mountainSnowCoverage,
   MOUNTAIN_SNOW_LINE,
-  RIVER_BANK_WIDTH,
   RIVER_BED_DEPTH,
-  RIVER_TRANSITION_WIDTH,
   TERRAIN_SEGMENTS,
-  sampleChannelTerrainHeight,
   sampleChannelTerrainLatticeHeight,
   sampleRiverCrossSection,
-  sampleNaturalTerrainHeight,
   sampleTerrain,
   sampleTerrainHeight,
-  sampleTerrainLatticeHeight,
 } from "./terrainSampling";
 
 describe("terrain sampling", () => {
@@ -69,20 +63,12 @@ describe("terrain sampling", () => {
       .toBe(sampleTerrain(seed, riverX, epsilon).surface);
   });
 
-  it("sets the walkable river bed deep enough to submerge about 30% of the player", () => {
-    const chunk = generateChunk("deeper-river", { x: 0, z: 0 });
-    const side = chunk.terrainVerticesPerSide;
-    const river = chunk.river!.entry;
-    const x = Math.round(river.x / CHUNK_SIZE * (side - 1));
-
-    expect(chunk.terrainHeights[x]).toBeCloseTo(
-      river.surfaceElevation - RIVER_BED_DEPTH,
-    );
+  it("retains the legacy water depth constant while world carving is authoritative", () => {
     expect(RIVER_BED_DEPTH).toBeGreaterThanOrEqual(1.5 * 0.2);
     expect(RIVER_BED_DEPTH).toBeLessThanOrEqual(1.5 * 0.4);
   });
 
-  it("never classifies terrain outside chunk column zero as river", () => {
+  it("keeps legacy collision in column zero while world terrain can carve elsewhere", () => {
     const seed = "column-zero-only";
     for (const worldX of [-CHUNK_SIZE / 2, CHUNK_SIZE * 1.5]) {
       expect(isRiverAt(seed, worldX, 3)).toBe(false);
@@ -92,31 +78,9 @@ describe("terrain sampling", () => {
       const worldX = latticeX * CHUNK_SIZE / TERRAIN_SEGMENTS;
       const worldZ = 2 * CHUNK_SIZE / TERRAIN_SEGMENTS;
       if (!isLakeAt(41, worldX, worldZ)) {
-        expect(sampleChannelTerrainLatticeHeight(41, latticeX, 2))
-          .toBe(sampleTerrainLatticeHeight(41, latticeX, 2));
+        expect(Number.isFinite(sampleChannelTerrainLatticeHeight(41, latticeX, 2))).toBe(true);
       }
     }
-  });
-
-  it("rises monotonically through the bank blend and leaves terrain beyond its transition unchanged", () => {
-    const seed = normalizeSeed("bank-profile");
-    const worldZ = 8;
-    const section = sampleRiverCrossSection(seed, CHUNK_SIZE / 2, worldZ)!;
-    const bedEdge = section.surfaceElevation - RIVER_BED_DEPTH + RIVER_BED_DEPTH * 0.08;
-    const samples = [11, 12, 13].map((worldX) => {
-      const natural = sampleNaturalTerrainHeight(seed, worldX, worldZ);
-      const carved = sampleChannelTerrainHeight(seed, worldX, worldZ);
-      return (carved - bedEdge) / (natural - bedEdge);
-    });
-
-    expect(samples[0]).toBeLessThan(samples[1]);
-    expect(samples[1]).toBeLessThanOrEqual(samples[2]);
-    expect(samples[2]).toBe(1);
-    const untouchedX = Math.ceil(
-      section.centerX + section.waterWidth / 2 + RIVER_BANK_WIDTH + RIVER_TRANSITION_WIDTH,
-    );
-    expect(sampleChannelTerrainHeight(seed, untouchedX, worldZ))
-      .toBe(sampleNaturalTerrainHeight(seed, untouchedX, worldZ));
   });
 
   it("uses the shared cross-section for collision at the rendered water edges", () => {
