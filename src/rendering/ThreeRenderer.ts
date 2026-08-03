@@ -4,7 +4,7 @@ import { SunlightDirection, type SunlightAngles } from "./sunlightDirection";
 import { createPlayerCentredFogController } from "./playerCentredFog";
 
 const MAX_PIXEL_RATIO = 2;
-export const MAX_DRAW_DISTANCE = 150;
+export const MAX_DRAW_DISTANCE = 225;
 export const FOG_DEPTH = 20;
 export const FOG_COLOR = 0xd9ead8;
 const SUNLIGHT_DISTANCE = 10;

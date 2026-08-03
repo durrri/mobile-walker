@@ -130,7 +130,7 @@ activating the player's neighborhood.
 ### Rendering fog and material inventory
 
 The scene retains Three.js linear `Fog`, its pale-green background/color, and
-its existing 130/150 near/far values. A small `onBeforeCompile` patch changes
+its 205/225 near/far values. A small `onBeforeCompile` patch changes
 only the standard fog distance: it is horizontal world-space X/Z distance from
 the player's interpolated visible position. The visibility volume is therefore
 a vertical cylinder. Camera yaw, tilt, zoom, height, and orbit position cannot

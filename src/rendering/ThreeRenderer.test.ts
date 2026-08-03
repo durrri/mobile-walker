@@ -30,7 +30,7 @@ vi.mock("three", async (importOriginal) => {
   return { ...actual, WebGLRenderer };
 });
 
-import { sunlightPosition, ThreeRenderer } from "./ThreeRenderer";
+import { MAX_DRAW_DISTANCE, sunlightPosition, ThreeRenderer } from "./ThreeRenderer";
 
 class ResizeObserverStub {
   static instances: ResizeObserverStub[] = [];
@@ -98,6 +98,8 @@ describe("ThreeRenderer resize synchronization", () => {
     const renderer = new ThreeRenderer(canvas);
     const fog = renderer.scene.fog;
 
+    expect(renderer.camera.far).toBe(MAX_DRAW_DISTANCE);
+    expect(MAX_DRAW_DISTANCE).toBe(225);
     expect(fog).toMatchObject({ near: renderer.camera.far - 20, far: renderer.camera.far });
 
     renderer.dispose();
