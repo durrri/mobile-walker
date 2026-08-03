@@ -17,7 +17,8 @@ export interface RiverPoint {
   readonly surfaceElevation: number;
 }
 
-/** The single chunk column that carries the world's continuous north-to-south river. */
+/** @deprecated Legacy gameplay river. worldRiverSpine is the future authority;
+ * terrain and water migration is intentionally deferred to later milestones. */
 export function isRiverColumn(coordinate: Pick<ChunkCoordinate, "x">): boolean {
   return coordinate.x === 0;
 }

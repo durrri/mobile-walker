@@ -13,6 +13,7 @@ import type { ChunkNeighborhoodOffsets } from "../world/chunkCoordinates";
 import type { SunlightAngles } from "../rendering/ThreeRenderer";
 import type { PoiDebugPresentationSystem } from "../game/poiDebug";
 import type { CameraOrientationMode, FollowResponsiveness } from "../game/cameraOrientation";
+import type { RiverSpineDebugMode, RiverSpineDebugView } from "../game/riverSpineDebug";
 
 export class Game {
   private readonly renderer: ThreeRenderer;
@@ -26,6 +27,7 @@ export class Game {
   private readonly persistence: PersistenceSystem;
   private readonly exploration: ExplorationPresentationSystem;
   private readonly playerShadow: import("three").Mesh;
+  private readonly riverSpineDebug: RiverSpineDebugView;
   private readonly cameraDetails: HTMLOutputElement;
   private readonly performanceView: HTMLOutputElement;
   private smoothedFrameSeconds = 1 / 60;
@@ -45,6 +47,7 @@ export class Game {
     this.persistence = gameplay.persistence;
     this.exploration = gameplay.exploration;
     this.playerShadow = gameplay.playerShadow;
+    this.riverSpineDebug = gameplay.riverSpineDebug;
     const cameraDetails = document.querySelector<HTMLOutputElement>("#camera-details");
     const performanceView = document.querySelector<HTMLOutputElement>("#performance-view");
     if (!cameraDetails || !performanceView) throw new Error("Debug readouts could not be found.");
@@ -72,6 +75,8 @@ export class Game {
     this.chunks.setDebugView(options);
     this.biomeDebug.setEnabled(options.biomeGuide);
   }
+
+  setRiverSpineDebugMode(mode: RiverSpineDebugMode): void { this.riverSpineDebug.setMode(mode); }
 
   setPoiDirectionsEnabled(enabled: boolean): void {
     this.poiDebug.setEnabled(enabled);
@@ -115,6 +120,7 @@ export class Game {
     this.running = false;
     this.loop.stop();
     this.systems.dispose();
+    this.riverSpineDebug.dispose();
     this.renderer.dispose();
     document.removeEventListener("visibilitychange", this.handleVisibilityChange);
     window.removeEventListener("pagehide", this.saveProgress);
