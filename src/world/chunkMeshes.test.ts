@@ -15,9 +15,9 @@ describe("river ribbon geometry", () => {
     const curvedReach = factory.create(generateChunk("r4-column-audit", { x: 4, z: 2 }));
     const absentReach = factory.create(generateChunk("r4-column-audit", { x: 0, z: 6 }));
     const curvedWater = curvedReach.getObjectByName("world-river-water") as THREE.Mesh;
-    const absentWater = absentReach.getObjectByName("world-river-water") as THREE.Mesh;
+    const absentWater = absentReach.getObjectByName("world-river-water");
     expect(curvedWater.geometry.getAttribute("position").count).toBeGreaterThan(0);
-    expect(absentWater.geometry.getAttribute("position").count).toBe(0);
+    expect(absentWater).toBeUndefined();
     expect(curvedReach.getObjectByName("river")).toBeUndefined();
     expect(curvedReach.getObjectByName("river-channel")).toBeUndefined();
     factory.disposeChunk(curvedReach); factory.disposeChunk(absentReach); factory.dispose();
@@ -25,7 +25,7 @@ describe("river ribbon geometry", () => {
 
   it("keeps the authoritative terrain grid and disables legacy presentation", () => {
     const factory = new ChunkMeshFactory();
-    const data = generateChunk("open-channel", { x: 0, z: 0 });
+    const data = generateChunk("open-channel", { x: 4, z: 2 });
     const group = factory.create(data);
     const terrain = group.getObjectByName("terrain") as THREE.Mesh;
     const water = group.getObjectByName("world-river-water") as THREE.Mesh;
@@ -65,7 +65,7 @@ describe("river ribbon geometry", () => {
 
   it("supports independently selectable water wireframe debug", () => {
     const factory = new ChunkMeshFactory();
-    const group = factory.create(generateChunk("river-debug-pipeline", { x: 0, z: 0 }));
+    const group = factory.create(generateChunk("river-debug-pipeline", { x: 4, z: 2 }));
     factory.registerGroup(group);
     const terrain = group.getObjectByName("terrain") as THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
     const water = group.getObjectByName("world-river-water") as THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;

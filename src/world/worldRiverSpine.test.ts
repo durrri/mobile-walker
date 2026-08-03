@@ -72,8 +72,8 @@ describe("world-owned river spine", () => {
     expect(worldRiverSpine.queryRiverSegments({minX:500,maxX:516,minZ:500,maxZ:516})).toEqual([]);
     const crossed=worldRiverSpine.queryRiverSegments({minX:15,maxX:32,minZ:40,maxZ:56});expect(crossed.length).toBeGreaterThan(0);
     expect(crossed.map(s=>s.index)).toEqual([...crossed].map(s=>s.index).sort((a,b)=>a-b));
-    const without=worldRiverSpine.queryRiverSegments({minX:68,maxX:70,minZ:34,maxZ:38});
-    const withMargin=worldRiverSpine.queryRiverSegments({minX:68,maxX:70,minZ:34,maxZ:38},5);expect(withMargin.length).toBeGreaterThan(without.length);
+    const without=worldRiverSpine.queryRiverSegments({minX:65,maxX:67,minZ:34,maxZ:38});
+    const withMargin=worldRiverSpine.queryRiverSegments({minX:65,maxX:67,minZ:34,maxZ:38},5);expect(withMargin.length).toBeGreaterThan(without.length);
     const boundary=worldRiverSpine.samplePosition(.25), chunkX=Math.floor(boundary.x/CHUNK_SIZE), chunkZ=Math.floor(boundary.z/CHUNK_SIZE);
     const bounds=(x:number)=>({minX:x*CHUNK_SIZE,maxX:(x+1)*CHUNK_SIZE,minZ:chunkZ*CHUNK_SIZE,maxZ:(chunkZ+1)*CHUNK_SIZE});
     const first=worldRiverSpine.queryRiverSegments(bounds(chunkX),1), second=worldRiverSpine.queryRiverSegments(bounds(chunkX+1),1);

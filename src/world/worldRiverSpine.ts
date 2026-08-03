@@ -201,7 +201,10 @@ export class RiverSpine {
 /** Editable architectural test fixture in ordinary world units, not chunk offsets. */
 export const WORLD_RIVER_CONTROL_POINTS: readonly RiverControlPoint[] = Object.freeze([
   { x: -24, z: 96 }, { x: -8, z: 70 }, { x: 20, z: 48 }, { x: 48, z: 38 },
-  { x: 65, z: 36 }, { x: 45, z: 12 }, { x: 12, z: -8 }, { x: -25, z: -22 },
+  // R4 inspection found the former (65, 36) hairpin produced a self-intersecting
+  // two-unit inner offset. This minimal authored adjustment keeps the bend strong
+  // while giving the constant-width water corridor valid, simple edges.
+  { x: 62, z: 34 }, { x: 45, z: 12 }, { x: 12, z: -8 }, { x: -25, z: -22 },
   { x: -52, z: -45 }, { x: -44, z: -72 }, { x: -12, z: -112 },
 ]);
 

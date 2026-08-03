@@ -86,7 +86,7 @@ describe("deterministic chunk generation", () => {
   });
 
   it("carves the world spine outside the old fixed river column", () => {
-    const point = { x: 64, z: 36 };
+    const point = { x: 62, z: 34 };
     expect(worldToChunk(point.x, point.z).x).not.toBe(0);
     const sample = sampleWorldRiverCarving(point.x, point.z)!;
     expect(sample.insideChannel).toBe(true);

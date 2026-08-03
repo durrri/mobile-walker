@@ -233,7 +233,7 @@ export class ChunkMeshFactory {
   addActivationStage(group: THREE.Group, data: GeneratedChunkData, stage: ChunkActivationStage): void {
     if (stage === "terrain") group.add(this.createTerrain(data));
     else if (stage === "hydrology") {
-      group.add(this.createWorldRiverWater(data));
+      const riverWater = this.createWorldRiverWater(data); if (riverWater) group.add(riverWater);
       group.add(this.createLake(data), this.createWetlandPools(data));
     } else if (stage === "trees") group.add(this.createTrees(data));
     else if (stage === "vegetation") group.add(this.createVegetation(data));
@@ -409,8 +409,9 @@ export class ChunkMeshFactory {
     return boundary;
   }
 
-  private createWorldRiverWater(data: GeneratedChunkData): THREE.Mesh {
+  private createWorldRiverWater(data: GeneratedChunkData): THREE.Mesh | undefined {
     const fragment = tessellateWorldRiverWaterChunk(data.coordinate);
+    if (fragment.indices.length === 0) return undefined;
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute("position", new THREE.Float32BufferAttribute(fragment.vertices.flatMap(vertex => [vertex.x, vertex.y, vertex.z]), 3));
     geometry.setAttribute("uv", new THREE.Float32BufferAttribute(fragment.vertices.flatMap(vertex => [vertex.u, vertex.v]), 2));
