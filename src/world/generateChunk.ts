@@ -9,10 +9,12 @@ import {
   RIVER_BED_DEPTH,
   RIVER_TRANSITION_WIDTH,
   sampleChannelTerrainHeight,
+  sampleChannelTerrainHeightInContext,
   sampleNaturalTerrainHeight,
   sampleRiverCrossSection,
   TERRAIN_SEGMENTS,
 } from "./terrainSampling";
+import { createWorldRiverCarvingContext } from "./worldRiverCarving";
 import { generateVegetation, type GeneratedVegetation } from "./vegetation";
 import { generatePois, isVegetationExcluded, type GeneratedPoi, type PoiDebugCandidate } from "./poi";
 import { generateWetlandPools, type WetlandPoolPlacement } from "./wetlands";
@@ -135,45 +137,6 @@ function generateRiverChannel(
   return { spine: points, sections };
 }
 
-function generateIrregularTerrain(
-  seed: number,
-  coordinate: ChunkCoordinate,
-  sections: readonly RiverChannelSection[],
-  occlusionOptions: Readonly<TerrainOcclusionOptions>,
-): GeneratedChunkData["irregularTerrain"] {
-  const vertices: IrregularTerrainVertex[] = [];
-  const indices: number[] = [];
-  const westEdge = coordinate.x * CHUNK_SIZE;
-  const eastEdge = westEdge + CHUNK_SIZE;
-  for (const section of sections) {
-    const westShoulderX = section.centerX - section.waterHalfWidth - section.bankWidth;
-    const eastShoulderX = section.centerX + section.waterHalfWidth + section.bankWidth;
-    for (const [x, height] of [
-      [westEdge, sampleNaturalTerrainHeight(seed, westEdge, section.z)],
-      [westShoulderX, section.westShoulderHeight],
-      [eastShoulderX, section.eastShoulderHeight],
-      [eastEdge, sampleNaturalTerrainHeight(seed, eastEdge, section.z)],
-    ] as const) {
-      vertices.push({
-        x, z: section.z, height,
-        biomeWeights: sampleBiome(seed, x, section.z).weights,
-        occlusion: sampleTerrainOcclusion(
-          x, section.z, height,
-          (sampleX, sampleZ) => sampleChannelTerrainHeight(seed, sampleX, sampleZ),
-          occlusionOptions,
-        ),
-      });
-    }
-  }
-  for (let z = 0; z < sections.length - 1; z += 1) {
-    const start = z * 4;
-    // West edge-to-shoulder and east shoulder-to-edge are separate quads.
-    indices.push(start, start + 4, start + 1, start + 1, start + 4, start + 5);
-    indices.push(start + 2, start + 6, start + 3, start + 3, start + 6, start + 7);
-  }
-  return { vertices, indices };
-}
-
 /** Pure, random-access generation: output is solely a function of seed and coordinate. */
 export function generateChunk(
   seedInput: number | string,
@@ -187,17 +150,24 @@ export function generateChunk(
   const terrainHeights: number[] = [];
   const terrainBiomeWeights: BiomeWeights[] = [];
   const terrainOcclusion: number[] = [];
+  const minX = coordinate.x * CHUNK_SIZE;
+  const minZ = coordinate.z * CHUNK_SIZE;
+  const riverCarvingContext = createWorldRiverCarvingContext({
+    minX, maxX: minX + CHUNK_SIZE, minZ, maxZ: minZ + CHUNK_SIZE,
+  });
+  const sampleAuthoritativeHeight = (worldX: number, worldZ: number): number =>
+    sampleChannelTerrainHeightInContext(seed, worldX, worldZ, riverCarvingContext);
   for (let z = 0; z < verticesPerSide; z += 1) {
     for (let x = 0; x < verticesPerSide; x += 1) {
       // Use global lattice coordinates so neighboring terrain edges also agree.
       const worldX = coordinate.x * CHUNK_SIZE + x * CHUNK_SIZE / terrainSegments;
       const worldZ = coordinate.z * CHUNK_SIZE + z * CHUNK_SIZE / terrainSegments;
-      const height = sampleChannelTerrainHeight(seed, worldX, worldZ);
+      const height = sampleAuthoritativeHeight(worldX, worldZ);
       terrainHeights.push(height);
       terrainBiomeWeights.push(sampleBiome(seed, worldX, worldZ).weights);
       terrainOcclusion.push(sampleTerrainOcclusion(
         worldX, worldZ, height,
-        (sampleX, sampleZ) => sampleChannelTerrainHeight(seed, sampleX, sampleZ),
+        sampleAuthoritativeHeight,
         occlusionOptions,
       ));
     }
@@ -222,14 +192,17 @@ export function generateChunk(
   // never during rendering or a movement query.
   for(const definition of [...pois.map(poi=>poi.structure),...bridges.map(bridge=>bridge.collision)])validateStructureDefinition(definition);
   const exclusionZones = [...poiNeighborhood.flatMap(poi => poi.zones),...bridgeNeighborhood.flatMap(bridge=>bridge.zones)];
-  const irregularTerrain = channel ? generateIrregularTerrain(seed, coordinate, channel.sections, occlusionOptions) : undefined;
-  const meshVertices = irregularTerrain?.vertices ?? terrainHeights.map((height, vertexIndex) => ({
+  // R3 mixed state: the legacy river still supplies water/banks/bridges and
+  // downstream data, but it no longer replaces or carves the terrain mesh.
+  // R4/R5 will migrate those remaining systems to the world spine.
+  const irregularTerrain: GeneratedChunkData["irregularTerrain"] = undefined;
+  const meshVertices = terrainHeights.map((height, vertexIndex) => ({
     x: coordinate.x * CHUNK_SIZE + vertexIndex % verticesPerSide * CHUNK_SIZE / terrainSegments,
     z: coordinate.z * CHUNK_SIZE + Math.floor(vertexIndex / verticesPerSide) * CHUNK_SIZE / terrainSegments,
     height,
   }));
-  const meshIndices = irregularTerrain?.indices ? [...irregularTerrain.indices] : [];
-  if (!irregularTerrain) for (let z = 0; z < terrainSegments; z++) for (let x = 0; x < terrainSegments; x++) {
+  const meshIndices: number[] = [];
+  for (let z = 0; z < terrainSegments; z++) for (let x = 0; x < terrainSegments; x++) {
     const topLeft = z * verticesPerSide + x;
     meshIndices.push(topLeft, topLeft + verticesPerSide, topLeft + 1, topLeft + 1, topLeft + verticesPerSide, topLeft + verticesPerSide + 1);
   }

@@ -10,7 +10,7 @@ import { generateChunk } from "./generateChunk";
 import { SunlightDirection } from "../rendering/sunlightDirection";
 
 describe("river ribbon geometry", () => {
-  it("uses a bounded shared strip and leaves the water corridor out of base terrain", () => {
+  it("keeps the authoritative terrain grid while legacy water uses its bounded strip", () => {
     const factory = new ChunkMeshFactory();
     const data = generateChunk("open-channel", { x: 0, z: 0 });
     const group = factory.create(data);
@@ -19,20 +19,8 @@ describe("river ribbon geometry", () => {
 
     expect(channel.geometry.getAttribute("position").count).toBe(data.river!.channelSections.length * 6);
     expect(channel.geometry.getAttribute("position").count).toBeLessThan(64);
-    expect(terrain.geometry.getAttribute("position").count).toBe(data.irregularTerrain!.vertices.length);
-    expect(data.irregularTerrain!.indices).toHaveLength((data.river!.channelSections.length - 1) * 12);
-
-    // Every base-terrain triangle belongs entirely west or east of its
-    // section shoulders; none bridges across the channel/water corridor.
-    for (let index = 0; index < data.irregularTerrain!.indices.length; index += 3) {
-      const triangle = data.irregularTerrain!.indices.slice(index, index + 3);
-      const xs = triangle.map((vertex) => data.irregularTerrain!.vertices[vertex]!.x);
-      const centers = triangle.map((vertex) => {
-        const section = data.river!.channelSections[Math.floor(vertex / 4)]!;
-        return section.centerX;
-      });
-      expect(xs.every((x, vertex) => x <= centers[vertex]) || xs.every((x, vertex) => x >= centers[vertex])).toBe(true);
-    }
+    expect(terrain.geometry.getAttribute("position").count).toBe(data.terrainHeights.length);
+    expect(data.irregularTerrain).toBeUndefined();
 
     factory.disposeChunk(group);
     factory.dispose();
@@ -92,7 +80,7 @@ describe("river ribbon geometry", () => {
     factory.dispose();
   });
 
-  it("keeps terrain and bank presentation seamless at their shared shoulders", () => {
+  it("keeps legacy bank presentation valid during the R3 mixed state", () => {
     const factory = new ChunkMeshFactory();
     const data = generateChunk("river-bank-seam", { x: 0, z: 0 });
     const group = factory.create(data);
@@ -101,15 +89,10 @@ describe("river ribbon geometry", () => {
     const bankColors = (group.getObjectByName("river-channel") as THREE.Mesh<THREE.BufferGeometry>).geometry
       .getAttribute("terrainColor");
 
-    for (let section = 0; section < data.river!.channelSections.length; section += 1) {
-      // Irregular terrain stores west/east shoulders at slots 1/2; channel slots 0/5
-      // are the exact same world-space surface samples.
-      for (const [terrainOffset, bankOffset] of [[1, 0], [2, 5]] as const) {
-        const terrainIndex = section * 4 + terrainOffset;
-        const bankIndex = section * 6 + bankOffset;
-        expect([bankColors.getX(bankIndex), bankColors.getY(bankIndex), bankColors.getZ(bankIndex)])
-          .toEqual([terrainColors.getX(terrainIndex), terrainColors.getY(terrainIndex), terrainColors.getZ(terrainIndex)]);
-      }
+    expect(terrainColors.count).toBe(data.terrainHeights.length);
+    expect(bankColors.count).toBe(data.river!.channelSections.length * 6);
+    for (let index = 0; index < bankColors.count; index += 1) {
+      expect([bankColors.getX(index), bankColors.getY(index), bankColors.getZ(index)].every(Number.isFinite)).toBe(true);
     }
 
     factory.disposeChunk(group);

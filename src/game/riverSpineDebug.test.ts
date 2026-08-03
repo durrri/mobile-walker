@@ -28,6 +28,8 @@ describe("RiverSpineDebugView", () => {
       "debug:river-normals",
       "debug:river-indexed-bounds",
       "debug:river-chunk-grid",
+      "debug:river-channel-edges",
+      "debug:river-falloff-edges",
     ];
     for (const name of categories) {
       const diagnostic = scene.getObjectByName(name) as THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;

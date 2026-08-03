@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 
 import { generateChunk } from "./generateChunk";
-import { worldToChunk } from "./chunkCoordinates";
+import { CHUNK_SIZE, worldToChunk } from "./chunkCoordinates";
 import {
   isRiverAt,
   sampleRiverCrossSection,
+  sampleChannelTerrainHeight,
+  sampleNaturalTerrainHeight,
   TERRAIN_SEGMENTS,
 } from "./terrainSampling";
+import { sampleWorldRiverCarving } from "./worldRiverCarving";
+import { normalizeSeed } from "./random";
 
 describe("deterministic chunk generation", () => {
   it("repeats exactly for the same seed and coordinate", () => {
@@ -63,14 +67,31 @@ describe("deterministic chunk generation", () => {
     }
   });
 
-  it("carves terrain below the generated water surface along the river", () => {
-    const chunk = generateChunk("channel", { x: 0, z: 2 });
+  it("carves the same-position natural terrain and matches the generated grid", () => {
+    const seed = "channel";
+    const point = { x: 48, z: 38 };
+    const coordinate = worldToChunk(point.x, point.z);
+    const normalizedSeed = normalizeSeed(seed);
+    const natural = sampleNaturalTerrainHeight(normalizedSeed, point.x, point.z);
+    const carved = sampleChannelTerrainHeight(normalizedSeed, point.x, point.z);
+    const target = sampleWorldRiverCarving(point.x, point.z)!.targetBedHeight;
+    expect(natural).toBeGreaterThan(target);
+    expect(carved).toBeLessThan(natural);
+
+    const chunk = generateChunk(seed, coordinate);
     const side = chunk.terrainVerticesPerSide;
-    for (const point of chunk.river!.spine) {
-      const x = Math.round((point.x - chunk.coordinate.x * chunk.size) / chunk.size * (side - 1));
-      const z = Math.round((point.z - chunk.coordinate.z * chunk.size) / chunk.size * (side - 1));
-      expect(chunk.terrainHeights[z * side + x]).toBeLessThan(point.surfaceElevation);
-    }
+    const x = (point.x - coordinate.x * CHUNK_SIZE) / (CHUNK_SIZE / TERRAIN_SEGMENTS);
+    const z = (point.z - coordinate.z * CHUNK_SIZE) / (CHUNK_SIZE / TERRAIN_SEGMENTS);
+    expect(chunk.terrainHeights[z * side + x]).toBe(sampleChannelTerrainHeight(chunk.seed, point.x, point.z));
+  });
+
+  it("carves the world spine outside the old fixed river column", () => {
+    const point = { x: 64, z: 36 };
+    expect(worldToChunk(point.x, point.z).x).not.toBe(0);
+    const sample = sampleWorldRiverCarving(point.x, point.z)!;
+    expect(sample.insideChannel).toBe(true);
+    const natural = sampleNaturalTerrainHeight(42, point.x, point.z);
+    expect(sampleChannelTerrainHeight(42, point.x, point.z)).toBeLessThan(natural);
   });
 
   it("builds a compact longitudinal channel from the collision cross-section", () => {
@@ -98,7 +119,7 @@ describe("deterministic chunk generation", () => {
     expect(riverChunk.terrainVerticesPerSide).toBe(TERRAIN_SEGMENTS + 1);
     expect(dryChunk.terrainHeights).toHaveLength((TERRAIN_SEGMENTS + 1) ** 2);
     expect(riverChunk.terrainHeights.length).toBeLessThanOrEqual(dryChunk.terrainHeights.length);
-    expect(riverChunk.irregularTerrain!.vertices.length).toBeLessThan(dryChunk.terrainHeights.length);
+    expect(riverChunk.irregularTerrain).toBeUndefined();
   });
 
   it("keeps river-column edges on the neighboring coarse edge", () => {
