@@ -6,6 +6,7 @@ import {
   isRiverAt,
   sampleRiverCrossSection,
   sampleChannelTerrainHeight,
+  sampleTerrainHeight,
   sampleNaturalTerrainHeight,
   TERRAIN_SEGMENTS,
 } from "./terrainSampling";
@@ -132,6 +133,17 @@ describe("deterministic chunk generation", () => {
     for (let coarseZ = 0; coarseZ < coarseSide; coarseZ += 1) {
       expect(riverChunk.terrainHeights[coarseZ * riverSide + riverSide - 1])
         .toBe(eastChunk.terrainHeights[coarseZ * coarseSide]);
+    }
+  });
+
+  it("keeps locally refined rendered vertices on the random-access movement field", () => {
+    const chunk = generateChunk("refined-movement-agreement", { x: 3, z: 2 });
+    const refined = chunk.irregularTerrain!.vertices.filter(vertex =>
+      sampleWorldRiverCarving(vertex.x, vertex.z)?.insideCarvingFalloff);
+    expect(refined.length).toBeGreaterThan(20);
+    for (let index = 7; index < refined.length; index += 17) {
+      const vertex = refined[index]!;
+      expect(vertex.height).toBeCloseTo(sampleTerrainHeight(chunk.seed, vertex.x, vertex.z), 12);
     }
   });
 

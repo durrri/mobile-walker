@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { CHUNK_SIZE } from "../world/chunkCoordinates";
 import { worldRiverSpine, type RiverSpine } from "../world/worldRiverSpine";
-import { WORLD_RIVER_CARVING } from "../world/worldRiverCarving";
+import { WORLD_RIVER_CARVING, WORLD_RIVER_LIP_CREST_DISTANCE } from "../world/worldRiverCarving";
 import { WORLD_RIVER_WATER_SAMPLE_SPACING } from "../world/worldRiverWater";
 
 export type RiverSpineDebugMode = "off" | "spine" | "ribbon" | "detailed";
@@ -63,7 +63,7 @@ export class RiverSpineDebugView {
     ));
 
     if (mode === "ribbon" || mode === "detailed") {
-      root.add(this.ribbon(WORLD_RIVER_CARVING.halfWidth * 2, mode === "detailed" ? RIVER_DEBUG_STYLE.detailedRibbonOpacity : RIVER_DEBUG_STYLE.ribbonOpacity));
+      root.add(this.ribbon(WORLD_RIVER_CARVING.waterHalfWidth * 2, mode === "detailed" ? RIVER_DEBUG_STYLE.detailedRibbonOpacity : RIVER_DEBUG_STYLE.ribbonOpacity));
       root.add(this.chunkGrid());
     }
 
@@ -75,13 +75,15 @@ export class RiverSpineDebugView {
           return { x: frame.position.x + frame.normal.x * offset, z: frame.position.z + frame.normal.z * offset };
         },
       );
-      const channelEdges = [WORLD_RIVER_CARVING.halfWidth, -WORLD_RIVER_CARVING.halfWidth]
+      const channelEdges = [WORLD_RIVER_CARVING.waterHalfWidth, -WORLD_RIVER_CARVING.waterHalfWidth]
         .flatMap(offset => this.segmentPairs(offsetGuide(offset)));
-      const outer = WORLD_RIVER_CARVING.halfWidth + WORLD_RIVER_CARVING.bankWidth + WORLD_RIVER_CARVING.falloffWidth;
+      const lipEdges = [WORLD_RIVER_LIP_CREST_DISTANCE, -WORLD_RIVER_LIP_CREST_DISTANCE]
+        .flatMap(offset => this.segmentPairs(offsetGuide(offset)));
+      const outer = WORLD_RIVER_CARVING.waterHalfWidth + WORLD_RIVER_CARVING.bankWidth + WORLD_RIVER_CARVING.falloffWidth;
       const falloffEdges = [outer, -outer].flatMap(offset => this.segmentPairs(offsetGuide(offset)));
       root.add(this.thickSegments(channelEdges, RIVER_DEBUG_STYLE.channelEdge, "debug:river-channel-edges"));
-      root.add(this.thickSegments(channelEdges, RIVER_DEBUG_STYLE.lipEdge, "debug:river-lip-edges"));
-      const inner = WORLD_RIVER_CARVING.halfWidth + WORLD_RIVER_CARVING.bankWidth;
+      root.add(this.thickSegments(lipEdges, RIVER_DEBUG_STYLE.lipEdge, "debug:river-lip-edges"));
+      const inner = WORLD_RIVER_CARVING.waterHalfWidth + WORLD_RIVER_CARVING.bankWidth;
       const innerBankEdges = [inner, -inner].flatMap(offset => this.segmentPairs(offsetGuide(offset)));
       root.add(this.thickSegments(innerBankEdges, RIVER_DEBUG_STYLE.innerBankEdge, "debug:river-inner-bank-edges"));
       root.add(this.thickSegments(falloffEdges, RIVER_DEBUG_STYLE.falloffEdge, "debug:river-falloff-edges"));

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { CHUNK_SIZE, worldToChunk } from "./chunkCoordinates";
 import { WORLD_RIVER_CARVING } from "./worldRiverCarving";
+import { sampleChannelTerrainHeight } from "./terrainSampling";
 import { worldRiverSpine } from "./worldRiverSpine";
 import {
   sampleWorldRiverWater, tessellateWorldRiverWater, tessellateWorldRiverWaterChunk,
@@ -10,7 +11,7 @@ import {
 describe("world river water field", () => {
   for (const progress of [0.1, 0.35, 0.52, 0.8]) {
     it(`uses the symmetric authoritative footprint at ${progress}`, () => {
-      const frame = worldRiverSpine.sampleFrame(progress), half = WORLD_RIVER_CARVING.halfWidth;
+      const frame = worldRiverSpine.sampleFrame(progress), half = WORLD_RIVER_CARVING.waterHalfWidth;
       const at = (offset: number) => sampleWorldRiverWater(frame.position.x + frame.normal.x * offset, frame.position.z + frame.normal.z * offset);
       expect(at(0).inside).toBe(true);
       expect(at(half - 0.05).inside).toBe(true);
@@ -118,7 +119,7 @@ describe("strongest bend geometry", () => {
     const frames = [];
     for (let distance = Math.ceil(start); distance <= end; distance += WORLD_RIVER_WATER_SAMPLE_SPACING) {
       const frame = worldRiverSpine.sampleFrame(worldRiverSpine.progressAtDistance(distance));
-      const half = WORLD_RIVER_CARVING.halfWidth;
+      const half = WORLD_RIVER_CARVING.waterHalfWidth;
       frames.push({ left: { x: frame.position.x + frame.normal.x * half, z: frame.position.z + frame.normal.z * half },
         right: { x: frame.position.x - frame.normal.x * half, z: frame.position.z - frame.normal.z * half }, normal: frame.normal });
     }
@@ -145,5 +146,22 @@ describe("strongest bend geometry", () => {
     const keys = [] as string[];
     for (let i=0;i<bend.indices.length;i+=3) keys.push([0,1,2].map(j=>bend.vertices[bend.indices[i+j]!]!).map(v=>`${v.x},${v.z}`).sort().join("|"));
     expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it("keeps authoritative terrain below the water ribbon around the strongest bend", () => {
+    const geometry = tessellateWorldRiverWater();
+    const start = worldRiverSpine.distanceAtProgress(0.32);
+    const end = worldRiverSpine.distanceAtProgress(0.55);
+    let checked = 0;
+    for (let index = 0; index < geometry.indices.length; index += 3) {
+      const triangle = [0, 1, 2].map(offset => geometry.vertices[geometry.indices[index + offset]!]!);
+      const distance = triangle.reduce((sum, vertex) => sum + vertex.u, 0) / 3;
+      if (distance < start || distance > end) continue;
+      const x = triangle.reduce((sum, vertex) => sum + vertex.x, 0) / 3;
+      const z = triangle.reduce((sum, vertex) => sum + vertex.z, 0) / 3;
+      expect(sampleChannelTerrainHeight(42, x, z)).toBeLessThan(WORLD_RIVER_CARVING.surfaceElevation);
+      checked++;
+    }
+    expect(checked).toBeGreaterThan(50);
   });
 });

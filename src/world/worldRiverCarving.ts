@@ -5,23 +5,48 @@ import {
   type WorldBounds2D,
 } from "./worldRiverSpine";
 
-/** Temporary constant-width R3 tuning. Width variation belongs to a later milestone. */
+/** One shared footprint consumed by water tessellation, terrain, queries, and debug guides. */
+export const WORLD_RIVER_WATER_HALF_WIDTH = 2;
+
+/** Constant-width R4.5 cross-section tuning. */
 export const WORLD_RIVER_CARVING = Object.freeze({
-  halfWidth: 2,
+  waterHalfWidth: WORLD_RIVER_WATER_HALF_WIDTH,
+  /** @deprecated Compatibility alias; new code should name the rendered water footprint explicitly. */
+  halfWidth: WORLD_RIVER_WATER_HALF_WIDTH,
   bankWidth: 1.25,
   falloffWidth: 2.25,
   /** One world-space datum for the entire R3 river. */
   surfaceElevation: -0.18,
   nominalBedDepth: 0.55,
   floorCurvature: 0.08,
-  /** Authoritative dry ground at the mathematical water boundary. */
+  /** Bed clearance at the rendered water edge; all channel terrain stays submerged. */
+  shoreClearance: 0.05,
+  /** Land-side rise between the rendered water edge and raised lip crest. */
+  shoreTransitionWidth: 0.2,
+  /** Authoritative dry-ground crest outside the rendered water boundary. */
   lipHeight: 0.12,
   /** Gentle rise across the walkable inner bank before natural terrain resumes. */
   innerBankRise: 0.28,
 });
 
 export const WORLD_RIVER_MAX_CARVING_RADIUS =
-  WORLD_RIVER_CARVING.halfWidth + WORLD_RIVER_CARVING.bankWidth + WORLD_RIVER_CARVING.falloffWidth;
+  WORLD_RIVER_CARVING.waterHalfWidth + WORLD_RIVER_CARVING.bankWidth + WORLD_RIVER_CARVING.falloffWidth;
+
+export const WORLD_RIVER_LIP_CREST_DISTANCE =
+  WORLD_RIVER_CARVING.waterHalfWidth + WORLD_RIVER_CARVING.shoreTransitionWidth;
+export const WORLD_RIVER_INNER_BANK_WIDTH =
+  WORLD_RIVER_CARVING.bankWidth - WORLD_RIVER_CARVING.shoreTransitionWidth;
+
+/** Nominal average rises; smoothstep has zero slope at every controlled boundary. */
+export const WORLD_RIVER_NOMINAL_SLOPES = Object.freeze({
+  submergedShore: (
+    WORLD_RIVER_CARVING.nominalBedDepth - WORLD_RIVER_CARVING.shoreClearance
+    - WORLD_RIVER_CARVING.floorCurvature * WORLD_RIVER_CARVING.nominalBedDepth * 0.55 ** 2
+  ) / (WORLD_RIVER_CARVING.waterHalfWidth * 0.45),
+  landSideShore: (WORLD_RIVER_CARVING.lipHeight + WORLD_RIVER_CARVING.shoreClearance)
+    / WORLD_RIVER_CARVING.shoreTransitionWidth,
+  innerBank: WORLD_RIVER_CARVING.innerBankRise / WORLD_RIVER_INNER_BANK_WIDTH,
+});
 
 export interface WorldRiverCarvingContext {
   readonly spine: RiverSpine;
@@ -41,6 +66,8 @@ export interface WorldRiverCarvingSample {
   readonly normalX: number;
   readonly normalZ: number;
   readonly halfWidth: number;
+  readonly waterHalfWidth: number;
+  readonly lipCrestDistance: number;
   readonly bankWidth: number;
   readonly falloffWidth: number;
   readonly channelInfluence: number;
@@ -112,10 +139,13 @@ export function sampleWorldRiverCarving(
   const signedSide = (worldX - nearestX) * normalX + (worldZ - nearestZ) * normalZ;
   const distanceToCentreline = Math.sqrt(nearest.squared);
   const progress = segment.start.progress + (segment.end.progress - segment.start.progress) * t;
-  const { halfWidth, bankWidth, falloffWidth, surfaceElevation, nominalBedDepth, floorCurvature,
-    lipHeight, innerBankRise } =
+  const { waterHalfWidth, bankWidth, falloffWidth, surfaceElevation, nominalBedDepth, floorCurvature,
+    shoreClearance, shoreTransitionWidth, lipHeight, innerBankRise } =
     WORLD_RIVER_CARVING;
-  const innerEnd = halfWidth + bankWidth;
+  const halfWidth = waterHalfWidth;
+  const lipCrestDistance = waterHalfWidth + shoreTransitionWidth;
+  const innerBankWidth = bankWidth - shoreTransitionWidth;
+  const innerEnd = waterHalfWidth + bankWidth;
   const outerEnd = innerEnd + falloffWidth;
   const channelInfluence = distanceToCentreline <= halfWidth ? 1 : 0;
   const bankInfluence = distanceToCentreline <= innerEnd
@@ -129,20 +159,24 @@ export function sampleWorldRiverCarving(
   const centreBedElevation = surfaceElevation - nominalBedDepth;
   const floorShape = floorCurvature * nominalBedDepth * Math.min(1, distanceToCentreline / halfWidth) ** 2;
   const deepBedHeight = centreBedElevation + floorShape;
-  // The submerged half of the profile meets exactly the same raised lip as the
-  // land half. This prevents the precise water ribbon from exposing a coarse,
-  // unrelated terrain edge while retaining the existing walkable river bed.
+  // The submerged rise ends below the rendered ribbon. Nominal average slopes
+  // are ~0.54 submerged, 0.85 across dry shore, and 0.27 on the inner bank.
   const submergedBank = smoothstep(Math.max(0,
-    (distanceToCentreline / halfWidth - 0.55) / 0.45));
+    (distanceToCentreline / waterHalfWidth - 0.55) / 0.45));
+  const waterEdgeBedHeight = surfaceElevation - shoreClearance;
   const targetBedHeight = deepBedHeight
-    + (surfaceElevation + lipHeight - deepBedHeight) * submergedBank;
-  const landDistance = Math.max(0, distanceToCentreline - halfWidth);
-  const targetBankHeight = surfaceElevation + lipHeight
-    + innerBankRise * smoothstep(landDistance / bankWidth);
+    + (waterEdgeBedHeight - deepBedHeight) * submergedBank;
+  const landDistance = Math.max(0, distanceToCentreline - waterHalfWidth);
+  const lipHeightAbsolute = surfaceElevation + lipHeight;
+  const targetBankHeight = landDistance <= shoreTransitionWidth
+    ? waterEdgeBedHeight + (lipHeightAbsolute - waterEdgeBedHeight)
+      * smoothstep(landDistance / shoreTransitionWidth)
+    : lipHeightAbsolute + innerBankRise
+      * smoothstep((landDistance - shoreTransitionWidth) / innerBankWidth);
   return {
     nearestX, nearestZ, progress, distanceAlongRiver: progress * context.spine.totalLength,
     distanceToCentreline, signedSide, tangentX, tangentZ, normalX, normalZ,
-    halfWidth, bankWidth, falloffWidth, channelInfluence, bankInfluence,
+    halfWidth, waterHalfWidth, lipCrestDistance, bankWidth, falloffWidth, channelInfluence, bankInfluence,
     targetBedHeight, targetBankHeight, surfaceElevation, nominalBedDepth,
     insideChannel: distanceToCentreline <= halfWidth,
     insideCarvingFalloff: distanceToCentreline <= outerEnd,
