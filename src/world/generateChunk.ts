@@ -18,9 +18,9 @@ import {
   sampleTerrainHeight,
   TERRAIN_SEGMENTS,
 } from "./terrainSampling";
-import { createWorldRiverCarvingContext } from "./worldRiverCarving";
 import { sampleWorldRiverCarving, WORLD_RIVER_CARVING, WORLD_RIVER_LIP_CREST_DISTANCE,
   WORLD_RIVER_MAX_CARVING_RADIUS } from "./worldRiverCarving";
+import { createWorldRiverEnvironmentContext } from "./worldRiverEnvironment";
 import { worldRiverSpine } from "./worldRiverSpine";
 import { generateVegetation, type GeneratedVegetation } from "./vegetation";
 import { generatePois, isVegetationExcluded, type GeneratedPoi, type PoiDebugCandidate } from "./poi";
@@ -175,9 +175,10 @@ export function generateChunk(
   const terrainOcclusion: number[] = [];
   const minX = coordinate.x * CHUNK_SIZE;
   const minZ = coordinate.z * CHUNK_SIZE;
-  const riverCarvingContext = createWorldRiverCarvingContext({
+  const riverEnvironmentContext = createWorldRiverEnvironmentContext({
     minX, maxX: minX + CHUNK_SIZE, minZ, maxZ: minZ + CHUNK_SIZE,
   });
+  const riverCarvingContext = riverEnvironmentContext.carving;
   const sampleAuthoritativeHeight = (worldX: number, worldZ: number): number =>
     sampleChannelTerrainHeightInContext(seed, worldX, worldZ, riverCarvingContext);
   for (let z = 0; z < verticesPerSide; z += 1) {
@@ -215,8 +216,8 @@ export function generateChunk(
   // never during rendering or a movement query.
   for(const definition of [...pois.map(poi=>poi.structure),...bridges.map(bridge=>bridge.collision)])validateStructureDefinition(definition);
   const exclusionZones = [...poiNeighborhood.flatMap(poi => poi.zones),...bridgeNeighborhood.flatMap(bridge=>bridge.zones)];
-  // Legacy river data remains for R5b vegetation, R5c POIs/navigation and R5d
-  // gameplay classification only. Bridges consume the world-owned spine.
+  // Legacy river presentation data remains for R5c POIs/navigation and R5d
+  // gameplay classification only. Objects and bridges consume the world field.
   let irregularTerrain: GeneratedChunkData["irregularTerrain"] = undefined;
   let meshVertices = terrainHeights.map((height, vertexIndex) => ({
     x: coordinate.x * CHUNK_SIZE + vertexIndex % verticesPerSide * CHUNK_SIZE / terrainSegments,
@@ -408,14 +409,14 @@ export function generateChunk(
     terrainMaximumDarkening: occlusionOptions.maximumDarkening,
     terrainVerticesPerSide: verticesPerSide,
     irregularTerrain,
-    pines: generateTrees(seed, coordinate).filter(tree => !isVegetationExcluded(tree.x, tree.z, exclusionZones)),
+    pines: generateTrees(seed, coordinate, exclusionZones, riverEnvironmentContext),
     pois,
     bridges,
     poiCandidates: includeDebugData ? ownedCandidates : undefined,
     bridgeCandidates:includeDebugData?ownedBridgeCandidates:undefined,
-    collectibles: placeCollectibles(seed, coordinate, exclusionZones),
-    vegetation: generateVegetation(seed, coordinate, exclusionZones),
-    wetlandPools: generateWetlandPools(seed, coordinate).filter(pool => !isVegetationExcluded(pool.x, pool.z, exclusionZones)),
+    collectibles: placeCollectibles(seed, coordinate, exclusionZones, riverEnvironmentContext),
+    vegetation: generateVegetation(seed, coordinate, exclusionZones, riverEnvironmentContext),
+    wetlandPools: generateWetlandPools(seed, coordinate, riverEnvironmentContext).filter(pool => !isVegetationExcluded(pool.x, pool.z, exclusionZones)),
     river: channel ? {
       entry: sampleRiverBoundary(seed, coordinate, "north"),
       exit: sampleRiverBoundary(seed, coordinate, "south"),

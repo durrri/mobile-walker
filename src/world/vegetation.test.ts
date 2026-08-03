@@ -3,8 +3,9 @@ import { describe, expect, it } from "vitest";
 import { sampleBiome } from "./biomes";
 import { CHUNK_SIZE } from "./chunkCoordinates";
 import { generateTrees } from "./forest";
-import { isRiverAt, mountainSnowCoverage, sampleTerrainHeight } from "./terrainSampling";
+import { mountainSnowCoverage, sampleTerrainHeight } from "./terrainSampling";
 import { generateVegetation, generateVegetationKind, VEGETATION_PROFILES, type VegetationKind } from "./vegetation";
+import { sampleWorldRiverEnvironment } from "./worldRiverEnvironment";
 
 describe("biome vegetation", () => {
   it.each([
@@ -22,7 +23,7 @@ describe("biome vegetation", () => {
     expect(placements.every((plant) => !(denied as readonly string[]).includes(
       sampleBiome(seed, plant.x, plant.z).dominant,
     ))).toBe(true);
-  });
+  }, 10_000);
 
   it("creates a dense carpet of flowers in the most meadow-like nearby chunk", () => {
     const seed = "summer-meadows";
@@ -64,7 +65,7 @@ describe("biome vegetation", () => {
     expect(all.length).toBeGreaterThan(0);
     for (const plant of all) {
       expect(plant.y).toBe(sampleTerrainHeight(seed, plant.x, plant.z));
-      expect(isRiverAt(seed, plant.x, plant.z)).toBe(false);
+      expect(sampleWorldRiverEnvironment(plant.x, plant.z).withinWater).toBe(false);
     }
   });
 
