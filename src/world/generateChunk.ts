@@ -209,14 +209,14 @@ export function generateChunk(
   const pois = poiNeighborhood.filter(poi => poi.ownerChunk.x === coordinate.x && poi.ownerChunk.z === coordinate.z);
   const bridgeNeighborhood:GeneratedBridge[]=[];
   let ownedBridgeCandidates:readonly BridgeCrossingCandidate[]=[];
-  for(let dz=-1;dz<=1;dz++){const generated=generateBridges(seed,{x:coordinate.x,z:coordinate.z+dz},poiNeighborhood);bridgeNeighborhood.push(...generated.bridges);if(dz===0)ownedBridgeCandidates=generated.candidates;}
+  for(let dz=-1;dz<=1;dz++)for(let dx=-1;dx<=1;dx++){const generated=generateBridges(seed,{x:coordinate.x+dx,z:coordinate.z+dz},poiNeighborhood);bridgeNeighborhood.push(...generated.bridges);if(dx===0&&dz===0)ownedBridgeCandidates=generated.candidates;}
   const bridges=bridgeNeighborhood.filter(bridge=>bridge.ownerChunk.x===coordinate.x&&bridge.ownerChunk.z===coordinate.z);
   // Structural parity is checked once as records enter the generated repository,
   // never during rendering or a movement query.
   for(const definition of [...pois.map(poi=>poi.structure),...bridges.map(bridge=>bridge.collision)])validateStructureDefinition(definition);
   const exclusionZones = [...poiNeighborhood.flatMap(poi => poi.zones),...bridgeNeighborhood.flatMap(bridge=>bridge.zones)];
-  // Legacy river data still supplies bridges and downstream systems; the
-  // rendered water and authoritative carved terrain use the world spine.
+  // Legacy river data remains for R5b vegetation, R5c POIs/navigation and R5d
+  // gameplay classification only. Bridges consume the world-owned spine.
   let irregularTerrain: GeneratedChunkData["irregularTerrain"] = undefined;
   let meshVertices = terrainHeights.map((height, vertexIndex) => ({
     x: coordinate.x * CHUNK_SIZE + vertexIndex % verticesPerSide * CHUNK_SIZE / terrainSegments,
