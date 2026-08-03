@@ -532,6 +532,19 @@ describe("lazy POI debug presentation", () => {
     factory.dispose();
   });
 
+  it("lazily creates and disposes world-river bridge diagnostics",()=>{
+    const factory=new ChunkMeshFactory(),group=factory.create(generateChunk(7,{x:0,z:3},undefined,true));factory.registerGroup(group);
+    expect(group.getObjectByName("debug:bridge-crossings")).toBeUndefined();
+    factory.setDebugView(view("candidates"));
+    const debug=group.getObjectByName("debug:bridge-crossings")!;
+    expect(debug).toBeDefined();
+    expect(debug.getObjectByName("bridge-debug:axes-landings-approaches")).toBeDefined();
+    const line=debug.children[0] as THREE.LineSegments,dispose=vi.spyOn(line.geometry,"dispose");
+    factory.setDebugView(view("off"));
+    expect(group.getObjectByName("debug:bridge-crossings")).toBeUndefined();expect(dispose).toHaveBeenCalledOnce();
+    factory.unregisterGroup(group);factory.disposeChunk(group);factory.dispose();
+  });
+
   it("disposes debug-owned geometry and does not accumulate objects across toggles", () => {
     const factory = new ChunkMeshFactory();
     const group = factory.create(generateChunk("poi-debug-lifecycle", { x: 1, z: 0 }));
