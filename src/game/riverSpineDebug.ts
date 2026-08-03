@@ -6,6 +6,17 @@ export type RiverSpineDebugMode = "off" | "spine" | "ribbon" | "detailed";
 export type TerrainHeightSampler = (worldX: number, worldZ: number) => number;
 export const RIVER_SPINE_DEBUG_SURFACE_OFFSET = 0.08;
 
+export const RIVER_DEBUG_STYLE = {
+  centreline: { color: 0x00f5ff, width: 0.24, offset: 0.18 },
+  controlPolygon: { color: 0xff9d00, width: 0.1, offset: 0.12 },
+  tangent: { color: 0x45ff65, width: 0.18, offset: 0.32 },
+  normal: { color: 0xff45e6, width: 0.18, offset: 0.34 },
+  indexedBounds: { color: 0xffe600, width: 0.12, offset: 0.16 },
+  chunkGrid: { color: 0x766cff, width: 0.065, offset: 0.1 },
+  ribbonOpacity: 0.72,
+  detailedRibbonOpacity: 0.3,
+} as const;
+
 /** Pure placement boundary shared by all terrain-following debug geometry. */
 export function placeRiverDebugPoint(
   point: { readonly x: number; readonly z: number },
@@ -18,6 +29,7 @@ export function placeRiverDebugPoint(
 /** Lazy presentation-only view of the world-owned spine. It never enters generation/collision. */
 export class RiverSpineDebugView {
   private root?: THREE.Group;
+
   constructor(
     private readonly scene: THREE.Scene,
     private readonly spine: RiverSpine = worldRiverSpine,
@@ -27,75 +39,201 @@ export class RiverSpineDebugView {
   setMode(mode: RiverSpineDebugMode): void {
     this.disposeGeometry();
     if (mode === "off") return;
-    const root = new THREE.Group(); root.name = "debug:world-river-spine";
-    root.add(this.line(this.spine.controlPoints.flatMap((point, index, points) => index ? [points[index - 1]!, point] : []), 0xff9d00, 0.12));
-    root.add(this.points(this.spine.controlPoints, 0xff3b30, 0.75, 0.2));
+
+    const root = new THREE.Group();
+    root.name = "debug:world-river-spine";
+    root.add(this.thickSegments(
+      this.segmentPairs(this.spine.controlPoints),
+      RIVER_DEBUG_STYLE.controlPolygon,
+      "debug:river-control-polygon",
+    ));
+    root.add(this.points(this.spine.controlPoints, 0xff3b30, 1.05, 0.22, "debug:river-control-points"));
+
     const smooth = Array.from({ length: 401 }, (_, index) => this.spine.samplePosition(index / 400));
-    root.add(this.line(smooth.flatMap((point, index) => index ? [smooth[index - 1]!, point] : []), 0x00f5ff, 0.18));
+    root.add(this.thickSegments(
+      this.segmentPairs(smooth),
+      RIVER_DEBUG_STYLE.centreline,
+      "debug:river-centreline",
+    ));
+
     if (mode === "ribbon" || mode === "detailed") {
-      root.add(this.ribbon(4));
+      root.add(this.ribbon(4, mode === "detailed" ? RIVER_DEBUG_STYLE.detailedRibbonOpacity : RIVER_DEBUG_STYLE.ribbonOpacity));
       root.add(this.chunkGrid());
     }
+
     if (mode === "detailed") {
-      const marks = Array.from({ length: Math.floor(this.spine.totalLength / 8) + 1 }, (_, index) => this.spine.sampleAtDistance(index * 8));
-      root.add(this.points(marks, 0xffffff, 0.24, 0.28));
-      const tangents: { x: number; z: number }[] = [], normals: { x: number; z: number }[] = [];
+      const marks = Array.from(
+        { length: Math.floor(this.spine.totalLength / 8) + 1 },
+        (_, index) => this.spine.sampleAtDistance(index * 8),
+      );
+      root.add(this.points(marks, 0xffffff, 0.4, 0.3, "debug:river-arc-length-samples"));
+
+      const tangents: { x: number; z: number }[] = [];
+      const normals: { x: number; z: number }[] = [];
       for (let distance = 0; distance <= this.spine.totalLength; distance += 24) {
-        const frame = this.spine.sampleFrame(this.spine.progressAtDistance(distance)), p = frame.position;
+        const frame = this.spine.sampleFrame(this.spine.progressAtDistance(distance));
+        const p = frame.position;
         tangents.push(p, { x: p.x + frame.tangent.x * 5, z: p.z + frame.tangent.z * 5 });
         normals.push(p, { x: p.x + frame.normal.x * 4, z: p.z + frame.normal.z * 4 });
       }
-      root.add(this.line(tangents, 0x45ff65, 0.32)); root.add(this.line(normals, 0xff45e6, 0.34));
+      root.add(this.thickSegments(tangents, RIVER_DEBUG_STYLE.tangent, "debug:river-tangents"));
+      root.add(this.thickSegments(normals, RIVER_DEBUG_STYLE.normal, "debug:river-normals"));
+
       const boxes: { x: number; z: number }[] = [];
-      for (const { bounds } of this.spine.indexedSegments.filter(segment => segment.index % 8 === 0)) {
-        const a={x:bounds.minX,z:bounds.minZ},b={x:bounds.maxX,z:bounds.minZ},c={x:bounds.maxX,z:bounds.maxZ},d={x:bounds.minX,z:bounds.maxZ};
-        boxes.push(a,b,b,c,c,d,d,a);
+      for (const { bounds } of this.spine.indexedSegments.filter((segment) => segment.index % 8 === 0)) {
+        const a = { x: bounds.minX, z: bounds.minZ };
+        const b = { x: bounds.maxX, z: bounds.minZ };
+        const c = { x: bounds.maxX, z: bounds.maxZ };
+        const d = { x: bounds.minX, z: bounds.maxZ };
+        boxes.push(a, b, b, c, c, d, d, a);
       }
-      root.add(this.line(boxes, 0xffe600, 0.08));
+      root.add(this.thickSegments(boxes, RIVER_DEBUG_STYLE.indexedBounds, "debug:river-indexed-bounds"));
     }
-    this.root = root; this.scene.add(root);
+
+    this.root = root;
+    this.scene.add(root);
   }
 
-  dispose(): void { this.disposeGeometry(); }
-
-  private line(points: readonly {x:number;z:number}[], color: number, y: number): THREE.LineSegments {
-    const geometry = new THREE.BufferGeometry().setFromPoints(points.map(point => {
-      const placed = placeRiverDebugPoint(point, this.sampleHeight, y);
-      return new THREE.Vector3(placed.x, placed.y, placed.z);
-    }));
-    const material = new THREE.LineBasicMaterial({ color, fog: false, depthTest: true });
-    const line = new THREE.LineSegments(geometry, material); line.renderOrder = 200; return line;
+  dispose(): void {
+    this.disposeGeometry();
   }
-  private points(points: readonly {x:number;z:number}[], color: number, size: number, y: number): THREE.Points {
-    const geometry = new THREE.BufferGeometry().setFromPoints(points.map(point => {
+
+  private segmentPairs(points: readonly { x: number; z: number }[]): { x: number; z: number }[] {
+    return points.flatMap((point, index) => index ? [points[index - 1]!, point] : []);
+  }
+
+  /** Builds every category into one terrain-draped, world-space strip mesh. */
+  private thickSegments(
+    points: readonly { x: number; z: number }[],
+    style: { readonly color: number; readonly width: number; readonly offset: number },
+    name: string,
+  ): THREE.Mesh {
+    const vertices: number[] = [];
+    const indices: number[] = [];
+    for (let index = 0; index + 1 < points.length; index += 2) {
+      const start = points[index]!;
+      const end = points[index + 1]!;
+      const dx = end.x - start.x;
+      const dz = end.z - start.z;
+      const length = Math.hypot(dx, dz);
+      if (length === 0) continue;
+      const sideX = (-dz / length) * style.width * 0.5;
+      const sideZ = (dx / length) * style.width * 0.5;
+      const corners = [
+        { x: start.x + sideX, z: start.z + sideZ },
+        { x: start.x - sideX, z: start.z - sideZ },
+        { x: end.x + sideX, z: end.z + sideZ },
+        { x: end.x - sideX, z: end.z - sideZ },
+      ];
+      const base = vertices.length / 3;
+      for (const corner of corners) {
+        const placed = placeRiverDebugPoint(corner, this.sampleHeight, style.offset);
+        vertices.push(placed.x, placed.y, placed.z);
+      }
+      indices.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
+    geometry.setIndex(indices);
+    const material = new THREE.MeshBasicMaterial({
+      color: style.color,
+      side: THREE.DoubleSide,
+      fog: false,
+      depthTest: true,
+      depthWrite: true,
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = name;
+    mesh.renderOrder = 200;
+    return mesh;
+  }
+
+  private points(
+    points: readonly { x: number; z: number }[],
+    color: number,
+    size: number,
+    y: number,
+    name: string,
+  ): THREE.Points {
+    const geometry = new THREE.BufferGeometry().setFromPoints(points.map((point) => {
       const placed = placeRiverDebugPoint(point, this.sampleHeight, y);
       return new THREE.Vector3(placed.x, placed.y, placed.z);
     }));
     const material = new THREE.PointsMaterial({ color, size, fog: false, depthTest: true, sizeAttenuation: true });
-    const result = new THREE.Points(geometry, material); result.renderOrder = 202; return result;
+    const result = new THREE.Points(geometry, material);
+    result.name = name;
+    result.renderOrder = 202;
+    return result;
   }
-  private ribbon(width: number): THREE.Mesh {
-    const vertices: number[] = [], indices: number[] = [], samples = 512;
+
+  private ribbon(width: number, opacity: number): THREE.Mesh {
+    const vertices: number[] = [];
+    const indices: number[] = [];
+    const samples = 512;
     for (let index = 0; index <= samples; index += 1) {
-      const frame = this.spine.sampleFrame(index / samples), half = width / 2;
-      const left = placeRiverDebugPoint({ x: frame.position.x + frame.normal.x*half, z: frame.position.z + frame.normal.z*half }, this.sampleHeight);
-      const right = placeRiverDebugPoint({ x: frame.position.x - frame.normal.x*half, z: frame.position.z - frame.normal.z*half }, this.sampleHeight);
+      const frame = this.spine.sampleFrame(index / samples);
+      const half = width / 2;
+      const left = placeRiverDebugPoint(
+        { x: frame.position.x + frame.normal.x * half, z: frame.position.z + frame.normal.z * half },
+        this.sampleHeight,
+      );
+      const right = placeRiverDebugPoint(
+        { x: frame.position.x - frame.normal.x * half, z: frame.position.z - frame.normal.z * half },
+        this.sampleHeight,
+      );
       vertices.push(left.x, left.y, left.z, right.x, right.y, right.z);
-      if (index) { const a=(index-1)*2,b=a+1,c=index*2,d=c+1; indices.push(a,b,c,b,d,c); }
+      if (index) {
+        const a = (index - 1) * 2;
+        const b = a + 1;
+        const c = index * 2;
+        const d = c + 1;
+        indices.push(a, b, c, b, d, c);
+      }
     }
-    const geometry = new THREE.BufferGeometry(); geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices,3)); geometry.setIndex(indices); geometry.computeVertexNormals();
-    const material = new THREE.MeshBasicMaterial({ color: 0x00b7ff, transparent:true, opacity:.72, side:THREE.DoubleSide, fog:false, depthTest:true, depthWrite:false, polygonOffset:true, polygonOffsetFactor:-1, polygonOffsetUnits:-1 });
-    const mesh = new THREE.Mesh(geometry,material); mesh.name="debug:river-ribbon"; mesh.renderOrder=199; return mesh;
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
+    const material = new THREE.MeshBasicMaterial({
+      color: 0x00b7ff,
+      transparent: true,
+      opacity,
+      side: THREE.DoubleSide,
+      fog: false,
+      depthTest: true,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = "debug:river-ribbon";
+    mesh.renderOrder = 199;
+    return mesh;
   }
-  private chunkGrid(): THREE.LineSegments {
-    const points:{x:number;z:number}[]=[]; const min=-8*CHUNK_SIZE,max=8*CHUNK_SIZE;
-    for(let coordinate=-8;coordinate<=8;coordinate+=1){const value=coordinate*CHUNK_SIZE;points.push({x:value,z:min},{x:value,z:max},{x:min,z:value},{x:max,z:value});}
-    return this.line(points,0x6c63ff,.1);
+
+  private chunkGrid(): THREE.Mesh {
+    const points: { x: number; z: number }[] = [];
+    const min = -8 * CHUNK_SIZE;
+    const max = 8 * CHUNK_SIZE;
+    for (let coordinate = -8; coordinate <= 8; coordinate += 1) {
+      const value = coordinate * CHUNK_SIZE;
+      points.push({ x: value, z: min }, { x: value, z: max }, { x: min, z: value }, { x: max, z: value });
+    }
+    return this.thickSegments(points, RIVER_DEBUG_STYLE.chunkGrid, "debug:river-chunk-grid");
   }
+
   private disposeGeometry(): void {
     if (!this.root) return;
     this.scene.remove(this.root);
-    this.root.traverse(object => { if (object instanceof THREE.Mesh || object instanceof THREE.Line || object instanceof THREE.Points) { object.geometry.dispose(); const materials=Array.isArray(object.material)?object.material:[object.material]; materials.forEach(material=>material.dispose()); } });
-    this.root.clear(); this.root=undefined;
+    this.root.traverse((object) => {
+      if (object instanceof THREE.Mesh || object instanceof THREE.Line || object instanceof THREE.Points) {
+        object.geometry.dispose();
+        const materials = Array.isArray(object.material) ? object.material : [object.material];
+        materials.forEach((material) => material.dispose());
+      }
+    });
+    this.root.clear();
+    this.root = undefined;
   }
 }
