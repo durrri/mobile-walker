@@ -104,11 +104,11 @@ describe("findNearestPoiTypes", () => {
     expect(findNearestPoiTypes(repository, 0, 0).get("stone-bridge")).toMatchObject({ distance: 13, x: 12, z: 5 });
   });
 
-  it("targets a stored access anchor rather than the POI centre", () => {
+  it("targets a stored dock landing rather than the lake-house centre", () => {
     const repository = new GeneratedChunkRepository();
-    const anchored = { ...poi("forest-cabin", 100, 100), navigationAnchor: { x: 3, y: 0, z: 4, kind: "entrance" as const } };
+    const anchored = { ...poi("lake-house", 100, 100), navigationAnchor: { x: 3, y: 0, z: 4, kind: "dock-landing" as const } };
     repository.set("6,6", chunk([anchored]));
-    expect(findNearestPoiTypes(repository, 0, 0).get("forest-cabin")).toEqual({ typeId: "forest-cabin", x: 3, z: 4, distance: 5 });
+    expect(findNearestPoiTypes(repository, 0, 0).get("lake-house")).toEqual({ typeId: "lake-house", x: 3, z: 4, distance: 5 });
   });
 });
 
@@ -152,7 +152,9 @@ describe("POI guide presentation", () => {
   });
 
   it("keeps targetless indicators hidden and clears stale presentation", () => {
-    const fixture = presentationFixture();
+    const repository = new GeneratedChunkRepository();
+    repository.set("0,0", chunk([{ ...poi("plains-farmhouse", 10, 10), navigationAnchor: { x: Number.NaN, y: 0, z: 4, kind: "entrance" as const } }]));
+    const fixture = presentationFixture(repository);
     try {
       const indicator = fixture.overlay.children[0]!;
       const distance = indicator.children[1]!;
