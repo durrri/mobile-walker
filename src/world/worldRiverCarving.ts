@@ -10,10 +10,10 @@ export const WORLD_RIVER_CARVING = Object.freeze({
   halfWidth: 2,
   bankWidth: 1.25,
   falloffWidth: 2.25,
-  bedDepth: 0.55,
+  /** One world-space datum for the entire R3 river. */
+  surfaceElevation: -0.18,
+  nominalBedDepth: 0.55,
   floorCurvature: 0.08,
-  upstreamBedElevation: -0.18,
-  downstreamBedElevation: -0.92,
 });
 
 export const WORLD_RIVER_MAX_CARVING_RADIUS =
@@ -42,8 +42,8 @@ export interface WorldRiverCarvingSample {
   readonly channelInfluence: number;
   readonly bankInfluence: number;
   readonly targetBedHeight: number;
-  readonly bedOffset: number;
-  readonly finalCarveAmount: number;
+  readonly surfaceElevation: number;
+  readonly nominalBedDepth: number;
   readonly insideChannel: boolean;
   readonly insideCarvingFalloff: boolean;
 }
@@ -107,8 +107,8 @@ export function sampleWorldRiverCarving(
   const signedSide = (worldX - nearestX) * normalX + (worldZ - nearestZ) * normalZ;
   const distanceToCentreline = Math.sqrt(nearest.squared);
   const progress = segment.start.progress + (segment.end.progress - segment.start.progress) * t;
-  const { halfWidth, bankWidth, falloffWidth, bedDepth, floorCurvature,
-    upstreamBedElevation, downstreamBedElevation } = WORLD_RIVER_CARVING;
+  const { halfWidth, bankWidth, falloffWidth, surfaceElevation, nominalBedDepth, floorCurvature } =
+    WORLD_RIVER_CARVING;
   const innerEnd = halfWidth + bankWidth;
   const outerEnd = innerEnd + falloffWidth;
   const channelInfluence = distanceToCentreline <= halfWidth
@@ -117,17 +117,19 @@ export function sampleWorldRiverCarving(
   const bankInfluence = distanceToCentreline <= innerEnd
     ? 1
     : 1 - smoothstep((distanceToCentreline - innerEnd) / falloffWidth);
-  const influence = distanceToCentreline <= outerEnd ? channelInfluence * bankInfluence : 0;
-  // A single module-initialized, continuous downstream grade is deliberately
-  // independent of chunks and seeds. R3 does not attempt physical hydrology.
-  const centreBed = upstreamBedElevation + (downstreamBedElevation - upstreamBedElevation) * progress;
-  const floorShape = floorCurvature * bedDepth * Math.min(1, distanceToCentreline / halfWidth) ** 2;
-  const targetBedHeight = centreBed - bedDepth + floorShape;
+  // R3 intentionally uses one absolute world datum rather than a downstream
+  // grade, which currently adds little gameplay value: elevated terrain can
+  // become a deep canyon, while low terrain is never raised. Future waterfalls
+  // may split the river into explicit
+  // constant-elevation reaches, but multiple reaches are outside this scope.
+  const centreBedElevation = surfaceElevation - nominalBedDepth;
+  const floorShape = floorCurvature * nominalBedDepth * Math.min(1, distanceToCentreline / halfWidth) ** 2;
+  const targetBedHeight = centreBedElevation + floorShape;
   return {
     nearestX, nearestZ, progress, distanceAlongRiver: progress * context.spine.totalLength,
     distanceToCentreline, signedSide, tangentX, tangentZ, normalX, normalZ,
     halfWidth, bankWidth, falloffWidth, channelInfluence, bankInfluence,
-    targetBedHeight, bedOffset: -bedDepth, finalCarveAmount: bedDepth * influence,
+    targetBedHeight, surfaceElevation, nominalBedDepth,
     insideChannel: distanceToCentreline <= halfWidth,
     insideCarvingFalloff: distanceToCentreline <= outerEnd,
   };

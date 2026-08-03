@@ -65,14 +65,29 @@ describe("world river carving field", () => {
       .toEqual(sampleWorldRiverCarving(frame.position.x, frame.position.z));
   });
 
-  it("has a finite continuous longitudinal grade built once", () => {
+  it("uses one finite absolute bed datum independent of progress", () => {
     const beds = Array.from({ length: 1001 }, (_, index) => {
       const p = worldRiverSpine.samplePosition(index / 1000);
       return sampleWorldRiverCarving(p.x, p.z)!.targetBedHeight;
     });
     expect(beds.every(Number.isFinite)).toBe(true);
-    expect(Math.max(...beds.slice(1).map((bed, i) => Math.abs(bed - beds[i]!)))).toBeLessThan(0.01);
     expect(worldRiverSpine.lookupBuildCount).toBe(1);
-    expect(beds.at(-1)!).toBeLessThan(beds[0]!);
+    const centreBeds = [0, 0.5, 1].map(progress => {
+      const point = worldRiverSpine.samplePosition(progress);
+      return sampleWorldRiverCarving(point.x, point.z)!.targetBedHeight;
+    });
+    expect(centreBeds[0]).toBeCloseTo(WORLD_RIVER_CARVING.surfaceElevation - WORLD_RIVER_CARVING.nominalBedDepth, 12);
+    expect(centreBeds[1]).toBeCloseTo(centreBeds[0]!, 12);
+    expect(centreBeds[2]).toBeCloseTo(centreBeds[0]!, 12);
+  });
+
+  it("lowers high terrain but never raises terrain already below the target bed", () => {
+    const point = worldRiverSpine.samplePosition(0.5);
+    const sample = sampleWorldRiverCarving(point.x, point.z)!;
+    expect(applyWorldRiverCarving(20, sample)).toBeCloseTo(sample.targetBedHeight, 12);
+    expect(applyWorldRiverCarving(sample.targetBedHeight - 3, sample)).toBe(sample.targetBedHeight - 3);
+    for (const base of [-20, -1, 0, 20]) {
+      expect(applyWorldRiverCarving(base, sample)).toBeLessThanOrEqual(base);
+    }
   });
 });
