@@ -14,13 +14,15 @@ describe("world-owned river spine", () => {
   it("interpolates endpoints and remains position/tangent continuous", () => {
     closePoint(worldRiverSpine.samplePosition(0),WORLD_RIVER_CONTROL_POINTS[0]!,1e-8);
     closePoint(worldRiverSpine.samplePosition(1),WORLD_RIVER_CONTROL_POINTS.at(-1)!,1e-8);
-    for (const point of WORLD_RIVER_CONTROL_POINTS.slice(1,-1)) {
-      // Find the arc-length progress of this control point without assuming a chunk or z ordering.
-      const nearest=worldRiverSpine.nearestPointToRiver(point.x,point.z);
-      closePoint(nearest.position,point,.02);
-      const a=worldRiverSpine.sampleFrame(nearest.progress-1e-5),b=worldRiverSpine.sampleFrame(nearest.progress+1e-5);
+    for (const [index, point] of WORLD_RIVER_CONTROL_POINTS.entries()) {
+      const progress = worldRiverSpine.progressAtControlPoint(index);
+      closePoint(worldRiverSpine.samplePosition(progress),point,.002);
+      if (index === 0 || index === WORLD_RIVER_CONTROL_POINTS.length - 1) continue;
+      const a=worldRiverSpine.sampleFrame(progress-1e-5),b=worldRiverSpine.sampleFrame(progress+1e-5);
       expect(a.tangent.x*b.tangent.x+a.tangent.z*b.tangent.z).toBeGreaterThan(.999);
     }
+    expect(Object.values(worldRiverSpine.sampleTangent(0)).every(Number.isFinite)).toBe(true);
+    expect(Object.values(worldRiverSpine.sampleTangent(1)).every(Number.isFinite)).toBe(true);
   });
 
   it("returns deterministic orthonormal frames including an east-west reach", () => {

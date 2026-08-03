@@ -15,6 +15,7 @@ import { findSafeRestoredTransform } from "../world/safePlayerPosition";
 import { PLAYER_COLLISION_RADIUS } from "../world/treeCollision";
 import { PoiDebugPresentationSystem } from "./poiDebug";
 import { RiverSpineDebugView } from "./riverSpineDebug";
+import { sampleTerrainHeight } from "../world/terrainSampling";
 
 export interface GameplayControllers {
   readonly chunks: ChunkStreamingSystem;
@@ -125,6 +126,10 @@ export function createGameplay(
   if (!poiOverlay) throw new Error("The POI guide element could not be found.");
   const poiDebug = new PoiDebugPresentationSystem(chunks.repository, poiOverlay, () => camera.getFacingYaw());
   systems.addRenderSystem(poiDebug);
-  const riverSpineDebug = new RiverSpineDebugView(renderer.scene);
+  const riverSpineDebug = new RiverSpineDebugView(
+    renderer.scene,
+    undefined,
+    (x, z) => sampleTerrainHeight(worldSeed, x, z),
+  );
   return { chunks, biomeDebug, poiDebug, camera, persistence, exploration, playerShadow, riverSpineDebug };
 }

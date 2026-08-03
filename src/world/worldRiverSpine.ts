@@ -93,6 +93,16 @@ export class RiverSpine {
 
   samplePosition(progress: number): RiverControlPoint { return this.evaluateRaw(this.rawAtProgress(progress)); }
 
+  /** Arc-length progress at an authored control point. Useful for diagnostics. */
+  progressAtControlPoint(index: number): number {
+    const clamped = Math.min(this.controlPoints.length - 1, Math.max(0, Math.floor(finiteOr(index, 0))));
+    const rawProgress = clamped / (this.controlPoints.length - 1);
+    const scaled = rawProgress * (this.lookup.length - 1);
+    const low = Math.floor(scaled), high = Math.min(this.lookup.length - 1, low + 1), fraction = scaled - low;
+    const value = this.lookup[low]!.distance + (this.lookup[high]!.distance - this.lookup[low]!.distance) * fraction;
+    return value / this.totalLength;
+  }
+
   sampleTangent(progress: number): RiverControlPoint {
     const raw = this.rawAtProgress(progress), epsilon = 1e-5;
     const before = this.evaluateRaw(Math.max(0, raw - epsilon)), after = this.evaluateRaw(Math.min(1, raw + epsilon));
@@ -168,11 +178,19 @@ export class RiverSpine {
     const next = this.controlPoints[index + 2] ?? { x: 2 * p1.x - p0.x, z: 2 * p1.z - p0.z };
     const previousKnot = index ? this.knots[index - 1]! : t0 - (t1 - t0);
     const nextKnot = index + 2 < this.knots.length ? this.knots[index + 2]! : t1 + (t1 - t0);
-    const m0 = { x: (p1.x - previous.x) / (t1 - previousKnot), z: (p1.z - previous.z) / (t1 - previousKnot) };
-    const m1 = { x: (next.x - p0.x) / (nextKnot - t0), z: (next.z - p0.z) / (nextKnot - t0) };
-    const u = scaled - index, u2 = u * u, u3 = u2 * u, span = t1 - t0;
-    return { x: (2*u3-3*u2+1)*p0.x + (u3-2*u2+u)*span*m0.x + (-2*u3+3*u2)*p1.x + (u3-u2)*span*m1.x,
-      z: (2*u3-3*u2+1)*p0.z + (u3-2*u2+u)*span*m0.z + (-2*u3+3*u2)*p1.z + (u3-u2)*span*m1.z };
+    const t = t0 + (scaled - index) * (t1 - t0);
+    // Barry-Goldman evaluation of the standard non-uniform Catmull-Rom
+    // interpolant. The knots use chordLength^0.5 (centripetal alpha=0.5).
+    const blend = (a: RiverControlPoint, b: RiverControlPoint, ta: number, tb: number): RiverControlPoint => {
+      const fraction = (t - ta) / (tb - ta);
+      return { x: a.x + (b.x - a.x) * fraction, z: a.z + (b.z - a.z) * fraction };
+    };
+    const a1 = blend(previous, p0, previousKnot, t0);
+    const a2 = blend(p0, p1, t0, t1);
+    const a3 = blend(p1, next, t1, nextKnot);
+    const b1 = blend(a1, a2, previousKnot, t1);
+    const b2 = blend(a2, a3, t0, nextKnot);
+    return blend(b1, b2, t0, t1);
   }
 
   private intersects(a: WorldBounds2D, b: WorldBounds2D): boolean {

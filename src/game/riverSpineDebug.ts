@@ -3,11 +3,26 @@ import { CHUNK_SIZE } from "../world/chunkCoordinates";
 import { worldRiverSpine, type RiverSpine } from "../world/worldRiverSpine";
 
 export type RiverSpineDebugMode = "off" | "spine" | "ribbon" | "detailed";
+export type TerrainHeightSampler = (worldX: number, worldZ: number) => number;
+export const RIVER_SPINE_DEBUG_SURFACE_OFFSET = 0.08;
+
+/** Pure placement boundary shared by all terrain-following debug geometry. */
+export function placeRiverDebugPoint(
+  point: { readonly x: number; readonly z: number },
+  sampleHeight: TerrainHeightSampler,
+  offset = RIVER_SPINE_DEBUG_SURFACE_OFFSET,
+): { x: number; y: number; z: number } {
+  return { x: point.x, y: sampleHeight(point.x, point.z) + offset, z: point.z };
+}
 
 /** Lazy presentation-only view of the world-owned spine. It never enters generation/collision. */
 export class RiverSpineDebugView {
   private root?: THREE.Group;
-  constructor(private readonly scene: THREE.Scene, private readonly spine: RiverSpine = worldRiverSpine) {}
+  constructor(
+    private readonly scene: THREE.Scene,
+    private readonly spine: RiverSpine = worldRiverSpine,
+    private readonly sampleHeight: TerrainHeightSampler = () => 0,
+  ) {}
 
   setMode(mode: RiverSpineDebugMode): void {
     this.disposeGeometry();
@@ -44,25 +59,32 @@ export class RiverSpineDebugView {
   dispose(): void { this.disposeGeometry(); }
 
   private line(points: readonly {x:number;z:number}[], color: number, y: number): THREE.LineSegments {
-    const geometry = new THREE.BufferGeometry().setFromPoints(points.map(point => new THREE.Vector3(point.x, y, point.z)));
-    const material = new THREE.LineBasicMaterial({ color, fog: false, depthTest: false });
+    const geometry = new THREE.BufferGeometry().setFromPoints(points.map(point => {
+      const placed = placeRiverDebugPoint(point, this.sampleHeight, y);
+      return new THREE.Vector3(placed.x, placed.y, placed.z);
+    }));
+    const material = new THREE.LineBasicMaterial({ color, fog: false, depthTest: true });
     const line = new THREE.LineSegments(geometry, material); line.renderOrder = 200; return line;
   }
   private points(points: readonly {x:number;z:number}[], color: number, size: number, y: number): THREE.Points {
-    const geometry = new THREE.BufferGeometry().setFromPoints(points.map(point => new THREE.Vector3(point.x, y, point.z)));
-    const material = new THREE.PointsMaterial({ color, size, fog: false, depthTest: false, sizeAttenuation: true });
+    const geometry = new THREE.BufferGeometry().setFromPoints(points.map(point => {
+      const placed = placeRiverDebugPoint(point, this.sampleHeight, y);
+      return new THREE.Vector3(placed.x, placed.y, placed.z);
+    }));
+    const material = new THREE.PointsMaterial({ color, size, fog: false, depthTest: true, sizeAttenuation: true });
     const result = new THREE.Points(geometry, material); result.renderOrder = 202; return result;
   }
   private ribbon(width: number): THREE.Mesh {
     const vertices: number[] = [], indices: number[] = [], samples = 512;
     for (let index = 0; index <= samples; index += 1) {
       const frame = this.spine.sampleFrame(index / samples), half = width / 2;
-      vertices.push(frame.position.x + frame.normal.x*half, .26, frame.position.z + frame.normal.z*half,
-        frame.position.x - frame.normal.x*half, .26, frame.position.z - frame.normal.z*half);
+      const left = placeRiverDebugPoint({ x: frame.position.x + frame.normal.x*half, z: frame.position.z + frame.normal.z*half }, this.sampleHeight);
+      const right = placeRiverDebugPoint({ x: frame.position.x - frame.normal.x*half, z: frame.position.z - frame.normal.z*half }, this.sampleHeight);
+      vertices.push(left.x, left.y, left.z, right.x, right.y, right.z);
       if (index) { const a=(index-1)*2,b=a+1,c=index*2,d=c+1; indices.push(a,b,c,b,d,c); }
     }
     const geometry = new THREE.BufferGeometry(); geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices,3)); geometry.setIndex(indices); geometry.computeVertexNormals();
-    const material = new THREE.MeshBasicMaterial({ color: 0x00b7ff, transparent:true, opacity:.72, side:THREE.DoubleSide, fog:false, depthTest:false, depthWrite:false });
+    const material = new THREE.MeshBasicMaterial({ color: 0x00b7ff, transparent:true, opacity:.72, side:THREE.DoubleSide, fog:false, depthTest:true, depthWrite:false, polygonOffset:true, polygonOffsetFactor:-1, polygonOffsetUnits:-1 });
     const mesh = new THREE.Mesh(geometry,material); mesh.name="debug:river-ribbon"; mesh.renderOrder=199; return mesh;
   }
   private chunkGrid(): THREE.LineSegments {

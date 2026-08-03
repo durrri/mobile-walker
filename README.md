@@ -73,8 +73,9 @@ water, banks, bridges, vegetation, and gameplay until later migrations.
 
 The editable architectural fixture uses world-unit control points `(-24,96)`,
 `(-8,70)`, `(20,48)`, `(48,38)`, `(65,36)`, `(45,12)`, `(12,-8)`, `(-25,-22)`,
-`(-52,-45)`, `(-44,-72)`, and `(-12,-112)`. It is a centripetal Catmull–Rom
-chain (square-root chord knots and extrapolated endpoints), deliberately a full
+`(-52,-45)`, `(-44,-72)`, and `(-12,-112)`. It is a standard non-uniform
+centripetal Catmull–Rom chain, evaluated with Barry–Goldman interpolation using
+square-root chord knots (`alpha=0.5`) and extrapolated endpoints, deliberately a full
 2D `P(s)={x,z}` rather than `x=f(z)`, so horizontal reaches and arbitrary chunk
 edge crossings remain representable. Normalized public progress follows the
 prebuilt approximate arc-length table; the left normal is `(-tangent.z,
@@ -85,8 +86,10 @@ return ordered, potentially shared intervals and accept a margin.
 The debug selector is production-default Off. Spine adds controls/helpers and
 the curve; Ribbon adds a constant-width, presentation-only ribbon and diagnostic
 chunk grid; Detailed adds uniform-distance marks, tangent/normal indicators, and
-index bounds. Objects are created lazily and disposed on every mode change.
-Terrain integration is deferred specifically to keep R1/R2 independently
+index bounds. Debug vertices sample the existing legacy terrain-height function
+at their own world X/Z and add a small surface offset; ordinary depth testing
+keeps hills and structures occluding them. Objects are created lazily and disposed
+on every mode change. Terrain carving integration is deferred specifically to keep R1/R2 independently
 testable and avoid baking old north/south or fixed-column assumptions into the API.
 
 Planned phases are: **R1** world-space river ownership; **R2** arbitrary smooth
