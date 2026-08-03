@@ -1,3 +1,6 @@
+import cdt2d from "cdt2d";
+import cleanPSLG from "clean-pslg";
+
 import { CHUNK_SIZE, type ChunkCoordinate } from "./chunkCoordinates";
 import { chunkId, type ChunkId } from "./chunkId";
 import { sampleBiome, type BiomeWeights } from "./biomes";
@@ -12,10 +15,13 @@ import {
   sampleChannelTerrainHeightInContext,
   sampleNaturalTerrainHeight,
   sampleRiverCrossSection,
+  sampleTerrainHeight,
   TERRAIN_SEGMENTS,
 } from "./terrainSampling";
 import { createWorldRiverCarvingContext } from "./worldRiverCarving";
-import { sampleWorldRiverCarving, WORLD_RIVER_MAX_CARVING_RADIUS } from "./worldRiverCarving";
+import { sampleWorldRiverCarving, WORLD_RIVER_CARVING, WORLD_RIVER_LIP_CREST_DISTANCE,
+  WORLD_RIVER_MAX_CARVING_RADIUS } from "./worldRiverCarving";
+import { worldRiverSpine } from "./worldRiverSpine";
 import { generateVegetation, type GeneratedVegetation } from "./vegetation";
 import { generatePois, isVegetationExcluded, type GeneratedPoi, type PoiDebugCandidate } from "./poi";
 import { generateWetlandPools, type WetlandPoolPlacement } from "./wetlands";
@@ -48,6 +54,22 @@ export interface IrregularTerrainVertex {
   readonly height: number;
   readonly biomeWeights: BiomeWeights;
   readonly occlusion: number;
+  /** Present on deterministic river-aligned cross-section landmark strips. */
+  readonly riverStripOffset?: number;
+}
+
+/** Global arc-length lattice; it never restarts at a chunk boundary. */
+export const WORLD_RIVER_TERRAIN_STRIP_SAMPLE_SPACING = 0.5;
+let terrainStripFrames: readonly ReturnType<typeof worldRiverSpine.sampleFrame>[] | undefined;
+
+function worldRiverTerrainStripFrames(): readonly ReturnType<typeof worldRiverSpine.sampleFrame>[] {
+  if (terrainStripFrames) return terrainStripFrames;
+  const count = Math.ceil(worldRiverSpine.totalLength / WORLD_RIVER_TERRAIN_STRIP_SAMPLE_SPACING);
+  terrainStripFrames = Object.freeze(Array.from({ length: count + 1 }, (_, index) => {
+    const distance = Math.min(index * WORLD_RIVER_TERRAIN_STRIP_SAMPLE_SPACING, worldRiverSpine.totalLength);
+    return worldRiverSpine.sampleFrame(worldRiverSpine.progressAtDistance(distance));
+  }));
+  return terrainStripFrames;
 }
 
 export interface GeneratedChunkData {
@@ -193,9 +215,8 @@ export function generateChunk(
   // never during rendering or a movement query.
   for(const definition of [...pois.map(poi=>poi.structure),...bridges.map(bridge=>bridge.collision)])validateStructureDefinition(definition);
   const exclusionZones = [...poiNeighborhood.flatMap(poi => poi.zones),...bridgeNeighborhood.flatMap(bridge=>bridge.zones)];
-  // R3 mixed state: the legacy river still supplies water/banks/bridges and
-  // downstream data, but it no longer replaces or carves the terrain mesh.
-  // R4/R5 will migrate those remaining systems to the world spine.
+  // Legacy river data still supplies bridges and downstream systems; the
+  // rendered water and authoritative carved terrain use the world spine.
   let irregularTerrain: GeneratedChunkData["irregularTerrain"] = undefined;
   let meshVertices = terrainHeights.map((height, vertexIndex) => ({
     x: coordinate.x * CHUNK_SIZE + vertexIndex % verticesPerSide * CHUNK_SIZE / terrainSegments,
@@ -208,37 +229,156 @@ export function generateChunk(
     meshIndices.push(topLeft, topLeft + verticesPerSide, topLeft + 1, topLeft + 1, topLeft + verticesPerSide, topLeft + verticesPerSide + 1);
   }
   if (riverCarvingContext.hasRiver) {
-    // R4.5 refines only coarse cells in a narrow corridor. Keeping each cell
-    // self-contained permits deterministic mixed resolution; the expanded
-    // selection boundary lies beyond the bank falloff where fine edge samples
-    // reduce exactly to the original piecewise-linear natural terrain.
-    const vertices: IrregularTerrainVertex[] = [];
-    const indices: number[] = [];
+    // R4.5 retains the ordinary coarse grid around a narrow, constrained set
+    // of river-aligned strips, so refinement cost follows the corridor only.
+    let vertices: IrregularTerrainVertex[] = [];
+    const pointIndex = new Map<string, number>();
+    const addVertex = (worldX: number, worldZ: number, riverStripOffset?: number): number | undefined => {
+      if (worldX < minX - 1e-8 || worldX > minX + CHUNK_SIZE + 1e-8
+        || worldZ < minZ - 1e-8 || worldZ > minZ + CHUNK_SIZE + 1e-8) return undefined;
+      const key = `${worldX.toFixed(9)},${worldZ.toFixed(9)}`;
+      const existing = pointIndex.get(key);
+      if (existing !== undefined) {
+        if (riverStripOffset !== undefined && vertices[existing]!.riverStripOffset === undefined) {
+          vertices[existing] = { ...vertices[existing]!, riverStripOffset };
+        }
+        return existing;
+      }
+      // This is deliberately the public movement sampler, not a presentation
+      // interpolation: strip vertices define the rendered walkable surface.
+      const height = sampleTerrainHeight(seed, worldX, worldZ);
+      pointIndex.set(key, vertices.length);
+      vertices.push({ x: worldX, z: worldZ, height,
+        biomeWeights: sampleBiome(seed, worldX, worldZ).weights,
+        // Dense river strips inherit neutral occlusion; evaluating the global
+        // horizon kernel at every 0.5-wu strip point would dominate generation.
+        occlusion: riverStripOffset === undefined
+          ? sampleTerrainOcclusion(worldX, worldZ, height, sampleAuthoritativeHeight, occlusionOptions) : 0,
+        riverStripOffset,
+      });
+      return vertices.length - 1;
+    };
     const coarseStep = CHUNK_SIZE / terrainSegments;
     for (let cellZ = 0; cellZ < terrainSegments; cellZ++) for (let cellX = 0; cellX < terrainSegments; cellX++) {
       const cellMinX = minX + cellX * coarseStep, cellMinZ = minZ + cellZ * coarseStep;
-      const centreSample = sampleWorldRiverCarving(
-        cellMinX + coarseStep / 2, cellMinZ + coarseStep / 2, riverCarvingContext,
-      );
-      const refine = centreSample !== undefined
-        && centreSample.distanceToCentreline <= WORLD_RIVER_MAX_CARVING_RADIUS + coarseStep * Math.SQRT1_2;
-      const divisions = refine ? 4 : 1;
-      const base = vertices.length;
+      // Explicit river-aligned strips now provide the narrow refinement. The
+      // surrounding grid stays coarse rather than paying for redundant 0.5-wu
+      // vertices which cannot resolve the 0.20-wu shore feature anyway.
+      const divisions = 1;
       for (let localZ = 0; localZ <= divisions; localZ++) for (let localX = 0; localX <= divisions; localX++) {
         const worldX = cellMinX + coarseStep * localX / divisions;
         const worldZ = cellMinZ + coarseStep * localZ / divisions;
-        const height = sampleAuthoritativeHeight(worldX, worldZ);
-        vertices.push({
-          x: worldX, z: worldZ, height,
-          biomeWeights: sampleBiome(seed, worldX, worldZ).weights,
-          occlusion: sampleTerrainOcclusion(worldX, worldZ, height, sampleAuthoritativeHeight, occlusionOptions),
-        });
+        const river = sampleWorldRiverCarving(worldX, worldZ, riverCarvingContext);
+        // Inside the corridor the constrained cross-section lattice replaces
+        // the generic grid, preventing either overlapping surfaces or T-junctions.
+        if (!river || river.distanceToCentreline >= WORLD_RIVER_MAX_CARVING_RADIUS - 1e-8) {
+          addVertex(worldX, worldZ);
+        }
       }
-      const row = divisions + 1;
-      for (let localZ = 0; localZ < divisions; localZ++) for (let localX = 0; localX < divisions; localX++) {
-        const topLeft = base + localZ * row + localX;
-        indices.push(topLeft, topLeft + row, topLeft + 1, topLeft + 1, topLeft + row, topLeft + row + 1);
+    }
+    const { waterHalfWidth, bankWidth } = WORLD_RIVER_CARVING;
+    // Quarter-shore strips make the 0.20 wu transition four explicit 0.05 wu
+    // spans; midpoint strips similarly bound interpolation error on smoothstep
+    // portions of the submerged and inner-bank profiles.
+    const submergedStart = waterHalfWidth * 0.55;
+    const innerEnd = waterHalfWidth + bankWidth;
+    const quarterPoints = (start: number, end: number): number[] =>
+      Array.from({ length: 4 }, (_, index) => start + (end - start) * index / 4);
+    const positiveOffsets = [0, submergedStart, (submergedStart + waterHalfWidth) / 2,
+      ...quarterPoints(waterHalfWidth, WORLD_RIVER_LIP_CREST_DISTANCE),
+      WORLD_RIVER_LIP_CREST_DISTANCE, (WORLD_RIVER_LIP_CREST_DISTANCE + innerEnd) / 2,
+      innerEnd, WORLD_RIVER_MAX_CARVING_RADIUS];
+    const offsets = [...positiveOffsets.slice(1).map(value => -value).reverse(), ...positiveOffsets];
+    const globalFrames = worldRiverTerrainStripFrames();
+    const frameCount = globalFrames.length - 1;
+    const guides = new Map<number, { x: number; z: number }[]>();
+    for (const offset of offsets) {
+      const guide: { x: number; z: number }[] = [];
+      for (let frameIndex = 0; frameIndex <= frameCount; frameIndex++) {
+        const frame = globalFrames[frameIndex]!;
+        const point = { x: frame.position.x + frame.normal.x * offset,
+          z: frame.position.z + frame.normal.z * offset };
+        guide.push(point);
+        addVertex(point.x, point.z, offset);
       }
+      guides.set(offset, guide);
+    }
+    type StripPoint = { x: number; z: number; offset: number };
+    const interpolate = (a: StripPoint, b: StripPoint, t: number): StripPoint => ({
+      x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t,
+      offset: a.offset + (b.offset - a.offset) * t,
+    });
+    const clipEdge = (polygon: StripPoint[], inside: (point: StripPoint) => boolean,
+      intersect: (a: StripPoint, b: StripPoint) => StripPoint): StripPoint[] => {
+      const output: StripPoint[] = [];
+      for (let index = 0; index < polygon.length; index++) {
+        const a = polygon[index]!, b = polygon[(index + 1) % polygon.length]!;
+        const aInside = inside(a), bInside = inside(b);
+        if (aInside) output.push(a);
+        if (aInside !== bInside) output.push(intersect(a, b));
+      }
+      return output;
+    };
+    const clipTriangle = (triangle: StripPoint[]): StripPoint[] => {
+      let polygon = triangle;
+      const at = (axis: "x" | "z", value: number) => (a: StripPoint, b: StripPoint) =>
+        interpolate(a, b, (value - a[axis]) / (b[axis] - a[axis]));
+      polygon = clipEdge(polygon, point => point.x >= minX, at("x", minX));
+      polygon = clipEdge(polygon, point => point.x <= minX + CHUNK_SIZE, at("x", minX + CHUNK_SIZE));
+      polygon = clipEdge(polygon, point => point.z >= minZ, at("z", minZ));
+      return clipEdge(polygon, point => point.z <= minZ + CHUNK_SIZE, at("z", minZ + CHUNK_SIZE));
+    };
+    const stripIndices: number[] = [];
+    const emit = (triangle: StripPoint[]): void => {
+      const polygon = clipTriangle(triangle);
+      if (polygon.length < 3) return;
+      const polygonIndices = polygon.map(point => addVertex(point.x, point.z, point.offset)!);
+      for (let index = 1; index < polygonIndices.length - 1; index++) {
+        const a = polygonIndices[0]!, b = polygonIndices[index]!, c = polygonIndices[index + 1]!;
+        const av = vertices[a]!, bv = vertices[b]!, cv = vertices[c]!;
+        const normalY = (bv.z - av.z) * (cv.x - av.x) - (bv.x - av.x) * (cv.z - av.z);
+        if (normalY > 1e-10) stripIndices.push(a, b, c);
+        else if (normalY < -1e-10) stripIndices.push(a, c, b);
+      }
+    };
+    for (let cross = 0; cross < offsets.length - 1; cross++) {
+      const aOffset = offsets[cross]!, bOffset = offsets[cross + 1]!;
+      const aGuide = guides.get(aOffset)!, bGuide = guides.get(bOffset)!;
+      for (let frame = 0; frame < frameCount; frame++) {
+        const a = { ...aGuide[frame]!, offset: aOffset }, b = { ...aGuide[frame + 1]!, offset: aOffset };
+        const c = { ...bGuide[frame]!, offset: bOffset }, d = { ...bGuide[frame + 1]!, offset: bOffset };
+        const xs = [a.x, b.x, c.x, d.x], zs = [a.z, b.z, c.z, d.z];
+        if (Math.max(...xs) < minX || Math.min(...xs) > minX + CHUNK_SIZE
+          || Math.max(...zs) < minZ || Math.min(...zs) > minZ + CHUNK_SIZE) continue;
+        emit([a, b, c]); emit([c, b, d]);
+      }
+    }
+    const constraintMap = new Map<string, [number, number]>();
+    for (let index = 0; index < stripIndices.length; index += 3) for (let edge = 0; edge < 3; edge++) {
+      const a = stripIndices[index + edge]!, b = stripIndices[index + (edge + 1) % 3]!;
+      const key = a < b ? `${a},${b}` : `${b},${a}`;
+      constraintMap.set(key, a < b ? [a, b] : [b, a]);
+    }
+    // A constrained triangulation makes every river-band edge part of the one
+    // terrain surface; generic adaptive points fill only the surrounding faces.
+    const originalByPosition = new Map(vertices.map(vertex =>
+      [`${vertex.x.toFixed(9)},${vertex.z.toFixed(9)}`, vertex]));
+    const points = vertices.map(vertex => [vertex.x, vertex.z]);
+    const constraints = [...constraintMap.values()];
+    cleanPSLG(points, constraints);
+    vertices = points.map(([x, z]) => originalByPosition.get(`${x!.toFixed(9)},${z!.toFixed(9)}`) ?? (() => {
+      const height = sampleTerrainHeight(seed, x!, z!);
+      return { x: x!, z: z!, height, biomeWeights: sampleBiome(seed, x!, z!).weights,
+        occlusion: 0 };
+    })());
+    const triangulated = cdt2d(points, constraints);
+    const indices: number[] = [];
+    for (const triangle of triangulated) {
+      const [a, b, c] = triangle;
+      const av = vertices[a]!, bv = vertices[b]!, cv = vertices[c]!;
+      const normalY = (bv.z - av.z) * (cv.x - av.x) - (bv.x - av.x) * (cv.z - av.z);
+      if (Math.abs(normalY) < 1e-10) continue;
+      if (normalY > 0) indices.push(a, b, c); else indices.push(a, c, b);
     }
     irregularTerrain = { vertices, indices };
     meshVertices = vertices;

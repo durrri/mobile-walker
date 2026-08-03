@@ -11,6 +11,9 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "buffer": "^6.0.3",
+    "cdt2d": "^1.0.0",
+    "clean-pslg": "^1.1.2",
     "miniplex": "^2.0.0",
     "three": "^0.178.0"
   },

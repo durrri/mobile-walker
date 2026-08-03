@@ -130,15 +130,24 @@ export function sampleWorldRiverCarving(
   const nearest = nearestOnSegments(worldX, worldZ, context);
   if (!nearest) return undefined;
   const { segment, t } = nearest;
-  const dx = segment.end.x - segment.start.x;
-  const dz = segment.end.z - segment.start.z;
-  const length = Math.hypot(dx, dz) || 1;
-  const tangentX = dx / length, tangentZ = dz / length;
+  const coarseProgress = segment.start.progress + (segment.end.progress - segment.start.progress) * t;
+  let low = segment.start.progress, high = segment.end.progress;
+  const squaredAt = (candidate: number): number => {
+    const point = context.spine.samplePosition(candidate);
+    return (worldX - point.x) ** 2 + (worldZ - point.z) ** 2;
+  };
+  for (let iteration = 0; iteration < 6; iteration++) {
+    const third = (high - low) / 3, a = low + third, b = high - third;
+    if (squaredAt(a) <= squaredAt(b)) high = b; else low = a;
+  }
+  let progress = (low + high) / 2;
+  if (squaredAt(coarseProgress) < squaredAt(progress)) progress = coarseProgress;
+  const frame = context.spine.sampleFrame(progress);
+  const tangentX = frame.tangent.x, tangentZ = frame.tangent.z;
   const normalX = -tangentZ, normalZ = tangentX;
-  const nearestX = segment.start.x + dx * t, nearestZ = segment.start.z + dz * t;
+  const nearestX = frame.position.x, nearestZ = frame.position.z;
   const signedSide = (worldX - nearestX) * normalX + (worldZ - nearestZ) * normalZ;
-  const distanceToCentreline = Math.sqrt(nearest.squared);
-  const progress = segment.start.progress + (segment.end.progress - segment.start.progress) * t;
+  const distanceToCentreline = Math.hypot(worldX - nearestX, worldZ - nearestZ);
   const { waterHalfWidth, bankWidth, falloffWidth, surfaceElevation, nominalBedDepth, floorCurvature,
     shoreClearance, shoreTransitionWidth, lipHeight, innerBankRise } =
     WORLD_RIVER_CARVING;
