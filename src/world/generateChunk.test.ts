@@ -3,8 +3,6 @@ import { describe, expect, it } from "vitest";
 import { generateChunk } from "./generateChunk";
 import { CHUNK_SIZE, worldToChunk } from "./chunkCoordinates";
 import {
-  isRiverAt,
-  sampleRiverCrossSection,
   sampleChannelTerrainHeight,
   sampleTerrainHeight,
   sampleNaturalTerrainHeight,
@@ -34,24 +32,7 @@ describe("deterministic chunk generation", () => {
     expect(forward).toEqual(reverse);
   });
 
-  it("shares exact river and terrain conditions across north-south boundaries", () => {
-    const north = generateChunk("continuity", { x: 0, z: -1 });
-    const south = generateChunk("continuity", { x: 0, z: 0 });
-    expect(north.river!.exit.x).toBe(south.river!.entry.x);
-    expect(north.river!.exit.width).toBe(south.river!.entry.width);
-    expect(north.river!.exit.surfaceElevation).toBe(south.river!.entry.surfaceElevation);
-    expect(north.river!.spine.at(-1)).toEqual(south.river!.spine[0]);
-    const side = north.terrainVerticesPerSide;
-    for (let x = 0; x < side; x += 1) {
-      expect(north.terrainHeights[(side - 1) * side + x]).toBe(south.terrainHeights[x]);
-    }
-  });
 
-  it("only includes river data in chunk column zero", () => {
-    expect(generateChunk("one-river", { x: 0, z: 8 }).river).toBeDefined();
-    expect(generateChunk("one-river", { x: -1, z: 8 }).river).toBeUndefined();
-    expect(generateChunk("one-river", { x: 1, z: 8 }).river).toBeUndefined();
-  });
 
   it("shares exact terrain vertices on every edge of adjacent chunks", () => {
     const seed = "four-way-continuity";
@@ -95,22 +76,6 @@ describe("deterministic chunk generation", () => {
     expect(sampleChannelTerrainHeight(42, point.x, point.z)).toBeLessThan(natural);
   });
 
-  it("builds a compact longitudinal channel from the collision cross-section", () => {
-    const seed = "rendered-channel-agreement";
-    const chunk = generateChunk(seed, { x: 0, z: 0 });
-    expect(chunk.terrainVerticesPerSide).toBe(TERRAIN_SEGMENTS + 1);
-    expect(chunk.river!.channelSections).toHaveLength(TERRAIN_SEGMENTS + 1);
-    expect(chunk.river!.channelSections.length * 6).toBeLessThan(64);
-
-    for (const point of chunk.river!.spine) {
-      const section = sampleRiverCrossSection(seed, point.x, point.z)!;
-      expect(point.x).toBe(section.centerX);
-      expect(point.width).toBe(section.waterWidth);
-      expect(point.surfaceElevation).toBe(section.surfaceElevation);
-      expect(isRiverAt(seed, point.x - point.width / 2, point.z)).toBe(true);
-      expect(isRiverAt(seed, point.x + point.width / 2, point.z)).toBe(true);
-    }
-  });
 
   it("keeps coarse height data while refining only chunks touched by the world river", () => {
     const dryChunk = generateChunk("local-river-detail", { x: 1, z: 0 });
@@ -147,9 +112,4 @@ describe("deterministic chunk generation", () => {
     }
   });
 
-  it("shares exact channel sections between neighboring chunks", () => {
-    const north = generateChunk("channel-seams", { x: 0, z: -1 });
-    const south = generateChunk("channel-seams", { x: 0, z: 0 });
-    expect(north.river!.channelSections.at(-1)).toEqual(south.river!.channelSections[0]);
-  });
 });

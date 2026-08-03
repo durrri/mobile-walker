@@ -6,15 +6,8 @@ import { chunkId, type ChunkId } from "./chunkId";
 import { sampleBiome, type BiomeWeights } from "./biomes";
 import { generateTrees, type TreePlacement } from "./forest";
 import { normalizeSeed } from "./random";
-import { isRiverColumn, sampleRiverBoundary, sampleRiverSpine, type RiverBoundary, type RiverPoint } from "./river";
 import {
-  RIVER_BANK_WIDTH,
-  RIVER_BED_DEPTH,
-  RIVER_TRANSITION_WIDTH,
-  sampleChannelTerrainHeight,
   sampleChannelTerrainHeightInContext,
-  sampleNaturalTerrainHeight,
-  sampleRiverCrossSection,
   sampleTerrainHeight,
   TERRAIN_SEGMENTS,
 } from "./terrainSampling";
@@ -35,18 +28,6 @@ import {
 } from "./terrainOcclusion";
 
 export { TERRAIN_SEGMENTS } from "./terrainSampling";
-
-export interface RiverChannelSection {
-  readonly z: number;
-  readonly centerX: number;
-  readonly waterHalfWidth: number;
-  readonly bankWidth: number;
-  readonly surfaceElevation: number;
-  readonly westShoulderHeight: number;
-  readonly eastShoulderHeight: number;
-  /** Terrain presentation inputs for the six channel cross-section vertices. */
-  readonly terrainVertices: readonly Pick<IrregularTerrainVertex, "biomeWeights" | "occlusion">[];
-}
 
 export interface IrregularTerrainVertex {
   readonly x: number;
@@ -100,64 +81,7 @@ export interface GeneratedChunkData {
   readonly collectibles: readonly CollectiblePlacement[];
   readonly vegetation: GeneratedVegetation;
   readonly wetlandPools: readonly WetlandPoolPlacement[];
-  readonly river?: {
-    readonly entry: RiverBoundary;
-    readonly exit: RiverBoundary;
-    readonly spine: readonly RiverPoint[];
-    readonly channelSections: readonly RiverChannelSection[];
-  };
-}
 
-function generateRiverChannel(
-  seed: number,
-  coordinate: ChunkCoordinate,
-  occlusionOptions: Readonly<TerrainOcclusionOptions>,
-): {
-  spine: readonly RiverPoint[];
-  sections: readonly RiverChannelSection[];
-} {
-  // Eight longitudinal spans match the surrounding coarse terrain. The points
-  // are only one-dimensional; no refined river-column terrain lattice is created.
-  const sourceSpine = sampleRiverSpine(seed, coordinate, TERRAIN_SEGMENTS);
-  const points: RiverPoint[] = [];
-  const sections: RiverChannelSection[] = [];
-  for (const { z } of sourceSpine) {
-    // Any x in column zero selects the same cross-section; centerX is returned by
-    // the sampler and becomes the actual ribbon position.
-    const section = sampleRiverCrossSection(seed, CHUNK_SIZE / 2, z);
-    if (!section) continue;
-    const waterHalfWidth = section.waterWidth / 2;
-    const bankWidth = RIVER_BANK_WIDTH + RIVER_TRANSITION_WIDTH;
-    const westShoulderHeight = sampleNaturalTerrainHeight(seed, section.centerX - waterHalfWidth - bankWidth, z);
-    const eastShoulderHeight = sampleNaturalTerrainHeight(seed, section.centerX + waterHalfWidth + bankWidth, z);
-    points.push({ x: section.centerX, z, width: section.waterWidth, surfaceElevation: section.surfaceElevation });
-    const crossSection = [
-      [section.centerX - waterHalfWidth - bankWidth, westShoulderHeight],
-      [section.centerX - waterHalfWidth, section.surfaceElevation + 0.04],
-      [section.centerX - waterHalfWidth + waterHalfWidth * 0.1, section.surfaceElevation - RIVER_BED_DEPTH],
-      [section.centerX + waterHalfWidth - waterHalfWidth * 0.1, section.surfaceElevation - RIVER_BED_DEPTH],
-      [section.centerX + waterHalfWidth, section.surfaceElevation + 0.04],
-      [section.centerX + waterHalfWidth + bankWidth, eastShoulderHeight],
-    ] as const;
-    sections.push({
-      z,
-      centerX: section.centerX,
-      waterHalfWidth,
-      bankWidth,
-      surfaceElevation: section.surfaceElevation,
-      westShoulderHeight,
-      eastShoulderHeight,
-      terrainVertices: crossSection.map(([x, height]) => ({
-        biomeWeights: sampleBiome(seed, x, z).weights,
-        occlusion: sampleTerrainOcclusion(
-          x, z, height,
-          (sampleX, sampleZ) => sampleChannelTerrainHeight(seed, sampleX, sampleZ),
-          occlusionOptions,
-        ),
-      })),
-    });
-  }
-  return { spine: points, sections };
 }
 
 /** Pure, random-access generation: output is solely a function of seed and coordinate. */
@@ -197,7 +121,6 @@ export function generateChunk(
     }
   }
 
-  const channel = isRiverColumn(coordinate) ? generateRiverChannel(seed, coordinate, occlusionOptions) : undefined;
   // POIs deliberately precede every placed-object pass. Their global zones may
   // cross this chunk even when the owning origin is in a neighbor.
   const poiNeighborhood = [] as GeneratedPoi[];
@@ -216,8 +139,6 @@ export function generateChunk(
   // never during rendering or a movement query.
   for(const definition of [...pois.map(poi=>poi.structure),...bridges.map(bridge=>bridge.collision)])validateStructureDefinition(definition);
   const exclusionZones = [...poiNeighborhood.flatMap(poi => poi.zones),...bridgeNeighborhood.flatMap(bridge=>bridge.zones)];
-  // Legacy river presentation data remains for R5c POIs/navigation and R5d
-  // gameplay classification only. Objects and bridges consume the world field.
   let irregularTerrain: GeneratedChunkData["irregularTerrain"] = undefined;
   let meshVertices = terrainHeights.map((height, vertexIndex) => ({
     x: coordinate.x * CHUNK_SIZE + vertexIndex % verticesPerSide * CHUNK_SIZE / terrainSegments,
@@ -417,11 +338,5 @@ export function generateChunk(
     collectibles: placeCollectibles(seed, coordinate, exclusionZones, riverEnvironmentContext),
     vegetation: generateVegetation(seed, coordinate, exclusionZones, riverEnvironmentContext),
     wetlandPools: generateWetlandPools(seed, coordinate, riverEnvironmentContext).filter(pool => !isVegetationExcluded(pool.x, pool.z, exclusionZones)),
-    river: channel ? {
-      entry: sampleRiverBoundary(seed, coordinate, "north"),
-      exit: sampleRiverBoundary(seed, coordinate, "south"),
-      spine: channel.spine,
-      channelSections: channel.sections,
-    } : undefined,
   };
 }

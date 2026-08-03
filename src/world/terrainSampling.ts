@@ -1,10 +1,10 @@
-import { CHUNK_SIZE, worldToChunk } from "./chunkCoordinates";
+import { CHUNK_SIZE } from "./chunkCoordinates";
 import { sampleBiome, type BiomeId, type BiomeWeights } from "./biomes";
 import { hashFloat, normalizeSeed } from "./random";
-import { isRiverColumn, sampleRiverSpine } from "./river";
 import {
   applyWorldRiverCarving,
   sampleWorldRiverCarving,
+  WORLD_RIVER_CARVING,
   type WorldRiverCarvingContext,
 } from "./worldRiverCarving";
 
@@ -26,15 +26,12 @@ const LATTICE_SPACING = CHUNK_SIZE / TERRAIN_SEGMENTS;
  * The player is approximately 1.5 world units tall, so this submerges them by
  * roughly 30% of their height while they cross a river.
  */
-export const RIVER_BED_DEPTH = 0.45;
 /** Shared level and depth for the broad lake basin. */
 export const LAKE_SURFACE_ELEVATION = -0.08;
 export const LAKE_BED_DEPTH = 0.72;
 export const LAKE_WATER_WEIGHT = 0.34;
 const LAKE_BANK_WEIGHT = 0.18;
 /** Horizontal distances beyond the water edge occupied by each bank region. */
-export const RIVER_BANK_WIDTH = 0.75;
-export const RIVER_TRANSITION_WIDTH = 1.25;
 /** Only the highest mountain summits reach the permanent snow line. */
 export const MOUNTAIN_SNOW_LINE = 12.5;
 export const MOUNTAIN_SNOW_BLEND_DEPTH = 0.65;
@@ -55,46 +52,6 @@ export function mountainSnowCoverage(height: number, biomeWeights: BiomeWeights)
   ));
 }
 
-export interface RiverCrossSectionSample {
-  readonly centerX: number;
-  readonly waterWidth: number;
-  readonly surfaceElevation: number;
-  /** Absolute lateral distance, where 1 is exactly the rendered water edge. */
-  readonly normalizedLateralDistance: number;
-}
-
-/**
- * Samples the authoritative river cross-section at an arbitrary world point.
- * Keeping interpolation here prevents water geometry, collision, and terrain
- * carving from independently interpreting the river spine.
- */
-export function sampleRiverCrossSection(
-  seedInput: number | string,
-  worldX: number,
-  worldZ: number,
-): RiverCrossSectionSample | undefined {
-  const seed = normalizeSeed(seedInput);
-  const coordinate = worldToChunk(worldX, worldZ);
-  if (!isRiverColumn(coordinate)) return undefined;
-  const spine = sampleRiverSpine(seed, coordinate);
-  const local = (worldZ - coordinate.z * CHUNK_SIZE) / CHUNK_SIZE;
-  const segmentPosition = Math.max(0, Math.min(1, local)) * (spine.length - 1);
-  const index = Math.min(spine.length - 2, Math.floor(segmentPosition));
-  const fraction = segmentPosition - index;
-  const start = spine[index];
-  const end = spine[index + 1];
-  if (!start || !end) return undefined;
-
-  const centerX = start.x + (end.x - start.x) * fraction;
-  const waterWidth = start.width + (end.width - start.width) * fraction;
-  return {
-    centerX,
-    waterWidth,
-    surfaceElevation: start.surfaceElevation
-      + (end.surfaceElevation - start.surfaceElevation) * fraction,
-    normalizedLateralDistance: Math.abs(worldX - centerX) / (waterWidth / 2),
-  };
-}
 
 function smoothstep(value: number): number {
   const clamped = Math.max(0, Math.min(1, value));
@@ -229,14 +186,6 @@ export function sampleTerrainHeight(seedInput: number | string, worldX: number, 
   return bottomRight + (bottomLeft - bottomRight) * (1 - x) + (topRight - bottomRight) * (1 - z);
 }
 
-/** Returns whether a point is inside the generated river ribbon. */
-export function isRiverAt(seedInput: number | string, worldX: number, worldZ: number): boolean {
-  const crossSection = sampleRiverCrossSection(seedInput, worldX, worldZ);
-  // Include mathematically exact mesh-edge positions despite the final
-  // subtraction/division accumulating a few floating-point ULPs.
-  return crossSection !== undefined && crossSection.normalizedLateralDistance <= 1 + 1e-9;
-}
-
 /** Returns whether a point lies in the flooded center of a lake biome. */
 export function isLakeAt(seedInput: number | string, worldX: number, worldZ: number): boolean {
   return sampleBiome(seedInput, worldX, worldZ).weights.lake >= LAKE_WATER_WEIGHT;
@@ -246,7 +195,8 @@ export function sampleTerrain(seed: number | string, worldX: number, worldZ: num
   const biome = sampleBiome(seed, worldX, worldZ);
   return {
     height: sampleTerrainHeight(seed, worldX, worldZ),
-    surface: isRiverAt(seed, worldX, worldZ) ? "river" : isLakeAt(seed, worldX, worldZ) ? "lake" : "land",
+    surface: (sampleWorldRiverCarving(worldX, worldZ)?.distanceToCentreline ?? Infinity) <= WORLD_RIVER_CARVING.waterHalfWidth
+      ? "river" : isLakeAt(seed, worldX, worldZ) ? "lake" : "land",
     biome: biome.dominant,
     biomeWeights: biome.weights,
   };

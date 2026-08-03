@@ -3,8 +3,6 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   ChunkMeshFactory,
-  createRiverRibbonGeometry,
-  createRiverChannelGeometry,
 } from "./chunkMeshes";
 import { generateChunk } from "./generateChunk";
 import { SunlightDirection } from "../rendering/sunlightDirection";
@@ -39,18 +37,6 @@ describe("river ribbon geometry", () => {
     factory.dispose();
   });
 
-  it("reuses each section boundary verbatim in adjacent channel triangles", () => {
-    const sections = generateChunk("shared-strip", { x: 0, z: 0 }).river!.channelSections;
-    const geometry = createRiverChannelGeometry(sections);
-    const positions = geometry.getAttribute("position");
-    for (let section = 1; section < sections.length - 1; section += 1) {
-      for (let cross = 0; cross < 6; cross += 1) {
-        const vertex = section * 6 + cross;
-        expect(positions.getZ(vertex)).toBeCloseTo(sections[section]!.z);
-      }
-    }
-    geometry.dispose();
-  });
 
   it("uses carved terrain itself as the visible bank", () => {
     const factory = new ChunkMeshFactory();
@@ -81,33 +67,7 @@ describe("river ribbon geometry", () => {
     factory.dispose();
   });
 
-  it("keeps legacy downstream data but not its bank mesh during R4", () => {
-    const factory = new ChunkMeshFactory();
-    const data = generateChunk("river-bank-seam", { x: 0, z: 0 });
-    const group = factory.create(data);
-    expect(data.river?.channelSections.length).toBeGreaterThan(0);
-    expect(group.getObjectByName("river-channel")).toBeUndefined();
 
-    factory.disposeChunk(group);
-    factory.dispose();
-  });
-
-  it("winds its triangles counter-clockwise from above", () => {
-    const geometry = createRiverRibbonGeometry([
-      { x: 0, z: 0, width: 2, surfaceElevation: 0 },
-      { x: 4, z: 1, width: 2, surfaceElevation: 0 },
-    ]);
-    const positions = geometry.getAttribute("position");
-    const indices = geometry.getIndex();
-    const triangle = new THREE.Triangle(
-      new THREE.Vector3().fromBufferAttribute(positions, indices!.getX(0)),
-      new THREE.Vector3().fromBufferAttribute(positions, indices!.getX(1)),
-      new THREE.Vector3().fromBufferAttribute(positions, indices!.getX(2)),
-    );
-
-    expect(triangle.getNormal(new THREE.Vector3()).y).toBeGreaterThan(0);
-    geometry.dispose();
-  });
 
   it("uses a front-sided production material", () => {
     const factory = new ChunkMeshFactory();

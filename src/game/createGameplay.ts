@@ -11,7 +11,7 @@ import { createBlobShadowMaterial, createPlayerShadowGeometry, markBlobShadow } 
 import { CollectionSystem, createCollectionState, ExplorationPresentationSystem, ProximityDetectionSystem } from "./exploration";
 import { BiomeDebugPresentationSystem } from "./biomeDebug";
 import { getBrowserStorage, loadGameState, PersistenceSystem } from "./persistence";
-import { findSafeRestoredTransform } from "../world/safePlayerPosition";
+import { findSafeRestoredTransformFromCanonicalWorld } from "../world/safePlayerPosition";
 import { PLAYER_COLLISION_RADIUS } from "../world/treeCollision";
 import { PoiDebugPresentationSystem } from "./poiDebug";
 import { RiverSpineDebugView } from "./riverSpineDebug";
@@ -38,7 +38,9 @@ export function createGameplay(
   const worldSeed = "mobile-walker-v2";
   const storage = getBrowserStorage();
   const savedState = loadGameState(storage, worldSeed);
-  const initialTransform = findSafeRestoredTransform(
+  // Restoration precedes chunk streaming, so query canonical deterministic
+  // collision records rather than depending on rendered/resident chunks.
+  const initialTransform = findSafeRestoredTransformFromCanonicalWorld(
     worldSeed,
     savedState?.player ?? { x: 0, y: 0.76, z: 0, yaw: 0 },
     0.76,

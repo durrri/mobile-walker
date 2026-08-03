@@ -66,11 +66,11 @@ and `interpolateTransform` functions provide unit-testable math boundaries.
 ### River and Night Milestone
 
 **Governing rule:** The river exists in world space. Chunks only query and render
-the portion of the world they cover. R1 (world-space ownership) and R2 (an
-arbitrary smooth manual test spine) are implemented as an isolated future source
-in `worldRiverSpine`. The world spine now drives authoritative terrain carving,
-water, banks, bridges, vegetation, collectibles, wetland-pool exclusion, POI
-hydrology, and navigation; legacy gameplay consumers remain for R5d.
+the portion of the world they cover. R1 (world-space ownership) through R5d (final gameplay migration) are implemented.
+The world spine drives authoritative terrain carving, water, banks, bridges,
+vegetation, collectibles, wetland-pool exclusion, POI hydrology, navigation,
+movement classification, and safe-position decisions. The fixed-column river
+module and its generated compatibility records have been deleted.
 
 The editable architectural fixture uses world-unit control points `(-24,96)`,
 `(-8,70)`, `(20,48)`, `(48,38)`, `(65,36)`, `(45,12)`, `(12,-8)`, `(-25,-22)`,
@@ -84,7 +84,7 @@ tangent.x)`. Nearest queries choose candidates from the reusable world-bounds
 segment grid, project onto its polyline, then refine on the spline. Bounds queries
 return ordered, potentially shared intervals and accept a margin. R5a world-river
 bridges, R5b ordinary-object exclusion, and R5c POIs/navigation are complete.
-R5d gameplay queries and final legacy removal are next; R6 then performs full
+R5d gameplay queries and final legacy removal are complete; R6 next performs full
 seam, streaming, regeneration, and generation-order validation. All active river
 consumers must use the world-owned river before procedural paths, secondary
 meanders, variable width, or river lakes are introduced.
@@ -92,11 +92,10 @@ meanders, variable width, or river lakes are introduced.
 The debug selector is production-default Off. Spine adds controls/helpers and
 the curve; Ribbon adds a constant-width, presentation-only ribbon and diagnostic
 chunk grid; Detailed adds uniform-distance marks, tangent/normal indicators, and
-index bounds. Debug vertices sample the existing legacy terrain-height function
+index bounds. Debug vertices sample the authoritative carved terrain-height function
 at their own world X/Z and add a small surface offset; ordinary depth testing
 keeps hills and structures occluding them. Objects are created lazily and disposed
-on every mode change. Terrain carving integration is deferred specifically to keep R1/R2 independently
-testable and avoid baking old north/south or fixed-column assumptions into the API.
+on every mode change. No debug view supplies gameplay classification or collision.
 
 Planned phases are: **R1** world-space river ownership; **R2** arbitrary smooth
 manual test spine; R3 chunk-independent terrain carving; R4 chunk-independent
@@ -111,21 +110,14 @@ drawn from mutable state, so generation order, entity iteration order, the clock
 and `Math.random()` cannot influence a chunk. Mathematical floor division keeps
 world-to-chunk conversion correct on the negative side of the origin.
 
-A single river flows north-to-south exclusively through chunk column `x === 0`, which
-contains the initial chunk `(0, 0)`. Each endpoint is hashed from its global
-boundary row, so a column-zero chunk's south endpoint and its southern neighbor's
-north endpoint are the exact same position, width, and elevation. The shared
-river spine drives water rendering, terrain carving, collision sampling, and
-forest clearance; chunks in other columns have uninterrupted terrain and
-vegetation, with no river or river-debug geometry. Terrain edge heights use
-global lattice coordinates in every column. The streamer uses asymmetric offsets
-of one chunk west, east, and south and four chunks north, where the fixed camera
-looks. It generates plain chunk data first and passes it
-to a Three.js mesh factory. Chunk geometries are disposed when they leave the
-radius, while terrain and river materials are shared for the streamer's
-lifetime. Resident chunks render without an edge-fade shader, so outer chunk
-edges can remain sharp while streaming work stays focused on generating and
-activating the player's neighborhood.
+The single manually authored river is owned in world space and crosses arbitrary
+chunk columns and edges. Chunks query indexed spine segments and render only the
+terrain and water fragments within their bounds. Gameplay uses the same carved
+terrain and water footprint, without fixed-axis assumptions or rendered-mesh
+raycasts. Standalone lakes and wetland pools retain their independent hydrology.
+The streamer generates plain chunk data first and passes it to a Three.js mesh
+factory; geometries are disposed when chunks unload while shared materials live
+for the streamer's lifetime.
 
 ### Rendering fog and material inventory
 
