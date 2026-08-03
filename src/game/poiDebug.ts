@@ -48,7 +48,10 @@ export function findNearestPoiTypes(
     }
   };
   for (const data of repository.values()) {
-    for (const poi of data.pois) consider(poi.typeId, poi.position.x, poi.position.z);
+    for (const poi of data.pois) {
+      const anchor = poi.navigationAnchor ?? poi.entrance?.position ?? poi.position;
+      if (Number.isFinite(anchor.x) && Number.isFinite(anchor.z)) consider(poi.typeId, anchor.x, anchor.z);
+    }
     for (const bridge of data.bridges ?? []) {
       consider(bridge.archetype, bridge.crossingCentre.x, bridge.crossingCentre.z);
     }

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { Object3D } from "three";
 import { generateVegetation } from "./vegetation";
+import { isLakeAt, sampleTerrainHeight } from "./terrainSampling";
+import { queryWorldRiverRelationship } from "./worldRiverRelationship";
 import {
   footprintIntersectsRiver,
   footprintsOverlap,
@@ -93,7 +95,7 @@ describe("POI footprints and exclusions", () => {
   });
 
   it("recognizes river intersections from global samplers", () => {
-    expect(footprintIntersectsRiver(123, { kind: "circle", x: 8, z: 8, radius: 12 })).toBe(true);
+    expect(footprintIntersectsRiver(123, { kind: "circle", x: 12, z: -8, radius: 3 })).toBe(true);
     expect(footprintIntersectsRiver(123, { kind: "circle", x: 80, z: 8, radius: 1 })).toBe(false);
   });
 
@@ -111,4 +113,23 @@ describe("POI footprints and exclusions", () => {
     expect(vegetation.flowers).toHaveLength(0);
   });
 
+});
+
+describe("POI navigation anchors", () => {
+  it("uses entrances normally and a dry terrain-height dock landing for a generated lake house", () => {
+    const ordinary = generatePois(0, { x: 0, z: -8 }).pois.find(poi => poi.typeId === "plains-farmhouse")!;
+    expect(ordinary.navigationAnchor).toEqual({ ...ordinary.entrance.position, kind: "entrance" });
+
+    const lakeHouse = generatePois(0, { x: -16, z: -5 }).pois.find(poi => poi.typeId === "lake-house")!;
+    const anchor = lakeHouse.navigationAnchor, dock = lakeHouse.dock!;
+    expect(anchor.kind).toBe("dock-landing");
+    expect([anchor.x, anchor.y, anchor.z].every(Number.isFinite)).toBe(true);
+    expect(Math.hypot(anchor.x - dock.shore.x, anchor.z - dock.shore.z)).toBeCloseTo(1);
+    expect(Math.hypot(anchor.x - dock.end.x, anchor.z - dock.end.z)).toBeGreaterThan(3);
+    expect((anchor.x - dock.shore.x) * dock.direction.x + (anchor.z - dock.shore.z) * dock.direction.z).toBeCloseTo(-1);
+    expect(anchor.y).toBeCloseTo(sampleTerrainHeight(0, anchor.x, anchor.z));
+    expect(isLakeAt(0, anchor.x, anchor.z)).toBe(false);
+    expect(queryWorldRiverRelationship(anchor.x, anchor.z)?.distanceToWaterEdge ?? Infinity).toBeGreaterThan(0);
+    expect(generatePois(0, { x: -16, z: -5 }).pois.find(poi => poi.id === lakeHouse.id)?.navigationAnchor).toEqual(anchor);
+  });
 });

@@ -1,7 +1,7 @@
 import type { RenderSystem } from "../ecs/System";
 import { BIOMES, BIOME_DEBUG_COLORS, BIOME_IDS, sampleBiome, type BiomeId } from "../world/biomes";
-import { CHUNK_SIZE, worldToChunk } from "../world/chunkCoordinates";
-import { isRiverColumn } from "../world/river";
+import { WORLD_RIVER_MAX_CARVING_RADIUS } from "../world/worldRiverCarving";
+import { worldRiverSpine } from "../world/worldRiverSpine";
 import { collapseDirectionIndicator, makeDirectionIndicatorExpandable } from "./directionIndicator";
 
 export interface BiomeDirection {
@@ -17,12 +17,11 @@ export interface RiverIndicatorPosition {
   readonly y: number;
 }
 
-/** Returns the overlay direction toward the closest point of the river chunk column. */
+/** Returns the camera-relative direction toward the nearest world-river point. */
 export function riverIndicatorDirection(playerX: number, playerZ: number, cameraYaw = 0): { readonly x: number; readonly y: number } | null {
-  const coordinate = worldToChunk(playerX, 0);
-  if (isRiverColumn(coordinate)) return null;
-  const targetX = coordinate.x < 0 ? 0 : CHUNK_SIZE;
-  return worldToOverlayDisplacement(playerX, playerZ, targetX, playerZ, cameraYaw);
+  const nearest = worldRiverSpine.nearestPointToRiver(playerX, playerZ);
+  if (nearest.distanceToRiver <= WORLD_RIVER_MAX_CARVING_RADIUS) return null;
+  return worldToOverlayDisplacement(playerX, playerZ, nearest.position.x, nearest.position.z, cameraYaw);
 }
 
 /** Projects a direction from the center to the rectangular overlay perimeter. */
