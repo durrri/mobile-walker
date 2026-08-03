@@ -30,7 +30,7 @@ vi.mock("three", async (importOriginal) => {
   return { ...actual, WebGLRenderer };
 });
 
-import { sunlightPosition, ThreeRenderer } from "./ThreeRenderer";
+import { FOG_FAR_DISTANCE, FOG_NEAR_DISTANCE, MAX_DRAW_DISTANCE, sunlightPosition, ThreeRenderer } from "./ThreeRenderer";
 
 class ResizeObserverStub {
   static instances: ResizeObserverStub[] = [];
@@ -93,12 +93,17 @@ describe("ThreeRenderer resize synchronization", () => {
     expect(cancelAnimationFrame).toHaveBeenCalled();
   });
 
-  it("fades the final 20 units of the camera draw distance", () => {
+  it("keeps fog distances independent from the camera draw distance", () => {
     const canvas = { clientWidth: 320, clientHeight: 180, width: 0, height: 0 } as HTMLCanvasElement;
     const renderer = new ThreeRenderer(canvas);
     const fog = renderer.scene.fog;
 
-    expect(fog).toMatchObject({ near: renderer.camera.far - 20, far: renderer.camera.far });
+    expect(renderer.camera.far).toBe(MAX_DRAW_DISTANCE);
+    expect(MAX_DRAW_DISTANCE).toBe(225);
+    expect(fog).toMatchObject({ near: FOG_NEAR_DISTANCE, far: FOG_FAR_DISTANCE });
+    expect(FOG_NEAR_DISTANCE).toBe(130);
+    expect(FOG_FAR_DISTANCE).toBe(150);
+    expect(FOG_FAR_DISTANCE).toBeLessThan(MAX_DRAW_DISTANCE);
 
     renderer.dispose();
   });
