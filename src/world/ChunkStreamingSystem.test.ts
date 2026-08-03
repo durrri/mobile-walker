@@ -96,23 +96,40 @@ describe("loaded neighborhood boundary", () => {
     const scene = new THREE.Scene();
     const { world, player } = createPlayerWorld();
     let resolveReplacement: ((data: ReturnType<typeof generateChunk>) => void) | undefined;
+    let replacementGeneration: Promise<ReturnType<typeof generateChunk>> | undefined;
     const generator = vi.fn((seed: number | string, coordinate: { x: number; z: number }) => {
       if (coordinate.x === 0) return generateChunk(seed, coordinate);
-      return new Promise<ReturnType<typeof generateChunk>>((resolve) => { resolveReplacement = resolve; });
+      replacementGeneration = new Promise<ReturnType<typeof generateChunk>>((resolve) => { resolveReplacement = resolve; });
+      return replacementGeneration;
     });
-    const chunks = new ChunkStreamingSystem(scene, "async", 0, { generator });
+    // Complete one ready activation per render boundary so this test isolates
+    // asynchronous generation rather than depending on stage timing.
+    const chunks = new ChunkStreamingSystem(scene, "async", 0, { generator, meshWorkPerFrame: 1 });
     chunks.prepareRender(world, 0, 0);
     const original = scene.children[0];
+    const originalDisposals: ReturnType<typeof vi.spyOn>[] = [];
+    original?.traverse((object) => {
+      if (object instanceof THREE.Mesh || object instanceof THREE.Line) {
+        originalDisposals.push(vi.spyOn(object.geometry, "dispose"));
+      }
+    });
     player.transform.x = CHUNK_SIZE + 1;
     chunks.prepareRender(world, 0, 0);
     expect(scene.children).toEqual([original]);
+    expect(chunks.getDiagnostics().generationInProgress).toBe(1);
+    expect(replacementGeneration).toBeDefined();
 
     resolveReplacement?.(generateChunk("async", { x: 1, z: 0 }));
-    await Promise.resolve();
+    await replacementGeneration;
+    // Generation completion alone does not mutate the scene; activation is
+    // performed at the next render preparation boundary.
+    expect(scene.children).toEqual([original]);
     chunks.prepareRender(world, 0, 0);
     expect(scene.children).toHaveLength(1);
     expect(scene.children[0]).not.toBe(original);
+    expect(original?.parent).toBeNull();
     chunks.dispose();
+    for (const dispose of originalDisposals) expect(dispose).toHaveBeenCalledTimes(1);
   });
 
   it("reuses cached generated data when reversing across a boundary", () => {

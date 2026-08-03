@@ -6,6 +6,8 @@ export * from "./forest";
 export * from "./random";
 export * from "./river";
 export * from "./worldRiverSpine";
+export * from "./worldRiverCarving";
+export * from "./worldRiverEnvironment";
 export * from "./terrainSampling";
 export * from "./terrainOcclusion";
 export * from "./vegetation";

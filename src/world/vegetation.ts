@@ -1,8 +1,14 @@
 import { CHUNK_SIZE, type ChunkCoordinate } from "./chunkCoordinates";
 import { sampleBiome, type BiomeId, type BiomeWeights } from "./biomes";
 import { hashFloat, normalizeSeed } from "./random";
-import { isLakeAt, isRiverAt, mountainSnowCoverage, sampleTerrainHeight } from "./terrainSampling";
+import { isLakeAt, mountainSnowCoverage, sampleTerrainHeight } from "./terrainSampling";
 import { isVegetationExcluded, type PoiZone } from "./poi";
+import {
+  createWorldRiverEnvironmentContext,
+  decideWorldRiverObjectPlacement,
+  type RiverObjectCategory,
+  type WorldRiverEnvironmentContext,
+} from "./worldRiverEnvironment";
 
 export type VegetationKind = "pine" | "leafTree" | "bush" | "flower";
 
@@ -33,11 +39,9 @@ export interface VegetationProfile {
   readonly scale: readonly [number, number];
   readonly dominantBiomes?: Readonly<{ allow?: readonly BiomeId[]; deny?: readonly BiomeId[] }>;
   readonly constraints: Readonly<{
-    river: boolean;
     lake: boolean;
     snow: boolean;
     mountainRock: boolean;
-    riverBankClearance?: number;
   }>;
   readonly collision?: Readonly<{ radius: number }>;
   readonly densityField?: "forest";
@@ -62,24 +66,24 @@ export const VEGETATION_PROFILES: Readonly<Record<VegetationKind, VegetationProf
   pine: {
     cellSize: 2, salt: 411, probabilities: PINE_PROBABILITIES, scale: [0.55, 1.34],
     dominantBiomes: { deny: ["plains", "wetland"] },
-    constraints: { river: true, lake: true, snow: true, mountainRock: false, riverBankClearance: 1.15 },
+    constraints: { lake: true, snow: true, mountainRock: false },
     collision: { radius: 0.16 }, densityField: "forest", candidateLayout: "centered",
   },
   leafTree: {
     cellSize: 2.5, salt: 501, probabilities: LEAF_TREE_CHANCE, scale: [0.72, 1.18],
     dominantBiomes: { deny: ["mountain"] },
-    constraints: { river: true, lake: true, snow: true, mountainRock: true },
+    constraints: { lake: true, snow: true, mountainRock: true },
     collision: { radius: 0.2 }, candidateLayout: "inset", capChanceInPlains: true,
   },
   bush: {
     cellSize: 1.6, salt: 521, probabilities: BUSH_CHANCE, scale: [0.62, 1.2],
-    constraints: { river: true, lake: true, snow: true, mountainRock: false },
+    constraints: { lake: true, snow: true, mountainRock: false },
     candidateLayout: "inset", capChanceInPlains: true,
   },
   flower: {
     cellSize: 0.8, salt: 541, probabilities: FLOWER_CHANCE, scale: [0.72, 1.18],
     dominantBiomes: { deny: ["mountain"] },
-    constraints: { river: true, lake: true, snow: true, mountainRock: true },
+    constraints: { lake: true, snow: true, mountainRock: true },
     candidateLayout: "inset", capChanceInPlains: true,
   },
 };
@@ -120,10 +124,15 @@ function blendedFixed(weights: BiomeWeights, probabilities: FixedProbabilities):
 }
 
 /** Deterministically runs the common candidate, terrain and constraint pipeline. */
-export function generateVegetationKind(kind: VegetationKind, seedInput: number | string, coordinate: ChunkCoordinate, exclusions: readonly PoiZone[] = []): readonly VegetationPlacement[] {
+export function generateVegetationKind(kind: VegetationKind, seedInput: number | string, coordinate: ChunkCoordinate, exclusions: readonly PoiZone[] = [], riverContext?: WorldRiverEnvironmentContext): readonly VegetationPlacement[] {
   const seed = normalizeSeed(seedInput), profile = VEGETATION_PROFILES[kind];
   const cellsPerSide = Math.ceil(CHUNK_SIZE / profile.cellSize);
   const startX = coordinate.x * CHUNK_SIZE, startZ = coordinate.z * CHUNK_SIZE;
+  riverContext ??= createWorldRiverEnvironmentContext({
+    minX: startX, maxX: startX + CHUNK_SIZE, minZ: startZ, maxZ: startZ + CHUNK_SIZE,
+  });
+  const riverCategory: RiverObjectCategory = kind === "flower" ? "tinyVegetation"
+    : kind === "bush" ? "largeShrub" : "tree";
   const placements: VegetationPlacement[] = [];
   for (let localZ = 0; localZ < cellsPerSide; localZ += 1) for (let localX = 0; localX < cellsPerSide; localX += 1) {
     const cellX = coordinate.x * cellsPerSide + localX, cellZ = coordinate.z * cellsPerSide + localZ;
@@ -135,13 +144,15 @@ export function generateVegetationKind(kind: VegetationKind, seedInput: number |
       ? (cellZ + 0.5) * profile.cellSize + (hashFloat(seed, cellX, cellZ, profile.salt + 1) - 0.5) * 1.3
       : startZ + (localZ + 0.15 + hashFloat(seed, cellX, cellZ, profile.salt + 1) * 0.7) * profile.cellSize;
     if (x < startX || z < startZ || x >= startX + CHUNK_SIZE || z >= startZ + CHUNK_SIZE) continue;
-    if (isVegetationExcluded(x, z, exclusions)) continue;
+    const structureExcluded = isVegetationExcluded(x, z, exclusions);
+    const riverDecision = decideWorldRiverObjectPlacement({
+      seed, category: riverCategory, worldX: x, worldZ: z, identityX: cellX, identityZ: cellZ,
+      structureExcluded, context: riverContext,
+    });
+    if (!riverDecision.accepted) continue;
     const biome = sampleBiome(seed, x, z), rules = profile.dominantBiomes;
     if (rules?.deny?.includes(biome.dominant) || (rules?.allow && !rules.allow.includes(biome.dominant))) continue;
     if (profile.constraints.lake && isLakeAt(seed, x, z)) continue;
-    if (profile.constraints.river && isRiverAt(seed, x, z)) continue;
-    const clearance = profile.constraints.riverBankClearance;
-    if (clearance && (isRiverAt(seed, x - clearance, z) || isRiverAt(seed, x + clearance, z))) continue;
     const height = sampleTerrainHeight(seed, x, z);
     if (profile.constraints.snow && mountainSnowCoverage(height, biome.weights) >= 1) continue;
     if (profile.constraints.mountainRock && biome.dominant === "mountain") continue;
@@ -175,12 +186,12 @@ export interface GeneratedVegetation {
   readonly flowers: readonly FlowerPlacement[];
 }
 
-export function generateVegetation(seedInput: number | string, coordinate: ChunkCoordinate, exclusions: readonly PoiZone[] = []): GeneratedVegetation {
+export function generateVegetation(seedInput: number | string, coordinate: ChunkCoordinate, exclusions: readonly PoiZone[] = [], riverContext?: WorldRiverEnvironmentContext): GeneratedVegetation {
   const seed = normalizeSeed(seedInput);
   return {
-    leafTrees: generateVegetationKind("leafTree", seed, coordinate, exclusions),
-    bushes: generateVegetationKind("bush", seed, coordinate, exclusions),
-    flowers: generateVegetationKind("flower", seed, coordinate, exclusions).map((placement) => ({
+    leafTrees: generateVegetationKind("leafTree", seed, coordinate, exclusions, riverContext),
+    bushes: generateVegetationKind("bush", seed, coordinate, exclusions, riverContext),
+    flowers: generateVegetationKind("flower", seed, coordinate, exclusions, riverContext).map((placement) => ({
       ...placement,
       color: FLOWER_COLORS[Math.floor(hashFloat(seed, Math.floor(placement.x / 0.8), Math.floor(placement.z / 0.8), 547) * FLOWER_COLORS.length)]!,
     })),

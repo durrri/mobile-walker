@@ -2,13 +2,13 @@
 
 ## Status and dependency order
 
-R5a migrates bridge candidates, placement, structure geometry, collision, and bridge-owned approach/exclusion zones to the world-owned river. R5b (vegetation and general object river exclusion) is next, R5c migrates river-relative POIs and navigation, and R5d migrates gameplay water queries before removing the legacy river. **All active river consumers must migrate to the world-owned river before variable width, procedural meanders, secondary meanders, or river lakes are introduced.**
+R5a migrates bridge candidates, placement, structure geometry, collision, and bridge-owned approach/exclusion zones to the world-owned river. R5b vegetation/general-object river exclusion is now complete; R5c migrates river-relative POIs and navigation next, and R5d migrates gameplay water queries before removing the legacy river. **All active river consumers must migrate to the world-owned river before variable width, procedural meanders, secondary meanders, or river lakes are introduced.**
 
 ## Legacy audit
 
 The retired bridge producer used `isRiverColumn`, one candidate per legacy chunk row, the chunk-local `sampleRiverCrossSection`, a north/south boundary assumption, and an east/west-like crossing derived from `centerX`. Candidate IDs and spacing restarted at chunk rows; only the `x = 0` column could own a bridge. It copied the legacy channel width plus `RIVER_BANK_WIDTH`/`RIVER_TRANSITION_WIDTH`, sampled natural rather than authoritative carved terrain, and generation gathered only north/south owners. Its oriented POI footprints already supplied deck/approach exclusion, while the shared structure definition supplied deck, rail, support and foundation collision. Rendering already rotated a common local component group, although that rotation had only been exercised near the fixed orientation. POI solid zones were checked after POIs were generated, establishing the remaining POI-before-bridge ordering.
 
-Active legacy records are deliberately retained for R5b vegetation/object exclusion, R5c POIs/navigation, and R5d gameplay water classification and movement. Legacy water and bridge rendering are disabled; bridge generation has no import from `river.ts`, `isRiverColumn`, or the legacy cross-section.
+Active legacy records are deliberately retained only for R5c POIs/navigation and R5d gameplay water classification and movement. Legacy water and bridge rendering are disabled; bridge generation has no import from `river.ts`, `isRiverColumn`, or the legacy cross-section.
 
 ## World-river bridge rules
 

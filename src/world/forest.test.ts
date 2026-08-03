@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 import { CHUNK_SIZE } from "./chunkCoordinates";
 import { generateTrees, sampleForestDensity, treeChance } from "./forest";
 import { normalizeSeed } from "./random";
-import { isRiverAt, sampleTerrainHeight } from "./terrainSampling";
+import { sampleTerrainHeight } from "./terrainSampling";
+import { sampleWorldRiverEnvironment } from "./worldRiverEnvironment";
 
 describe("forest generation", () => {
   it("is deterministic and keeps trees inside their owning chunk", () => {
@@ -16,7 +17,7 @@ describe("forest generation", () => {
       expect(tree.z).toBeGreaterThanOrEqual(coordinate.z * CHUNK_SIZE);
       expect(tree.z).toBeLessThan((coordinate.z + 1) * CHUNK_SIZE);
       expect(tree.y).toBe(sampleTerrainHeight("pine-country", tree.x, tree.z));
-      expect(isRiverAt("pine-country", tree.x, tree.z)).toBe(false);
+      expect(sampleWorldRiverEnvironment(tree.x, tree.z).withinWater).toBe(false);
     }
   });
 
@@ -35,9 +36,9 @@ describe("forest generation", () => {
     expect(Math.max(...counts)).toBeGreaterThanOrEqual(25);
   });
 
-  it("clears trees from the actual column-zero river", () => {
+  it("clears trees from the world-owned river", () => {
     const trees = generateTrees("river-forest", { x: 0, z: 0 });
-    for (const tree of trees) expect(isRiverAt("river-forest", tree.x, tree.z)).toBe(false);
+    for (const tree of trees) expect(sampleWorldRiverEnvironment(tree.x, tree.z).withinWalkableBank).toBe(false);
   });
 
   it("gives meadow, forest, and highland different biome-level densities", () => {
