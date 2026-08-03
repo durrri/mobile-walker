@@ -12,6 +12,7 @@ import { LAKE_SURFACE_ELEVATION, LAKE_WATER_WEIGHT, mountainSnowCoverage, RIVER_
 import { terrainDarkening } from "./terrainOcclusion";
 import { PoiMeshFactory } from "./poiMeshes";
 import { BridgeMeshFactory } from "./bridgeMeshes";
+import { tessellateWorldRiverWaterChunk, WORLD_RIVER_WATER_SAMPLE_SPACING } from "./worldRiverWater";
 
 export interface DebugViewOptions {
   readonly wireframe: boolean;
@@ -19,6 +20,7 @@ export interface DebugViewOptions {
   readonly occlusionMap?: boolean;
   readonly disableTerrainOcclusion?: boolean;
   readonly pois?: "off" | "accepted" | "candidates";
+  readonly waterWireframe?: boolean;
 }
 
 export type ChunkActivationStage = "terrain" | "hydrology" | "trees" | "vegetation" | "pois" | "details";
@@ -231,7 +233,7 @@ export class ChunkMeshFactory {
   addActivationStage(group: THREE.Group, data: GeneratedChunkData, stage: ChunkActivationStage): void {
     if (stage === "terrain") group.add(this.createTerrain(data));
     else if (stage === "hydrology") {
-      if (data.river) group.add(this.createRiver(data.river.spine), this.createRiverChannel(data.river.channelSections, data.terrainMaximumDarkening));
+      const riverWater = this.createWorldRiverWater(data); if (riverWater) group.add(riverWater);
       group.add(this.createLake(data), this.createWetlandPools(data));
     } else if (stage === "trees") group.add(this.createTrees(data));
     else if (stage === "vegetation") group.add(this.createVegetation(data));
@@ -254,6 +256,8 @@ export class ChunkMeshFactory {
     this.debugView = { ...options };
     this.terrainMaterial.wireframe = options.wireframe;
     this.terrainMaterial.needsUpdate = true;
+    this.riverMaterial.wireframe = options.waterWireframe ?? options.wireframe;
+    this.riverMaterial.needsUpdate = true;
     // Debug objects share stable names, including chunks streamed after a toggle.
     for (const group of this.groups) this.applyDebugVisibility(group);
   }
@@ -405,17 +409,18 @@ export class ChunkMeshFactory {
     return boundary;
   }
 
-  private createRiver(spine: readonly RiverPoint[]): THREE.Mesh {
-    const mesh = new THREE.Mesh(createRiverRibbonGeometry(spine), this.riverMaterial);
-    mesh.name = "river";
-    return mesh;
-  }
-
-  private createRiverChannel(sections: readonly RiverChannelSection[], maximumDarkening: number): THREE.Mesh {
-    const mesh = new THREE.Mesh(createRiverChannelGeometry(sections, maximumDarkening), this.terrainMaterial);
-    mesh.name = "river-channel";
-    mesh.userData.isTerrainSurface = true;
+  private createWorldRiverWater(data: GeneratedChunkData): THREE.Mesh | undefined {
+    const fragment = tessellateWorldRiverWaterChunk(data.coordinate);
+    if (fragment.indices.length === 0) return undefined;
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.Float32BufferAttribute(fragment.vertices.flatMap(vertex => [vertex.x, vertex.y, vertex.z]), 3));
+    geometry.setAttribute("uv", new THREE.Float32BufferAttribute(fragment.vertices.flatMap(vertex => [vertex.u, vertex.v]), 2));
+    geometry.setIndex([...fragment.indices]);
+    geometry.computeVertexNormals();
+    const mesh = new THREE.Mesh(geometry, this.riverMaterial);
+    mesh.name = "world-river-water";
     mesh.receiveShadow = true;
+    mesh.userData.sampleSpacing = WORLD_RIVER_WATER_SAMPLE_SPACING;
     return mesh;
   }
 

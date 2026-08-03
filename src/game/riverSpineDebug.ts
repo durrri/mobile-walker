@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { CHUNK_SIZE } from "../world/chunkCoordinates";
 import { worldRiverSpine, type RiverSpine } from "../world/worldRiverSpine";
 import { WORLD_RIVER_CARVING } from "../world/worldRiverCarving";
+import { WORLD_RIVER_WATER_SAMPLE_SPACING } from "../world/worldRiverWater";
 
 export type RiverSpineDebugMode = "off" | "spine" | "ribbon" | "detailed";
 export type TerrainHeightSampler = (worldX: number, worldZ: number) => number;
@@ -79,10 +80,10 @@ export class RiverSpineDebugView {
       root.add(this.thickSegments(channelEdges, RIVER_DEBUG_STYLE.channelEdge, "debug:river-channel-edges"));
       root.add(this.thickSegments(falloffEdges, RIVER_DEBUG_STYLE.falloffEdge, "debug:river-falloff-edges"));
       const marks = Array.from(
-        { length: Math.floor(this.spine.totalLength / 8) + 1 },
-        (_, index) => this.spine.sampleAtDistance(index * 8),
+        { length: Math.floor(this.spine.totalLength / WORLD_RIVER_WATER_SAMPLE_SPACING) + 1 },
+        (_, index) => this.spine.sampleAtDistance(index * WORLD_RIVER_WATER_SAMPLE_SPACING),
       );
-      root.add(this.points(marks, 0xffffff, 0.4, 0.3, "debug:river-arc-length-samples"));
+      root.add(this.points(marks, 0xffffff, 0.18, 0.3, "debug:river-water-samples"));
 
       const tangents: { x: number; z: number }[] = [];
       const normals: { x: number; z: number }[] = [];

@@ -10,15 +10,28 @@ import { generateChunk } from "./generateChunk";
 import { SunlightDirection } from "../rendering/sunlightDirection";
 
 describe("river ribbon geometry", () => {
-  it("keeps the authoritative terrain grid while legacy water uses its bounded strip", () => {
+  it("renders world water beyond legacy column zero and does not fill an absent column-zero chunk", () => {
     const factory = new ChunkMeshFactory();
-    const data = generateChunk("open-channel", { x: 0, z: 0 });
+    const curvedReach = factory.create(generateChunk("r4-column-audit", { x: 4, z: 2 }));
+    const absentReach = factory.create(generateChunk("r4-column-audit", { x: 0, z: 6 }));
+    const curvedWater = curvedReach.getObjectByName("world-river-water") as THREE.Mesh;
+    const absentWater = absentReach.getObjectByName("world-river-water");
+    expect(curvedWater.geometry.getAttribute("position").count).toBeGreaterThan(0);
+    expect(absentWater).toBeUndefined();
+    expect(curvedReach.getObjectByName("river")).toBeUndefined();
+    expect(curvedReach.getObjectByName("river-channel")).toBeUndefined();
+    factory.disposeChunk(curvedReach); factory.disposeChunk(absentReach); factory.dispose();
+  });
+
+  it("keeps the authoritative terrain grid and disables legacy presentation", () => {
+    const factory = new ChunkMeshFactory();
+    const data = generateChunk("open-channel", { x: 4, z: 2 });
     const group = factory.create(data);
     const terrain = group.getObjectByName("terrain") as THREE.Mesh;
-    const channel = group.getObjectByName("river-channel") as THREE.Mesh;
-
-    expect(channel.geometry.getAttribute("position").count).toBe(data.river!.channelSections.length * 6);
-    expect(channel.geometry.getAttribute("position").count).toBeLessThan(64);
+    const water = group.getObjectByName("world-river-water") as THREE.Mesh;
+    expect(group.getObjectByName("river-channel")).toBeUndefined();
+    expect(group.getObjectByName("river")).toBeUndefined();
+    expect(water).toBeInstanceOf(THREE.Mesh);
     expect(terrain.geometry.getAttribute("position").count).toBe(data.terrainHeights.length);
     expect(data.irregularTerrain).toBeUndefined();
 
@@ -39,61 +52,41 @@ describe("river ribbon geometry", () => {
     geometry.dispose();
   });
 
-  it("renders banks through the same material and attribute pipeline as terrain", () => {
+  it("uses carved terrain itself as the visible bank", () => {
     const factory = new ChunkMeshFactory();
     const group = factory.create(generateChunk("visible-shoreline", { x: 0, z: 0 }));
-    const channel = group.getObjectByName("river-channel") as THREE.Mesh<
-      THREE.BufferGeometry,
-      THREE.MeshStandardMaterial
-    >;
-
     const terrain = group.getObjectByName("terrain") as THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
-    expect(channel.material).toBe(terrain.material);
-    expect(channel.material.vertexColors).toBe(true);
-    for (const attribute of ["color", "baseTerrainColor", "terrainColor", "debugColor", "occlusionColor"]) {
-      expect(channel.geometry.getAttribute(attribute).count).toBe(channel.geometry.getAttribute("position").count);
-    }
+    expect(terrain.userData.isTerrainSurface).toBe(true);
+    expect(group.getObjectByName("river-channel")).toBeUndefined();
 
     factory.disposeChunk(group);
     factory.dispose();
   });
 
-  it("applies terrain debug modes to banks but not water", () => {
+  it("supports independently selectable water wireframe debug", () => {
     const factory = new ChunkMeshFactory();
-    const group = factory.create(generateChunk("river-debug-pipeline", { x: 0, z: 0 }));
+    const group = factory.create(generateChunk("river-debug-pipeline", { x: 4, z: 2 }));
     factory.registerGroup(group);
     const terrain = group.getObjectByName("terrain") as THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
-    const channel = group.getObjectByName("river-channel") as THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
-    const water = group.getObjectByName("river") as THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
+    const water = group.getObjectByName("world-river-water") as THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
     const waterMaterial = water.material;
 
-    factory.setDebugView({ wireframe: true, biomeGuide: true, occlusionMap: true });
-    expect(channel.material).toBe(terrain.material);
-    expect(channel.material.wireframe).toBe(true);
-    expect(channel.geometry.getAttribute("color")).toBe(channel.geometry.getAttribute("debugColor"));
+    factory.setDebugView({ wireframe: false, waterWireframe: true, biomeGuide: true, occlusionMap: true });
     expect(terrain.geometry.getAttribute("color")).toBe(terrain.geometry.getAttribute("debugColor"));
     expect(water.material).toBe(waterMaterial);
-    expect(water.material).not.toBe(channel.material);
-    expect(water.material.wireframe).toBe(false);
+    expect(water.material).not.toBe(terrain.material);
+    expect(water.material.wireframe).toBe(true);
 
     factory.disposeChunk(group);
     factory.dispose();
   });
 
-  it("keeps legacy bank presentation valid during the R3 mixed state", () => {
+  it("keeps legacy downstream data but not its bank mesh during R4", () => {
     const factory = new ChunkMeshFactory();
     const data = generateChunk("river-bank-seam", { x: 0, z: 0 });
     const group = factory.create(data);
-    const terrainColors = (group.getObjectByName("terrain") as THREE.Mesh<THREE.BufferGeometry>).geometry
-      .getAttribute("terrainColor");
-    const bankColors = (group.getObjectByName("river-channel") as THREE.Mesh<THREE.BufferGeometry>).geometry
-      .getAttribute("terrainColor");
-
-    expect(terrainColors.count).toBe(data.terrainHeights.length);
-    expect(bankColors.count).toBe(data.river!.channelSections.length * 6);
-    for (let index = 0; index < bankColors.count; index += 1) {
-      expect([bankColors.getX(index), bankColors.getY(index), bankColors.getZ(index)].every(Number.isFinite)).toBe(true);
-    }
+    expect(data.river?.channelSections.length).toBeGreaterThan(0);
+    expect(group.getObjectByName("river-channel")).toBeUndefined();
 
     factory.disposeChunk(group);
     factory.dispose();
