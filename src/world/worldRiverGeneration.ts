@@ -217,7 +217,7 @@ export function generateMeanderedControlPoints(
   }));
 }
 
-function geometryIsValid(points: readonly RiverControlPoint[], config: RiverGenerationConfig): boolean {
+export function validateControlPolygonSeparation(points: readonly RiverControlPoint[], config: RiverGenerationConfig): boolean {
   const segmentDistance = (a: RiverControlPoint, b: RiverControlPoint, c: RiverControlPoint, d: RiverControlPoint): number => {
     let best = Infinity;
     for (let step = 0; step <= 6; step += 1) {
@@ -234,13 +234,58 @@ function geometryIsValid(points: readonly RiverControlPoint[], config: RiverGene
   return true;
 }
 
-function finalAcceptanceFailures(spine: RiverSpine, points: readonly RiverControlPoint[], config: RiverGenerationConfig): RiverCorrectionReason[] {
+export interface SmoothedSeparationValidation {
+  readonly valid: boolean;
+  readonly minimumDistance: number;
+  readonly sampleCount: number;
+}
+
+const pointSegmentDistance = (point: RiverControlPoint, a: RiverControlPoint, b: RiverControlPoint): number => {
+  const dx=b.x-a.x,dz=b.z-a.z,lengthSquared=dx*dx+dz*dz;
+  const t=lengthSquared ? Math.max(0,Math.min(1,((point.x-a.x)*dx+(point.z-a.z)*dz)/lengthSquared)) : 0;
+  return Math.hypot(point.x-a.x-dx*t,point.z-a.z-dz*t);
+};
+
+function segmentSeparation(a:RiverControlPoint,b:RiverControlPoint,c:RiverControlPoint,d:RiverControlPoint):number {
+  const cross=(p:RiverControlPoint,q:RiverControlPoint,r:RiverControlPoint)=>(q.x-p.x)*(r.z-p.z)-(q.z-p.z)*(r.x-p.x);
+  const abC=cross(a,b,c),abD=cross(a,b,d),cdA=cross(c,d,a),cdB=cross(c,d,b);
+  const boxesOverlap=Math.max(Math.min(a.x,b.x),Math.min(c.x,d.x))<=Math.min(Math.max(a.x,b.x),Math.max(c.x,d.x))
+    &&Math.max(Math.min(a.z,b.z),Math.min(c.z,d.z))<=Math.min(Math.max(a.z,b.z),Math.max(c.z,d.z));
+  if (boxesOverlap&&((abC<=0&&abD>=0)||(abC>=0&&abD<=0))&&((cdA<=0&&cdB>=0)||(cdA>=0&&cdB<=0))) return 0;
+  return Math.min(pointSegmentDistance(a,c,d),pointSegmentDistance(b,c,d),pointSegmentDistance(c,a,b),pointSegmentDistance(d,a,b));
+}
+
+/** One-time topology check over deterministic arc-length samples of the actual smoothed curve. */
+export function validateSmoothedSpineSeparation(spine:RiverSpine,config:RiverGenerationConfig):SmoothedSeparationValidation {
+  const spacing=Math.min(1,config.resamplingSpacing),points=resample(spine,spacing),cellSize=config.selfSeparationDistance;
+  const cells=new Map<string,number[]>(),segments=points.length-1;
+  const localReachDistance=config.selfSeparationDistance*2,checked=new Set<string>();let minimumDistance=Infinity;
+  for(let index=0;index<segments;index+=1){
+    const a=points[index]!,b=points[index+1]!,minX=Math.min(a.x,b.x),maxX=Math.max(a.x,b.x),minZ=Math.min(a.z,b.z),maxZ=Math.max(a.z,b.z);
+    const candidates=new Set<number>();
+    for(let z=Math.floor((minZ-cellSize)/cellSize);z<=Math.floor((maxZ+cellSize)/cellSize);z++)
+      for(let x=Math.floor((minX-cellSize)/cellSize);x<=Math.floor((maxX+cellSize)/cellSize);x++)
+        for(const candidate of cells.get(`${x},${z}`)??[])candidates.add(candidate);
+    for(const candidate of candidates){
+      if((index-candidate)*spacing<=localReachDistance)continue;
+      const key=`${candidate}:${index}`;if(checked.has(key))continue;checked.add(key);
+      const distance=segmentSeparation(points[candidate]!,points[candidate+1]!,a,b);minimumDistance=Math.min(minimumDistance,distance);
+      if(distance<config.selfSeparationDistance)return Object.freeze({valid:false,minimumDistance:distance,sampleCount:points.length});
+    }
+    for(let z=Math.floor(minZ/cellSize);z<=Math.floor(maxZ/cellSize);z++)for(let x=Math.floor(minX/cellSize);x<=Math.floor(maxX/cellSize);x++){
+      const key=`${x},${z}`,bucket=cells.get(key)??[];bucket.push(index);cells.set(key,bucket);
+    }
+  }
+  return Object.freeze({valid:true,minimumDistance,sampleCount:points.length});
+}
+
+function finalAcceptanceFailures(spine: RiverSpine, config: RiverGenerationConfig): RiverCorrectionReason[] {
   const failures: RiverCorrectionReason[] = [];
   const bounds = spine.bounds;
   if (![bounds.minX, bounds.maxX, bounds.minZ, bounds.maxZ].every(Number.isFinite)
     || bounds.minX < config.bounds.minX || bounds.maxX > config.bounds.maxX
     || bounds.minZ < config.bounds.minZ - .01 || bounds.maxZ > config.bounds.maxZ + .01) failures.push("outside-bounds");
-  if (!geometryIsValid(points, config)) failures.push("self-separation");
+  if (!validateSmoothedSpineSeparation(spine, config).valid) failures.push("self-separation");
   if (measureMaximumCurvature(meanderedResampleForMeasurement(spine, config.resamplingSpacing)) > config.curvatureGuard)
     failures.push("final-curvature");
   for (let index = 0; index <= 100; index += 1) {
@@ -266,6 +311,7 @@ export function getWorldRiverGeneration(config: RiverGenerationConfig = DEFAULT_
     const candidateSpine = new RiverSpine(macroControlPoints);
     if (measureMaximumCurvature(resample(candidateSpine, Math.min(1, config.resamplingSpacing))) > config.macroCurvatureLimit)
       correctionReasons.push("macro-curvature");
+    if (!validateSmoothedSpineSeparation(candidateSpine, config).valid) correctionReasons.push("self-separation");
     // Deterministic bounded fallback: the boundary-to-boundary centre line satisfies
     // every macro guard when the configured waypoint polygon cannot.
     if (correctionReasons.length) {
@@ -287,7 +333,7 @@ export function getWorldRiverGeneration(config: RiverGenerationConfig = DEFAULT_
     meanderedControlPoints = generateMeanderedControlPoints(macroSpine, config, meanderRegions, scale);
     meanderedSpine = new RiverSpine(meanderedControlPoints);
   }
-  while (!geometryIsValid(meanderedControlPoints, config) && scale > .02) {
+  while (!validateSmoothedSpineSeparation(meanderedSpine, config).valid && scale > .02) {
     correctionApplied = true; if (!correctionReasons.includes("self-separation")) correctionReasons.push("self-separation"); scale *= .75;
     meanderedControlPoints = generateMeanderedControlPoints(macroSpine, config, meanderRegions, scale);
     meanderedSpine = new RiverSpine(meanderedControlPoints);
@@ -298,14 +344,14 @@ export function getWorldRiverGeneration(config: RiverGenerationConfig = DEFAULT_
     meanderedSpine = new RiverSpine(meanderedControlPoints);
   }
   if (config.mode !== "authored-r6") {
-    const failures = finalAcceptanceFailures(meanderedSpine, meanderedControlPoints, config);
+    const failures = finalAcceptanceFailures(meanderedSpine, config);
     if (failures.length) {
       usedFallback = true; correctionApplied = true;
       for (const reason of failures) if (!correctionReasons.includes(reason)) correctionReasons.push(reason);
       if (!correctionReasons.includes("fallback-straight")) correctionReasons.push("fallback-straight");
       meanderedControlPoints = straightBoundaryControlPoints(config);
       meanderedSpine = new RiverSpine(meanderedControlPoints);
-      const fallbackFailures = finalAcceptanceFailures(meanderedSpine, meanderedControlPoints, config);
+      const fallbackFailures = finalAcceptanceFailures(meanderedSpine, config);
       if (fallbackFailures.length) throw new Error(`Deterministic river fallback failed: ${fallbackFailures.join(",")}`);
     }
   }

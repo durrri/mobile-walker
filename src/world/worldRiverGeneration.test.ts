@@ -1,10 +1,35 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_RIVER_GENERATION_CONFIG, generateMacroControlPoints, getWorldRiverGeneration,
   generateMeanderedControlPoints, sampleRegionalMeanderStrength, resetWorldRiverGenerationCaches,
-  type MeanderRegion } from "./worldRiverGeneration";
+  validateControlPolygonSeparation, validateSmoothedSpineSeparation, type MeanderRegion } from "./worldRiverGeneration";
 import { RiverSpine } from "./riverSpineGeometry";
 
 describe("R7 procedural macro river", () => {
+  it("rejects Catmull-Rom separation hidden by a valid raw control polygon", () => {
+    const config={...DEFAULT_RIVER_GENERATION_CONFIG,selfSeparationDistance:5,bounds:{minX:-100,maxX:100,minZ:-100,maxZ:100}};
+    const points=[{"x":-10.541778989136219,"z":18.69270673720166},{"x":0.16968129202723503,"z":15.048832636792213},{"x":-17.978254854679108,"z":4.695183543022722},{"x":10.990518499165773,"z":-0.43811429431661963},{"x":-19.340270571410656,"z":-6.607539602089673},{"x":-9.981954339891672,"z":-15.776222317945212},{"x":3.627607896924019,"z":-18.630663408432156}];
+    expect(validateControlPolygonSeparation(points,config)).toBe(true);
+    expect(validateSmoothedSpineSeparation(new RiverSpine(points),config)).toMatchObject({valid:false});
+  });
+
+  it("accepts measured smoothed separation for reference and strong-region rivers deterministically", () => {
+    for(const seed of [DEFAULT_RIVER_GENERATION_CONFIG.worldSeed,1,6,8]){
+      const generated=getWorldRiverGeneration({...DEFAULT_RIVER_GENERATION_CONFIG,worldSeed:seed});
+      expect(validateSmoothedSpineSeparation(generated.macroSpine,generated.config).valid).toBe(true);
+      expect(validateSmoothedSpineSeparation(generated.meanderedSpine,generated.config).valid).toBe(true);
+      if(seed!==DEFAULT_RIVER_GENERATION_CONFIG.worldSeed)expect(generated.meanderRegions.some(region=>region.profile==="strong")).toBe(true);
+    }
+  });
+
+  it("falls back when corrected smoothed separation still fails and regenerates identically", () => {
+    const config={...DEFAULT_RIVER_GENERATION_CONFIG,worldSeed:6,bounds:{minX:-50000,maxX:50000,minZ:-128,maxZ:128},
+      meanderAmplitudeRange:[3000,3000] as const,curvatureGuard:10};
+    const first=getWorldRiverGeneration(config),bytes=JSON.stringify(first.meanderedResampledPoints);
+    expect(first.usedFallback).toBe(true);expect(first.correctionReasons).toContain("self-separation");
+    expect(validateSmoothedSpineSeparation(first.meanderedSpine,config).valid).toBe(true);
+    resetWorldRiverGenerationCaches();
+    expect(JSON.stringify(getWorldRiverGeneration(config).meanderedResampledPoints)).toBe(bytes);
+  });
   it("is deterministic, immutable, bounded and seed-sensitive", () => {
     const a = getWorldRiverGeneration();
     expect(generateMacroControlPoints(DEFAULT_RIVER_GENERATION_CONFIG)).toEqual(a.macroControlPoints);

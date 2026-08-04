@@ -3,6 +3,7 @@ import { generateChunk, type GeneratedChunkData } from "./generateChunk";
 import { RIVER_R6_FIXTURES } from "./riverR6Fixtures";
 import { resetWorldGenerationCachesForDiagnostics } from "./worldGenerationDiagnostics";
 import { tessellateWorldRiverWaterChunk, type WorldRiverWaterGeometry } from "./worldRiverWater";
+import { DEFAULT_RIVER_GENERATION_CONFIG, getWorldRiverGeneration, validateSmoothedSpineSeparation } from "./worldRiverGeneration";
 
 const seed = "r6-extended";
 const key = (coordinate: { x: number; z: number }) => `${coordinate.x},${coordinate.z}`;
@@ -12,6 +13,13 @@ const independentOrder = (coordinates: readonly { x: number; z: number }[]) => {
 };
 
 describe("R6 extended river validation", () => {
+  it("keeps smoothed macro and final topology separated across representative seeds", () => {
+    for(const worldSeed of [1,2,3,5,8,13,21,34,55,89,144,233]){
+      const generated=getWorldRiverGeneration({...DEFAULT_RIVER_GENERATION_CONFIG,worldSeed});
+      expect(validateSmoothedSpineSeparation(generated.macroSpine,generated.config).valid).toBe(true);
+      expect(validateSmoothedSpineSeparation(generated.meanderedSpine,generated.config).valid).toBe(true);
+    }
+  });
   it("compares independently generated snapshots across representative orders", () => {
     const coordinates = [...new Map(RIVER_R6_FIXTURES.map(f => [key(f.chunk), f.chunk])).values()];
     const orders = [coordinates, [...coordinates].reverse(),

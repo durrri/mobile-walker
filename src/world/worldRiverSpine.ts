@@ -11,6 +11,8 @@ export {
   generateMeanderedControlPoints,
   generateMeanderRegions,
   sampleRegionalMeanderStrength,
+  validateControlPolygonSeparation,
+  validateSmoothedSpineSeparation,
   getWorldRiverGeneration,
   resetWorldRiverGenerationCaches,
   worldRiverGeneration,

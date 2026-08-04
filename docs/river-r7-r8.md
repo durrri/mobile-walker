@@ -37,8 +37,11 @@ heading while a larger lateral curve makes a deep bend, then both offsets return
 `targetBendRadius` is profile intent metadata, not an acceptance guarantee. Acceptance is measured from the final one-unit resampling: sampled curvature must not exceed `curvatureGuard`, and the result reports `measuredMinimumBendRadius`. The permanent strong construction still exercises a 165-degree local heading reversal.
 The configured 48–80 unit wavelengths remain well above constant river width. A bounded global
 amplitude-reduction loop (75% per pass down to 2%) protects bounds, non-adjacent channel separation, and measured curvature deterministically. If reduction cannot satisfy a guard, the final layer falls back to a deterministic straight boundary spine; `usedFallback` and immutable correction reasons report the actual path taken. Endpoint protection is independent of every regional fade.
-After correction, a final acceptance gate rechecks finite bounds, separation, sampled curvature and
-finite non-zero frames. A rejected product uses a deterministic straight boundary fallback, which is
+After correction, a final acceptance gate deterministically resamples the actual Catmull–Rom spine at
+at most one-world-unit arc-length spacing and rechecks finite bounds, smoothed-curve separation,
+sampled curvature and finite non-zero frames. Separation uses a bounded spatial grid, ignores only
+samples within the same short local reach, and includes belt reconnections and endpoint approaches.
+A rejected product uses a deterministic straight boundary fallback, which is
 validated again before publication. `targetBendRadius` remains a per-region generation target;
 `curvatureGuard` and the reported `measuredMinimumBendRadius` are the enforced global guarantees.
 Macro and final buffers are stored directly; production carving, water, placement, bridges, POIs,
@@ -56,10 +59,11 @@ resulting final spine is 265.00 units. Other seeds vary belt lengths, strengths,
 ## Final performance validation
 
 The final cache-cleared, seed-owned benchmark reports cold median/p95 milliseconds of dry
-89.02/92.21, diagonal 275.18/335.34, canyon 237.97/269.40, bridge 267.63/308.81, and
-POI-adjacent 248.22/333.48. Cached retained-data lookup remains effectively zero; gameplay queries
-are 0.030 ms median and safe-position searches 6.317 ms median. The largest median synchronous stage
-is 160.88 ms (diagonal constrained terrain triangulation), below the historical 205 ms reference.
+192.50/221.23, diagonal 522.31/715.19, canyon 498.86/630.62, bridge 546.53/803.14, and
+POI-adjacent 497.17/621.44. Cached retained-data lookup remains effectively zero; gameplay queries
+are 0.059 ms median and safe-position searches 14.960 ms median. The largest median synchronous stage
+is 288.51 ms (diagonal constrained terrain triangulation). Smoothed topology validation remains a
+one-time owner-generation stage and never runs during these ordinary chunk-generation samples.
 River-owner lookup and spine generation do not run per chunk after session creation.
 
 R6 is complete. R7 procedural macro path and R8 secondary meanders are complete, followed by R9

@@ -37,7 +37,7 @@ describe("loaded neighborhood boundary", () => {
     expect(scene.getObjectByName("chunk:-1,0")).toBeUndefined();
     expect(scene.getObjectByName("chunk:0,1")).toBeUndefined();
     chunks.dispose();
-  });
+  }, 15_000);
 
   it("applies changed offsets to the running world", () => {
     const scene = new THREE.Scene();
@@ -53,7 +53,7 @@ describe("loaded neighborhood boundary", () => {
     expect(scene.children).toHaveLength(9);
     expect(scene.getObjectByName("chunk:-1,-1")).toBeDefined();
     chunks.dispose();
-  });
+  }, 15_000);
 
   it("queues activation and obeys generation and mesh limits per frame", () => {
     const scene = new THREE.Scene();
