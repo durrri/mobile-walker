@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { CHUNK_SIZE } from "./chunkCoordinates";
-import { WORLD_RIVER_CARVING, WORLD_RIVER_LIP_CREST_DISTANCE, WORLD_RIVER_MAX_CARVING_RADIUS } from "./worldRiverCarving";
+import { WORLD_RIVER_CARVING, WORLD_RIVER_MAX_CARVING_RADIUS } from "./worldRiverCarving";
 import { createWorldRiverGameplayContext, isInsideWorldRiverWater, sampleWorldRiverGameplay } from "./worldRiverGameplay";
 import { getWorldRiverOwner } from "./worldRiverOwner";
 import { sampleTerrainHeight } from "./terrainSampling";
 
 describe("world river gameplay classification", () => {
   const seed = "r5d-gameplay";
-  const worldRiverSpine = getWorldRiverOwner(seed).spine;
-  const contextAt = (x:number,z:number) => createWorldRiverGameplayContext({minX:x-16,maxX:x+16,minZ:z-16,maxZ:z+16},worldRiverSpine);
+  const owner=getWorldRiverOwner(seed),worldRiverSpine = owner.spine;
+  const contextAt = (x:number,z:number) => createWorldRiverGameplayContext({minX:x-16,maxX:x+16,minZ:z-16,maxZ:z+16},worldRiverSpine,owner.widthProfile);
   const point = (progress: number, offset: number) => {
     const frame = worldRiverSpine.sampleFrame(progress);
     return { x: frame.position.x + frame.normal.x * offset, z: frame.position.z + frame.normal.z * offset };
@@ -16,10 +16,11 @@ describe("world river gameplay classification", () => {
 
   it.each([0.08, 0.35, 0.62, 0.88])("classifies water and bank landmarks on representative reach %s", progress => {
     const centre = point(progress, 0);
-    const inside = point(progress, WORLD_RIVER_CARVING.waterHalfWidth - 0.01);
-    const outside = point(progress, WORLD_RIVER_CARVING.waterHalfWidth + 0.01);
-    const bank = point(progress, WORLD_RIVER_LIP_CREST_DISTANCE + 0.05);
-    const falloff = point(progress, WORLD_RIVER_CARVING.waterHalfWidth + WORLD_RIVER_CARVING.bankWidth + 0.05);
+    const localHalf=owner.widthProfile.sampleAtProgress(progress).halfWidth;
+    const inside = point(progress, localHalf - 0.01);
+    const outside = point(progress, localHalf + 0.01);
+    const bank = point(progress, localHalf+WORLD_RIVER_CARVING.shoreTransitionWidth + 0.05);
+    const falloff = point(progress, localHalf + WORLD_RIVER_CARVING.bankWidth + 0.05);
     expect(sampleWorldRiverGameplay(seed, centre.x, centre.z).insideWater).toBe(true);
     expect(isInsideWorldRiverWater(inside.x, inside.z, contextAt(inside.x,inside.z))).toBe(true);
     expect(isInsideWorldRiverWater(outside.x, outside.z, contextAt(outside.x,outside.z))).toBe(false);
@@ -39,7 +40,7 @@ describe("world river gameplay classification", () => {
     const context = createWorldRiverGameplayContext({
       minX: p.x - WORLD_RIVER_MAX_CARVING_RADIUS, maxX: p.x + WORLD_RIVER_MAX_CARVING_RADIUS,
       minZ: p.z - WORLD_RIVER_MAX_CARVING_RADIUS, maxZ: p.z + WORLD_RIVER_MAX_CARVING_RADIUS,
-    }, worldRiverSpine);
+    }, worldRiverSpine,owner.widthProfile);
     expect(sampleWorldRiverGameplay(seed, p.x, p.z, context)).toEqual(sampleWorldRiverGameplay(seed, p.x, p.z));
   });
 

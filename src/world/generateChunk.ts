@@ -118,7 +118,7 @@ export function generateChunk(
   const minZ = coordinate.z * CHUNK_SIZE;
   const riverEnvironmentContext = createWorldRiverEnvironmentContext({
     minX, maxX: minX + CHUNK_SIZE, minZ, maxZ: minZ + CHUNK_SIZE,
-  }, riverOwner.spine);
+  }, riverOwner.spine, riverOwner.widthProfile);
   const riverCarvingContext = riverEnvironmentContext.carving;
   const sampleAuthoritativeHeight = (worldX: number, worldZ: number): number =>
     sampleChannelTerrainHeightInContext(seed, worldX, worldZ, riverCarvingContext);
@@ -144,14 +144,14 @@ export function generateChunk(
   const poiNeighborhood = [] as GeneratedPoi[];
   let ownedCandidates: readonly PoiDebugCandidate[] = [];
   for (let dz = -1; dz <= 1; dz += 1) for (let dx = -1; dx <= 1; dx += 1) {
-    const generated = generatePois(seed, { x: coordinate.x + dx, z: coordinate.z + dz }, riverOwner.spine, riverOwner.identity);
+    const generated = generatePois(seed, { x: coordinate.x + dx, z: coordinate.z + dz }, riverOwner.spine, riverOwner.identity,riverOwner.widthProfile);
     poiNeighborhood.push(...generated.pois);
     if (dx === 0 && dz === 0) ownedCandidates = generated.candidates;
   }
   const pois = poiNeighborhood.filter(poi => poi.ownerChunk.x === coordinate.x && poi.ownerChunk.z === coordinate.z);
   const bridgeNeighborhood:GeneratedBridge[]=[];
   let ownedBridgeCandidates:readonly BridgeCrossingCandidate[]=[];
-  for(let dz=-1;dz<=1;dz++)for(let dx=-1;dx<=1;dx++){const generated=generateBridges(seed,{x:coordinate.x+dx,z:coordinate.z+dz},poiNeighborhood,riverOwner.spine,riverOwner.identity);bridgeNeighborhood.push(...generated.bridges);if(dx===0&&dz===0)ownedBridgeCandidates=generated.candidates;}
+  for(let dz=-1;dz<=1;dz++)for(let dx=-1;dx<=1;dx++){const generated=generateBridges(seed,{x:coordinate.x+dx,z:coordinate.z+dz},poiNeighborhood,riverOwner.spine,riverOwner.identity,riverOwner.widthProfile);bridgeNeighborhood.push(...generated.bridges);if(dx===0&&dz===0)ownedBridgeCandidates=generated.candidates;}
   const bridges=bridgeNeighborhood.filter(bridge=>bridge.ownerChunk.x===coordinate.x&&bridge.ownerChunk.z===coordinate.z);
   // Structural parity is checked once as records enter the generated repository,
   // never during rendering or a movement query.
@@ -212,7 +212,8 @@ export function generateChunk(
         const river = sampleWorldRiverCarving(worldX, worldZ, riverCarvingContext);
         // Inside the corridor the constrained cross-section lattice replaces
         // the generic grid, preventing either overlapping surfaces or T-junctions.
-        if (!river || river.distanceToCentreline >= WORLD_RIVER_MAX_CARVING_RADIUS - 1e-8) {
+        const onChunkBoundary=cellX===0||cellZ===0||cellX===terrainSegments-1||cellZ===terrainSegments-1;
+        if (onChunkBoundary||!river || river.distanceToCentreline >= WORLD_RIVER_MAX_CARVING_RADIUS - 1e-8) {
           addVertex(worldX, worldZ);
         }
       }
@@ -237,9 +238,11 @@ export function generateChunk(
       const guide: { x: number; z: number }[] = [];
       for (let frameIndex = 0; frameIndex <= frameCount; frameIndex++) {
         const frame = globalFrames[frameIndex]!;
-        const localHalf = sampleRiverWidth(riverOwner.spine,
-          Math.min(frameIndex * WORLD_RIVER_TERRAIN_STRIP_SAMPLE_SPACING, riverOwner.spine.totalLength)).halfWidth;
-        const magnitude = Math.abs(offset) < 1e-9 ? 0 : localHalf + Math.max(0, Math.abs(offset) - waterHalfWidth);
+        const localHalf = sampleRiverWidth(riverOwner.widthProfile,
+          Math.min(frameIndex * WORLD_RIVER_TERRAIN_STRIP_SAMPLE_SPACING, riverOwner.spine.totalLength),riverOwner.spine).halfWidth;
+        const magnitude = Math.abs(offset) <= waterHalfWidth
+          ? localHalf * Math.abs(offset) / waterHalfWidth
+          : localHalf + Math.abs(offset) - waterHalfWidth;
         const localOffset = Math.sign(offset) * magnitude;
         const point = { x: frame.position.x + frame.normal.x * localOffset,
           z: frame.position.z + frame.normal.z * localOffset };
@@ -273,18 +276,10 @@ export function generateChunk(
       polygon = clipEdge(polygon, point => point.z >= minZ, at("z", minZ));
       return clipEdge(polygon, point => point.z <= minZ + CHUNK_SIZE, at("z", minZ + CHUNK_SIZE));
     };
-    const stripIndices: number[] = [];
     const emit = (triangle: StripPoint[]): void => {
       const polygon = clipTriangle(triangle);
       if (polygon.length < 3) return;
-      const polygonIndices = polygon.map(point => addVertex(point.x, point.z, point.offset)!);
-      for (let index = 1; index < polygonIndices.length - 1; index++) {
-        const a = polygonIndices[0]!, b = polygonIndices[index]!, c = polygonIndices[index + 1]!;
-        const av = vertices[a]!, bv = vertices[b]!, cv = vertices[c]!;
-        const normalY = (bv.z - av.z) * (cv.x - av.x) - (bv.x - av.x) * (cv.z - av.z);
-        if (normalY > 1e-10) stripIndices.push(a, b, c);
-        else if (normalY < -1e-10) stripIndices.push(a, c, b);
-      }
+      polygon.forEach(point=>addVertex(point.x,point.z,point.offset));
     };
     for (let cross = 0; cross < offsets.length - 1; cross++) {
       const aOffset = offsets[cross]!, bOffset = offsets[cross + 1]!;
@@ -298,18 +293,15 @@ export function generateChunk(
         emit([a, b, c]); emit([c, b, d]);
       }
     }
-    const constraintMap = new Map<string, [number, number]>();
-    for (let index = 0; index < stripIndices.length; index += 3) for (let edge = 0; edge < 3; edge++) {
-      const a = stripIndices[index + edge]!, b = stripIndices[index + (edge + 1) % 3]!;
-      const key = a < b ? `${a},${b}` : `${b},${a}`;
-      constraintMap.set(key, a < b ? [a, b] : [b, a]);
-    }
-    // A constrained triangulation makes every river-band edge part of the one
-    // terrain surface; generic adaptive points fill only the surrounding faces.
+    // Variable-width rows are point landmarks, not independent polygon shells.
+    // Constraining every individually clipped strip triangle can turn its
+    // one-sided clipping diagonal into an internal terrain boundary. A single
+    // Delaunay surface over the complete canonical point set is manifold while
+    // retaining every narrow transition row.
     const originalByPosition = new Map(vertices.map(vertex =>
       [`${vertex.x.toFixed(9)},${vertex.z.toFixed(9)}`, vertex]));
     const points = vertices.map(vertex => [vertex.x, vertex.z]);
-    const constraints = [...constraintMap.values()];
+    const constraints: [number,number][] = [];
     cleanPSLG(points, constraints);
     // clean-pslg uses an internally randomized sweep structure. Its geometric
     // result is stable, but insertion/index order is not. Canonicalize the PSLG

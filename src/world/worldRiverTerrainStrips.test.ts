@@ -3,26 +3,29 @@ import { describe, expect, it } from "vitest";
 import { CHUNK_SIZE } from "./chunkCoordinates";
 import { generateChunk, WORLD_RIVER_TERRAIN_STRIP_SAMPLE_SPACING } from "./generateChunk";
 import { sampleTerrainHeight } from "./terrainSampling";
-import { WORLD_RIVER_CARVING, WORLD_RIVER_LIP_CREST_DISTANCE,
-  WORLD_RIVER_MAX_CARVING_RADIUS } from "./worldRiverCarving";
+import { WORLD_RIVER_CARVING } from "./worldRiverCarving";
 import { dryChunkOutsideRiverInfluence, riverChunkAtProgress, riverSeamCrossing, strongestCurvatureProgress } from "./riverProceduralFixtures";
+import { getWorldRiverOwner } from "./worldRiverOwner";
 
 const close = (a: number, b: number): boolean => Math.abs(a - b) < 1e-8;
 
 describe("world-river terrain landmark strips", () => {
   it("contains authoritative water, lip, inner-bank, and falloff vertices", () => {
-    const riverChunk = riverChunkAtProgress(.5, "strip-landmarks");
-    const chunk = generateChunk("strip-landmarks", riverChunk);
-    expect(chunk.irregularTerrain, `expected refined river fixture ${JSON.stringify(riverChunk)}`).toBeDefined();
-    const vertices = chunk.irregularTerrain!.vertices;
-    const landmarks = [WORLD_RIVER_CARVING.waterHalfWidth, WORLD_RIVER_LIP_CREST_DISTANCE,
-      WORLD_RIVER_CARVING.waterHalfWidth + WORLD_RIVER_CARVING.bankWidth,
-      WORLD_RIVER_MAX_CARVING_RADIUS];
-    for (const magnitude of landmarks) for (const offset of [-magnitude, magnitude]) {
-      const strip = vertices.filter(vertex => close(vertex.riverStripOffset ?? Infinity, offset));
-      expect(strip.length).toBeGreaterThan(2);
+    const owner=getWorldRiverOwner("strip-landmarks");
+    const landmarks = [0,WORLD_RIVER_CARVING.shoreTransitionWidth,WORLD_RIVER_CARVING.bankWidth,
+      WORLD_RIVER_CARVING.bankWidth+WORLD_RIVER_CARVING.falloffWidth];
+    const count=(vertices:NonNullable<ReturnType<typeof generateChunk>["irregularTerrain"]>["vertices"],magnitude:number)=>vertices.filter(vertex=>{const nearest=owner.spine.nearestPointToRiver(vertex.x,vertex.z);return Math.abs(Math.abs(vertex.riverStripOffset??Infinity)-owner.widthProfile.sampleAtDistance(nearest.distanceAlongRiver).halfWidth-magnitude)<WORLD_RIVER_TERRAIN_STRIP_SAMPLE_SPACING*.35}).length;
+    const frame=owner.spine.sampleFrame(.5),extent=owner.widthProfile.sampleAtProgress(.5).halfWidth+WORLD_RIVER_CARVING.bankWidth+WORLD_RIVER_CARVING.falloffWidth;
+    const coordinates=[-1,0,1].map(side=>({x:Math.floor((frame.position.x+frame.normal.x*extent*side)/CHUNK_SIZE),z:Math.floor((frame.position.z+frame.normal.z*extent*side)/CHUNK_SIZE)})).filter((value,index,array)=>array.findIndex(other=>other.x===value.x&&other.z===value.z)===index);
+    const chunks=coordinates.map(coordinate=>generateChunk("strip-landmarks",coordinate));
+    const vertices=chunks.flatMap(chunk=>chunk.irregularTerrain?.vertices??[]);
+    expect(landmarks.every(magnitude=>count(vertices,magnitude)>2),"derived fixture must contain every variable-width transition").toBe(true);
+    const relative=(vertex:typeof vertices[number])=>Math.abs(vertex.riverStripOffset??Infinity)-owner.widthProfile.sampleAtDistance(owner.spine.nearestPointToRiver(vertex.x,vertex.z).distanceAlongRiver).halfWidth;
+    for (const magnitude of landmarks) {
+      const strip = vertices.filter(vertex => Math.abs(relative(vertex)-magnitude)<WORLD_RIVER_TERRAIN_STRIP_SAMPLE_SPACING*.35);
+      expect(strip.length,`relative landmark ${magnitude}`).toBeGreaterThan(2);
       strip.forEach(vertex => expect(vertex.height)
-        .toBeCloseTo(sampleTerrainHeight(chunk.seed, vertex.x, vertex.z), 12));
+        .toBeCloseTo(sampleTerrainHeight(chunks[0]!.seed, vertex.x, vertex.z), 12));
     }
   });
 
@@ -31,21 +34,22 @@ describe("world-river terrain landmark strips", () => {
     const chunk = generateChunk("strip-shore-bands", riverChunk);
     expect(chunk.irregularTerrain).toBeDefined();
     const { vertices, indices } = chunk.irregularTerrain!;
-    const water = WORLD_RIVER_CARVING.waterHalfWidth;
-    const shoreOffsets = Array.from({ length: 5 }, (_, index) =>
-      water + WORLD_RIVER_CARVING.shoreTransitionWidth * index / 4);
+    const owner=getWorldRiverOwner("strip-shore-bands");
+    const relative=(vertex:typeof vertices[number])=>Math.abs(vertex.riverStripOffset??Infinity)-owner.widthProfile.sampleAtDistance(owner.spine.nearestPointToRiver(vertex.x,vertex.z).distanceAlongRiver).halfWidth;
+    const water = 0;
+    const shoreOffsets = Array.from({ length: 5 }, (_, index) => WORLD_RIVER_CARVING.shoreTransitionWidth * index / 4);
     const expectedEdges = shoreOffsets.slice(1).map((offset, index) => [shoreOffsets[index]!, offset] as const);
     const foundEdges: [number, number][] = [];
     for (let index = 0; index < indices.length; index += 3) {
       const triangle = [vertices[indices[index]!]!, vertices[indices[index + 1]!]!, vertices[indices[index + 2]!]!];
       for (let edge = 0; edge < 3; edge++) {
-        const a = Math.abs(triangle[edge]!.riverStripOffset ?? Infinity);
-        const b = Math.abs(triangle[(edge + 1) % 3]!.riverStripOffset ?? Infinity);
+        const a = relative(triangle[edge]!);
+        const b = relative(triangle[(edge + 1) % 3]!);
         if (Number.isFinite(a) && Number.isFinite(b)) foundEdges.push([Math.min(a, b), Math.max(a, b)]);
       }
-      const offsets = triangle.map(vertex => Math.abs(vertex.riverStripOffset ?? Infinity));
+      const offsets = triangle.map(relative);
       if (offsets.every(Number.isFinite) && offsets.some(offset => offset < water - 1e-8)) {
-        expect(offsets.some(offset => offset > WORLD_RIVER_LIP_CREST_DISTANCE + 1e-8)).toBe(false);
+        expect(offsets.some(offset => offset > WORLD_RIVER_CARVING.shoreTransitionWidth + 1e-8)).toBe(false);
       }
     }
     expectedEdges.forEach(([a, b]) => expect(foundEdges.some(([foundA, foundB]) =>
@@ -57,12 +61,11 @@ describe("world-river terrain landmark strips", () => {
     const chunk = generateChunk("strip-interiors", riverChunk);
     expect(chunk.irregularTerrain).toBeDefined();
     const { vertices, indices } = chunk.irregularTerrain!;
+    const owner=getWorldRiverOwner("strip-interiors");
     let checked = 0;
     for (let index = 0; index < indices.length; index += 3) {
       const triangle = [vertices[indices[index]!]!, vertices[indices[index + 1]!]!, vertices[indices[index + 2]!]!];
-      if (!triangle.every(vertex => vertex.riverStripOffset !== undefined
-        && Math.abs(vertex.riverStripOffset) >= WORLD_RIVER_CARVING.waterHalfWidth
-        && Math.abs(vertex.riverStripOffset) <= WORLD_RIVER_LIP_CREST_DISTANCE)) continue;
+      if (!triangle.every(vertex => {if(vertex.riverStripOffset===undefined)return false;const nearest=owner.spine.nearestPointToRiver(vertex.x,vertex.z),relative=Math.abs(vertex.riverStripOffset)-owner.widthProfile.sampleAtDistance(nearest.distanceAlongRiver).halfWidth;return relative>=-1e-8&&relative<=WORLD_RIVER_CARVING.shoreTransitionWidth+1e-8})) continue;
       const x = triangle.reduce((sum, vertex) => sum + vertex.x, 0) / 3;
       const z = triangle.reduce((sum, vertex) => sum + vertex.z, 0) / 3;
       const renderedHeight = triangle.reduce((sum, vertex) => sum + vertex.height, 0) / 3;

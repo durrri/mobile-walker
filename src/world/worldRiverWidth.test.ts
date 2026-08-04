@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { getWorldRiverOwner, resetWorldRiverOwners } from "./worldRiverOwner";
-import { RIVER_WIDTH_CONFIG, sampleRiverWidth } from "./worldRiverWidth";
+import { createRiverWidthProfile, RIVER_WIDTH_CONFIG, sampleRiverWidth } from "./worldRiverWidth";
+import { RiverSpine } from "./riverSpineGeometry";
 import { sampleWorldRiverWater } from "./worldRiverWater";
 import { createWorldRiverCarvingContext, sampleWorldRiverCarving } from "./worldRiverCarving";
 import { queryWorldRiverBridgeCandidates } from "./bridges";
@@ -36,7 +37,7 @@ describe("R9 authoritative river width profile",()=>{
   });
 
   it("keeps every measured non-local sample pair safely separated",()=>{
-    const owner=getWorldRiverOwner("r9-safety"),p=owner.widthProfile.samples;
+    const owner=getWorldRiverOwner("r9-safety"),p=Array.from({length:Math.ceil(owner.spine.totalLength)+1},(_,i)=>owner.widthProfile.sampleAtDistance(Math.min(i,owner.spine.totalLength)));
     for(let a=0;a<p.length;a++)for(let b=a+1;b<p.length;b++)if(p[b]!.distance-p[a]!.distance>=RIVER_WIDTH_CONFIG.nonLocalDistance){
       const pa=owner.spine.samplePosition(owner.spine.progressAtDistance(p[a]!.distance));
       const pb=owner.spine.samplePosition(owner.spine.progressAtDistance(p[b]!.distance));
@@ -45,14 +46,23 @@ describe("R9 authoritative river width profile",()=>{
     }
   });
 
+  it("rejects missing and mismatched authoritative profiles",()=>{
+    const owner=getWorldRiverOwner("r9-profile-owner"),other=getWorldRiverOwner("r9-profile-other");
+    expect(()=>sampleRiverWidth(owner.widthProfile,1,other.spine)).toThrow(/does not belong/);
+    const explicit=new RiverSpine([{x:0,z:0},{x:0,z:40}]);
+    expect(()=>createWorldRiverCarvingContext({minX:-1,maxX:1,minZ:0,maxZ:10},explicit)).toThrow(/profile is required/);
+    const profile=createRiverWidthProfile("explicit",explicit);
+    expect(createWorldRiverCarvingContext({minX:-1,maxX:1,minZ:0,maxZ:10},explicit,profile).widthProfile.identity).toBe(profile.identity);
+  });
+
   it("makes carving, water and bridge generation consume the same local width",()=>{
     const owner=getWorldRiverOwner("r9-consumers"),d=owner.spine.totalLength*.5,frame=owner.spine.sampleFrame(owner.spine.progressAtDistance(d));
-    const expected=sampleRiverWidth(owner.spine,d).halfWidth;
-    const water=sampleWorldRiverWater(frame.position.x,frame.position.z,owner.spine);
-    const context=createWorldRiverCarvingContext({minX:frame.position.x-1,maxX:frame.position.x+1,minZ:frame.position.z-1,maxZ:frame.position.z+1},owner.spine);
+    const expected=sampleRiverWidth(owner.widthProfile,d,owner.spine).halfWidth;
+    const water=sampleWorldRiverWater(frame.position.x,frame.position.z,owner.spine,owner.widthProfile);
+    const context=createWorldRiverCarvingContext({minX:frame.position.x-1,maxX:frame.position.x+1,minZ:frame.position.z-1,maxZ:frame.position.z+1},owner.spine,owner.widthProfile);
     expect(water.halfWidth).toBeCloseTo(expected,8);
     expect(sampleWorldRiverCarving(frame.position.x,frame.position.z,context)!.waterHalfWidth).toBeCloseTo(expected,5);
-    const candidates=queryWorldRiverBridgeCandidates(owner.seed,owner.spine.bounds,owner.spine);
-    for(const candidate of candidates)expect(candidate.waterHalfWidth).toBeCloseTo(sampleRiverWidth(owner.spine,candidate.riverDistance).halfWidth,8);
+    const candidates=queryWorldRiverBridgeCandidates(owner.seed,owner.spine.bounds,owner.spine,owner.widthProfile);
+    for(const candidate of candidates)expect(candidate.waterHalfWidth).toBeCloseTo(sampleRiverWidth(owner.widthProfile,candidate.riverDistance,owner.spine).halfWidth,8);
   });
 });

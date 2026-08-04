@@ -200,10 +200,10 @@ export function isLakeAt(seedInput: number | string, worldX: number, worldZ: num
 
 export function sampleTerrain(seed: number | string, worldX: number, worldZ: number): TerrainSample {
   const biome = sampleBiome(seed, worldX, worldZ);
-  const spine = getWorldRiverOwner(seed).spine;
+  const owner = getWorldRiverOwner(seed),spine=owner.spine;
   return {
     height: sampleTerrainHeight(seed, worldX, worldZ),
-    surface: (()=>{const nearest=spine.nearestPointToRiver(worldX,worldZ);return nearest.distanceToRiver <= sampleRiverWidth(spine,nearest.distanceAlongRiver).halfWidth})()
+    surface: (()=>{const nearest=spine.nearestPointToRiver(worldX,worldZ);return nearest.distanceToRiver <= sampleRiverWidth(owner.widthProfile,nearest.distanceAlongRiver,spine).halfWidth})()
       ? "river" : isLakeAt(seed, worldX, worldZ) ? "lake" : "land",
     biome: biome.dominant,
     biomeWeights: biome.weights,

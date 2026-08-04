@@ -58,12 +58,12 @@ describe("findSafeRestoredTransform", () => {
   });
 
   it("rejects river water while accepting banks and outer falloff", () => {
-    const spine=getWorldRiverOwner(seed).spine,frame = spine.sampleFrame(0.62);
+    const owner=getWorldRiverOwner(seed),spine=owner.spine,frame = spine.sampleFrame(0.62);
     const at = (offset: number) => ({ x: frame.position.x + frame.normal.x * offset, y: 99,
       z: frame.position.z + frame.normal.z * offset, yaw: 0 });
     const neverBlocked = () => false;
     const water = findSafeRestoredTransform(seed, at(0), offset, PLAYER_COLLISION_RADIUS, 0.5, 5, neverBlocked);
-    expect(isInsideWorldRiverWater(water.x, water.z, createWorldRiverGameplayContext({minX:water.x,maxX:water.x,minZ:water.z,maxZ:water.z},spine))).toBe(false);
+    expect(isInsideWorldRiverWater(water.x, water.z, createWorldRiverGameplayContext({minX:water.x,maxX:water.x,minZ:water.z,maxZ:water.z},spine,owner.widthProfile))).toBe(false);
     for (const distance of [WORLD_RIVER_LIP_CREST_DISTANCE + 0.1, WORLD_RIVER_MAX_CARVING_RADIUS - 0.1]) {
       const origin = at(distance);
       expect(findSafeRestoredTransform(seed, origin, offset, PLAYER_COLLISION_RADIUS, 0.5, 5, neverBlocked))

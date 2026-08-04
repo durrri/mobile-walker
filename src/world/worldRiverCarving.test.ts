@@ -6,10 +6,10 @@ import {
   sampleWorldRiverCarving,
   WORLD_RIVER_CARVING,
   WORLD_RIVER_INNER_BANK_WIDTH,
-  WORLD_RIVER_LIP_CREST_DISTANCE,
   WORLD_RIVER_MAX_CARVING_RADIUS,
   WORLD_RIVER_NOMINAL_SLOPES,
 } from "./worldRiverCarving";
+import { createRiverWidthProfile } from "./worldRiverWidth";
 
 describe("world river carving field", () => {
   it("is symmetric, signed, monotonic, continuous and deterministic", () => {
@@ -40,7 +40,7 @@ describe("world river carving field", () => {
   it("works for both principal orientations and has valid constants", () => {
     for (const spine of [new RiverSpine([{ x: -10, z: 0 }, { x: 10, z: 0 }]),
       new RiverSpine([{ x: 0, z: -10 }, { x: 0, z: 10 }])]) {
-      const context = { spine, segments: spine.indexedSegments, hasRiver: true } as const;
+      const context = { spine, widthProfile:createRiverWidthProfile("carving-axis",spine),segments: spine.indexedSegments, hasRiver: true } as const;
       expect(sampleWorldRiverCarving(0, 0, context)!.channelInfluence).toBe(1);
       expect(Number.isFinite(sampleWorldRiverCarving(2.5, 2.5, context)!.targetBedHeight)).toBe(true);
     }
@@ -86,12 +86,13 @@ describe("world river carving field", () => {
 
   it("keeps the channel submerged, then crosses a continuous raised walkable bank", () => {
     const spine = new RiverSpine([{ x: -20, z: 0 }, { x: 20, z: 0 }]);
-    const context = { spine, segments: spine.indexedSegments, hasRiver: true } as const;
+    const context = { spine,widthProfile:createRiverWidthProfile("carving-bank",spine), segments: spine.indexedSegments, hasRiver: true } as const;
     const at = (offset: number, base = 20) => applyWorldRiverCarving(
       base, sampleWorldRiverCarving(0, offset, context),
     );
-    const { waterHalfWidth, surfaceElevation, shoreClearance, shoreTransitionWidth,
+    const { surfaceElevation, shoreClearance, shoreTransitionWidth,
       lipHeight, bankWidth, innerBankRise } = WORLD_RIVER_CARVING;
+    const waterHalfWidth=context.widthProfile.sampleAtProgress(.5).halfWidth;
 
     // Dense bilateral sampling proves no authoritative terrain reaches the
     // rendered water plane anywhere strictly inside its footprint.
@@ -102,12 +103,12 @@ describe("world river carving field", () => {
     }
     expect(at(waterHalfWidth)).toBeCloseTo(surfaceElevation - shoreClearance, 12);
     expect(at(-waterHalfWidth)).toBeCloseTo(surfaceElevation - shoreClearance, 12);
-    expect(WORLD_RIVER_LIP_CREST_DISTANCE).toBe(waterHalfWidth + shoreTransitionWidth);
-    expect(at(WORLD_RIVER_LIP_CREST_DISTANCE)).toBeCloseTo(surfaceElevation + lipHeight, 12);
-    expect(WORLD_RIVER_LIP_CREST_DISTANCE).toBeGreaterThan(waterHalfWidth);
+    expect(sampleWorldRiverCarving(0,0,context)!.lipCrestDistance).toBeCloseTo(waterHalfWidth + shoreTransitionWidth,12);
+    const localLip=waterHalfWidth+shoreTransitionWidth,localOuter=waterHalfWidth+bankWidth+WORLD_RIVER_CARVING.falloffWidth;
+    expect(at(localLip)).toBeCloseTo(surfaceElevation + lipHeight, 12);
+    expect(localLip).toBeGreaterThan(waterHalfWidth);
 
-    const landmarks = [0, waterHalfWidth, WORLD_RIVER_LIP_CREST_DISTANCE,
-      waterHalfWidth + bankWidth, WORLD_RIVER_MAX_CARVING_RADIUS];
+    const landmarks = [0, waterHalfWidth, localLip,waterHalfWidth + bankWidth, localOuter];
     for (const landmark of landmarks.slice(1, -1)) {
       expect(Math.abs(at(landmark - 1e-6) - at(landmark + 1e-6))).toBeLessThan(1e-5);
     }

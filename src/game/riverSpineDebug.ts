@@ -1,8 +1,9 @@
 import * as THREE from "three";
 import { CHUNK_SIZE } from "../world/chunkCoordinates";
 import { referenceWorldRiverGeneration, referenceWorldRiverMacroSpine, referenceWorldRiverSpine, type MacroRiverGeneration, type RiverSpine } from "../world/worldRiverSpine";
-import { WORLD_RIVER_CARVING, WORLD_RIVER_LIP_CREST_DISTANCE } from "../world/worldRiverCarving";
+import { getReferenceRiverWidthProfile, WORLD_RIVER_CARVING } from "../world/worldRiverCarving";
 import { WORLD_RIVER_WATER_SAMPLE_SPACING } from "../world/worldRiverWater";
+import { sampleRiverWidth, type RiverWidthProfile } from "../world/worldRiverWidth";
 
 export type RiverSpineDebugMode = "off" | "spine" | "ribbon" | "detailed";
 export type TerrainHeightSampler = (worldX: number, worldZ: number) => number;
@@ -46,7 +47,9 @@ export class RiverSpineDebugView {
     private readonly sampleHeight: TerrainHeightSampler = () => 0,
     private readonly macroSpine: RiverSpine = referenceWorldRiverMacroSpine,
     private readonly generation: MacroRiverGeneration = referenceWorldRiverGeneration,
-  ) {}
+    widthProfile?: RiverWidthProfile,
+  ) {this.widthProfile=widthProfile??getReferenceRiverWidthProfile()}
+  private readonly widthProfile:RiverWidthProfile;
 
   setLayerVisibility(value: Partial<typeof this.visibility>): void {
     Object.assign(this.visibility, value);
@@ -57,6 +60,7 @@ export class RiverSpineDebugView {
 
   generationReadout(playerX = 0, playerZ = 0): Readonly<Record<string, string | number | boolean>> {
     const macro = this.macroSpine.nearestPointToRiver(playerX, playerZ), final = this.spine.nearestPointToRiver(playerX, playerZ);
+    const localWidth=this.widthProfile.sampleAtDistance(final.distanceAlongRiver);
     return Object.freeze({ seed: String(this.generation.config.worldSeed), generationVersion: this.generation.config.generationVersion,
       macroControlPointCount: this.generation.macroControlPoints.length, macroLength: this.macroSpine.totalLength,
       meanderedLength: this.spine.totalLength, localMacroProgress: macro.progress, localFinalProgress: final.progress,
@@ -67,7 +71,10 @@ export class RiverSpineDebugView {
         && macro.distanceAlongRiver <= region.endDistance)?.profile ?? "quiet",
       activeRegionalStrength: this.generation.meanderRegions.reduce((value, region) => Math.max(value,
         macro.distanceAlongRiver <= region.startDistance || macro.distanceAlongRiver >= region.endDistance ? 0 : region.strength), 0),
-      correctionApplied: this.generation.correctionApplied });
+      correctionApplied: this.generation.correctionApplied,
+      localFullWidth:localWidth.fullWidth,localTargetWidth:localWidth.targetWidth,localWidthSafetyClamped:localWidth.safetyClamped,
+      widthMinimum:this.widthProfile.minimum,widthMaximum:this.widthProfile.maximum,widthMean:this.widthProfile.mean,
+      widthClampedSamples:this.widthProfile.clampedSampleCount });
   }
 
   setMode(mode: RiverSpineDebugMode): void {
@@ -113,30 +120,44 @@ export class RiverSpineDebugView {
     finalLine.visible = this.visibility.meandered; root.add(finalLine);
 
     if (mode === "ribbon" || mode === "detailed") {
-      root.add(this.ribbon(WORLD_RIVER_CARVING.waterHalfWidth * 2, mode === "detailed" ? RIVER_DEBUG_STYLE.detailedRibbonOpacity : RIVER_DEBUG_STYLE.ribbonOpacity));
+      root.add(this.ribbon(mode === "detailed" ? RIVER_DEBUG_STYLE.detailedRibbonOpacity : RIVER_DEBUG_STYLE.ribbonOpacity));
       root.add(this.chunkGrid());
     }
 
     if (mode === "detailed") {
-      const offsetGuide = (offset: number): { x: number; z: number }[] => Array.from(
+      const offsetGuide = (additionalOffset: number): { x: number; z: number }[] => Array.from(
         { length: 401 },
         (_, index) => {
           const frame = this.spine.sampleFrame(index / 400);
+          const half=sampleRiverWidth(this.widthProfile,index/400*this.spine.totalLength,this.spine).halfWidth;
+          const side=additionalOffset<0||Object.is(additionalOffset,-0)?-1:1;
+          const offset=side*(half+Math.abs(additionalOffset));
           return { x: frame.position.x + frame.normal.x * offset, z: frame.position.z + frame.normal.z * offset };
         },
       );
-      const channelEdges = [WORLD_RIVER_CARVING.waterHalfWidth, -WORLD_RIVER_CARVING.waterHalfWidth]
+      const channelEdges = [0, -0]
         .flatMap(offset => this.segmentPairs(offsetGuide(offset)));
-      const lipEdges = [WORLD_RIVER_LIP_CREST_DISTANCE, -WORLD_RIVER_LIP_CREST_DISTANCE]
+      const lipEdges = [WORLD_RIVER_CARVING.shoreTransitionWidth, -WORLD_RIVER_CARVING.shoreTransitionWidth]
         .flatMap(offset => this.segmentPairs(offsetGuide(offset)));
-      const outer = WORLD_RIVER_CARVING.waterHalfWidth + WORLD_RIVER_CARVING.bankWidth + WORLD_RIVER_CARVING.falloffWidth;
+      const outer = WORLD_RIVER_CARVING.bankWidth + WORLD_RIVER_CARVING.falloffWidth;
       const falloffEdges = [outer, -outer].flatMap(offset => this.segmentPairs(offsetGuide(offset)));
       root.add(this.thickSegments(channelEdges, RIVER_DEBUG_STYLE.channelEdge, "debug:river-channel-edges"));
       root.add(this.thickSegments(lipEdges, RIVER_DEBUG_STYLE.lipEdge, "debug:river-lip-edges"));
-      const inner = WORLD_RIVER_CARVING.waterHalfWidth + WORLD_RIVER_CARVING.bankWidth;
+      const inner = WORLD_RIVER_CARVING.bankWidth;
       const innerBankEdges = [inner, -inner].flatMap(offset => this.segmentPairs(offsetGuide(offset)));
       root.add(this.thickSegments(innerBankEdges, RIVER_DEBUG_STYLE.innerBankEdge, "debug:river-inner-bank-edges"));
       root.add(this.thickSegments(falloffEdges, RIVER_DEBUG_STYLE.falloffEdge, "debug:river-falloff-edges"));
+      const diagnostics=this.widthProfile.samples.filter((_,index)=>index%Math.max(1,Math.ceil(this.widthProfile.samples.length/128))===0);
+      const crossSections=diagnostics.flatMap(sample=>{const frame=this.spine.sampleFrame(this.spine.progressAtDistance(sample.distance));return[
+        {x:frame.position.x-frame.normal.x*sample.halfWidth,z:frame.position.z-frame.normal.z*sample.halfWidth},
+        {x:frame.position.x+frame.normal.x*sample.halfWidth,z:frame.position.z+frame.normal.z*sample.halfWidth}]});
+      root.add(this.thickSegments(crossSections,RIVER_DEBUG_STYLE.channelEdge,"debug:river-width-cross-sections"));
+      const targets=diagnostics.flatMap(sample=>{const frame=this.spine.sampleFrame(this.spine.progressAtDistance(sample.distance));return[
+        {x:frame.position.x-frame.normal.x*sample.targetWidth/2,z:frame.position.z-frame.normal.z*sample.targetWidth/2},
+        {x:frame.position.x+frame.normal.x*sample.targetWidth/2,z:frame.position.z+frame.normal.z*sample.targetWidth/2}]});
+      root.add(this.thickSegments(targets,RIVER_DEBUG_STYLE.lipEdge,"debug:river-width-target-cross-sections"));
+      const clamped=diagnostics.filter(sample=>sample.safetyClamped).map(sample=>this.spine.sampleAtDistance(sample.distance));
+      root.add(this.points(clamped,0xff1744,.35,.38,"debug:river-width-safety-clamps"));
       const marks = Array.from(
         { length: Math.floor(this.spine.totalLength / WORLD_RIVER_WATER_SAMPLE_SPACING) + 1 },
         (_, index) => this.spine.sampleAtDistance(index * WORLD_RIVER_WATER_SAMPLE_SPACING),
@@ -241,13 +262,13 @@ export class RiverSpineDebugView {
     return result;
   }
 
-  private ribbon(width: number, opacity: number): THREE.Mesh {
+  private ribbon(opacity: number): THREE.Mesh {
     const vertices: number[] = [];
     const indices: number[] = [];
     const samples = 512;
     for (let index = 0; index <= samples; index += 1) {
       const frame = this.spine.sampleFrame(index / samples);
-      const half = width / 2;
+      const half = sampleRiverWidth(this.widthProfile,index/samples*this.spine.totalLength,this.spine).halfWidth;
       const left = placeRiverDebugPoint(
         { x: frame.position.x + frame.normal.x * half, z: frame.position.z + frame.normal.z * half },
         this.sampleHeight,

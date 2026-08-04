@@ -13,7 +13,7 @@ describe("production procedural river consumer integration", () => {
     expect(data.irregularTerrain, `missing refined terrain in ${JSON.stringify(riverChunk)}`).toBeDefined();
     const owner = getWorldRiverOwner(seed);
     expect(data.riverGenerationIdentity).toBe(owner.identity);
-    expect(tessellateWorldRiverWaterChunk(riverChunk, owner.spine).vertices.length).toBeGreaterThan(0);
+    expect(tessellateWorldRiverWaterChunk(riverChunk, owner.spine,owner.widthProfile).vertices.length).toBeGreaterThan(0);
     expect(data.pines.length + data.vegetation.leafTrees.length + data.vegetation.bushes.length + data.collectibles.length).toBeGreaterThan(0);
 
     const bridgeLocation = bridgeFixture(seed, true), bridgeData = generateBridges(seed, bridgeLocation.chunk);
@@ -25,7 +25,7 @@ describe("production procedural river consumer integration", () => {
     expect(generatePois(poiSeed, poiLocation.chunk).pois.some(poi => poi.id === poiLocation.poi.id)).toBe(true);
 
     const point = riverPointAtProgress(.5, seed), bounds = { minX: point.x - 8, maxX: point.x + 8, minZ: point.z - 8, maxZ: point.z + 8 };
-    const gameplay = sampleWorldRiverGameplay(seed, point.x, point.z, createWorldRiverGameplayContext(bounds, owner.spine));
+    const gameplay = sampleWorldRiverGameplay(seed, point.x, point.z, createWorldRiverGameplayContext(bounds, owner.spine,owner.widthProfile));
     expect(gameplay.insideWater).toBe(true);
   });
 });

@@ -136,6 +136,7 @@ export function createGameplay(
     (x, z) => sampleTerrainHeight(worldSeed, x, z),
     riverOwner.macroSpine,
     riverOwner.generation,
+    riverOwner.widthProfile,
   );
   return { chunks, biomeDebug, poiDebug, camera, persistence, exploration, playerShadow, riverSpineDebug };
 }

@@ -28,13 +28,13 @@ function findNear(
   overlapsTrunk: PlayerTrunkOverlapQuery,
   structureSafety?: PlayerStructureSafetyQuery,
 ): TransformComponent | undefined {
-  const river = getWorldRiverOwner(seed).spine;
+  const owner=getWorldRiverOwner(seed),river = owner.spine;
   const riverContext = createWorldRiverGameplayContext({
     minX: origin.x - maximumSearchRadius - collisionRadius,
     maxX: origin.x + maximumSearchRadius + collisionRadius,
     minZ: origin.z - maximumSearchRadius - collisionRadius,
     maxZ: origin.z + maximumSearchRadius + collisionRadius,
-  }, river);
+  }, river,owner.widthProfile);
   const isUnsafe = (x: number, z: number): boolean => {
     const structure = structureSafety?.(x, z, collisionRadius);
     if (structure?.kind === "walkable") return false;

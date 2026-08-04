@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { RiverSpine, worldRiverSpine } from "./worldRiverSpine";
 import { riverReachOutsideLegacyColumn } from "./riverProceduralFixtures";
 import { createWorldRiverRelationshipContext, queryWorldRiverRelationship } from "./worldRiverRelationship";
+import { createRiverWidthProfile } from "./worldRiverWidth";
 
 describe("world-river POI relationships", () => {
   it.each([0.18, 0.48, 0.72])("keeps side, distance, and an orthonormal frame stable at progress %s", progress => {
@@ -23,7 +24,7 @@ describe("world-river POI relationships", () => {
   ] as const)("queries a reach without an axis convention", (points, _name) => {
     const spine = new RiverSpine(points);
     const frame = spine.sampleFrame(0.5);
-    const context = createWorldRiverRelationshipContext({ minX: frame.position.x - 4, maxX: frame.position.x + 4, minZ: frame.position.z - 4, maxZ: frame.position.z + 4 }, 8, spine);
+    const context = createWorldRiverRelationshipContext({ minX: frame.position.x - 4, maxX: frame.position.x + 4, minZ: frame.position.z - 4, maxZ: frame.position.z + 4 }, 8, spine,createRiverWidthProfile(`relationship-${_name}`,spine));
     const relationship = queryWorldRiverRelationship(frame.position.x + frame.normal.x * 2, frame.position.z + frame.normal.z * 2, context, { curvatureThresholdRadians: 0.01 });
     expect(relationship?.signedSide).toBeGreaterThan(0);
     expect(relationship?.segmentIndex).toBeGreaterThanOrEqual(0);
