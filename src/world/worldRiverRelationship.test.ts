@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { RiverSpine, worldRiverSpine } from "./worldRiverSpine";
+import { riverReachOutsideLegacyColumn } from "./riverProceduralFixtures";
 import { createWorldRiverRelationshipContext, queryWorldRiverRelationship } from "./worldRiverRelationship";
 
 describe("world-river POI relationships", () => {
@@ -43,8 +44,8 @@ describe("world-river POI relationships", () => {
     const dry = createWorldRiverRelationshipContext({ minX: -2, maxX: 2, minZ: 500, maxZ: 516 }, 12);
     expect(dry.hasRiver).toBe(false);
     expect(queryWorldRiverRelationship(0, 508, dry)).toBeUndefined();
-    const outsideOldColumn = worldRiverSpine.sampleFrame(0.35);
-    expect(Math.abs(outsideOldColumn.position.x)).toBeGreaterThan(16);
+    const outsideOldColumn = riverReachOutsideLegacyColumn();
+    expect(outsideOldColumn.chunk.x).not.toBe(0);
     expect(queryWorldRiverRelationship(outsideOldColumn.position.x, outsideOldColumn.position.z)).toBeDefined();
   });
 });

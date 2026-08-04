@@ -80,12 +80,25 @@ describe("R7 procedural macro river", () => {
     const macro = new RiverSpine([{ x: 0, z: 100 }, { x: 0, z: -100 }]);
     const region: MeanderRegion = Object.freeze({ startDistance: 55, endDistance: 145,
       fadeInDistance: 12, fadeOutDistance: 12, strength: 1, profile: "strong",
-      targetWavelength: 81, targetBendRadius: 8, correctionApplied: false });
+      targetWavelength: 81, targetBendRadius: 4, correctionApplied: false });
     const points = generateMeanderedControlPoints(macro, DEFAULT_RIVER_GENERATION_CONFIG, [region]);
     const final = new RiverSpine(points);
     let reversed = false;
     for (let index = 1; index < points.length; index += 1) reversed ||= points[index]!.z > points[index - 1]!.z;
     expect(reversed).toBe(true);
+    let maximumReversal = 0, minimumRadius = Infinity;
+    for (let index = 1; index < 500; index += 1) {
+      const tangent = final.sampleTangent(index / 500);
+      maximumReversal = Math.max(maximumReversal, Math.acos(Math.max(-1, Math.min(1, -tangent.z))));
+    }
+    for (let index = 1; index < points.length - 1; index += 1) {
+      const a = points[index - 1]!, b = points[index]!, c = points[index + 1]!;
+      const ab = Math.hypot(a.x - b.x, a.z - b.z), bc = Math.hypot(b.x - c.x, b.z - c.z), ac = Math.hypot(a.x - c.x, a.z - c.z);
+      const area = Math.abs((b.x - a.x) * (c.z - a.z) - (b.z - a.z) * (c.x - a.x)) / 2;
+      if (area > 1e-6) minimumRadius = Math.min(minimumRadius, ab * bc * ac / (4 * area));
+    }
+    expect(maximumReversal * 180 / Math.PI).toBeGreaterThan(150);
+    expect(minimumRadius).toBeGreaterThanOrEqual(region.targetBendRadius);
     for (const distance of [region.startDistance, region.endDistance]) {
       const progress = macro.progressAtDistance(distance), expected = macro.samplePosition(progress);
       const actual = final.nearestPointToRiver(expected.x, expected.z);

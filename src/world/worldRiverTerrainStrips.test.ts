@@ -5,12 +5,15 @@ import { generateChunk, WORLD_RIVER_TERRAIN_STRIP_SAMPLE_SPACING } from "./gener
 import { sampleTerrainHeight } from "./terrainSampling";
 import { WORLD_RIVER_CARVING, WORLD_RIVER_LIP_CREST_DISTANCE,
   WORLD_RIVER_MAX_CARVING_RADIUS } from "./worldRiverCarving";
+import { dryChunkOutsideRiverInfluence, riverChunkAtProgress, riverSeamCrossing, strongestCurvatureProgress } from "./riverProceduralFixtures";
 
 const close = (a: number, b: number): boolean => Math.abs(a - b) < 1e-8;
 
 describe("world-river terrain landmark strips", () => {
+  const riverChunk = riverChunkAtProgress(.5);
   it("contains authoritative water, lip, inner-bank, and falloff vertices", () => {
-    const chunk = generateChunk("strip-landmarks", { x: 3, z: 2 });
+    const chunk = generateChunk("strip-landmarks", riverChunk);
+    expect(chunk.irregularTerrain, `expected refined river fixture ${JSON.stringify(riverChunk)}`).toBeDefined();
     const vertices = chunk.irregularTerrain!.vertices;
     const landmarks = [WORLD_RIVER_CARVING.waterHalfWidth, WORLD_RIVER_LIP_CREST_DISTANCE,
       WORLD_RIVER_CARVING.waterHalfWidth + WORLD_RIVER_CARVING.bankWidth,
@@ -24,7 +27,8 @@ describe("world-river terrain landmark strips", () => {
   });
 
   it("triangulates 0.05-wu shore spans without skipping the lip", () => {
-    const chunk = generateChunk("strip-shore-bands", { x: 3, z: 2 });
+    const chunk = generateChunk("strip-shore-bands", riverChunk);
+    expect(chunk.irregularTerrain).toBeDefined();
     const { vertices, indices } = chunk.irregularTerrain!;
     const water = WORLD_RIVER_CARVING.waterHalfWidth;
     const shoreOffsets = Array.from({ length: 5 }, (_, index) =>
@@ -48,7 +52,8 @@ describe("world-river terrain landmark strips", () => {
   });
 
   it("keeps representative rendered triangle interiors on the movement field", () => {
-    const chunk = generateChunk("strip-interiors", { x: 3, z: 2 });
+    const chunk = generateChunk("strip-interiors", riverChunk);
+    expect(chunk.irregularTerrain).toBeDefined();
     const { vertices, indices } = chunk.irregularTerrain!;
     let checked = 0;
     for (let index = 0; index < indices.length; index += 3) {
@@ -66,9 +71,11 @@ describe("world-river terrain landmark strips", () => {
   });
 
   it("shares exact global-lattice strip vertices at chunk seams", () => {
-    const left = generateChunk("strip-seams", { x: 3, z: 2 });
-    const right = generateChunk("strip-seams", { x: 4, z: 2 });
-    const boundary = 4 * CHUNK_SIZE;
+    const seam = riverSeamCrossing("x");
+    const left = generateChunk("strip-seams", seam.a);
+    const right = generateChunk("strip-seams", seam.b);
+    const boundary = seam.edge;
+    expect(left.irregularTerrain).toBeDefined(); expect(right.irregularTerrain).toBeDefined();
     const atBoundary = (chunk: typeof left) => chunk.irregularTerrain!.vertices
       .filter(vertex => close(vertex.x, boundary) && vertex.riverStripOffset !== undefined)
       .map(vertex => `${vertex.x},${vertex.z},${vertex.height},${vertex.riverStripOffset}`).sort();
@@ -77,7 +84,9 @@ describe("world-river terrain landmark strips", () => {
   });
 
   it("has upward unique strong-bend triangles and leaves dry chunks coarse", () => {
-    const chunk = generateChunk("strip-bend", { x: 3, z: 2 });
+    const bendChunk = riverChunkAtProgress(strongestCurvatureProgress());
+    const chunk = generateChunk("strip-bend", bendChunk);
+    expect(chunk.irregularTerrain).toBeDefined();
     const { vertices, indices } = chunk.irregularTerrain!;
     const triangles = new Set<string>();
     const edgeUse = new Map<string, { count: number; a: number; b: number }>();
@@ -95,14 +104,14 @@ describe("world-river terrain landmark strips", () => {
         use.count++; edgeUse.set(edgeKey, use);
       }
     }
-    const onBoundary = (vertex: typeof vertices[number]) => close(vertex.x, 3 * CHUNK_SIZE)
-      || close(vertex.x, 4 * CHUNK_SIZE) || close(vertex.z, 2 * CHUNK_SIZE)
-      || close(vertex.z, 3 * CHUNK_SIZE);
+    const onBoundary = (vertex: typeof vertices[number]) => close(vertex.x, bendChunk.x * CHUNK_SIZE)
+      || close(vertex.x, (bendChunk.x + 1) * CHUNK_SIZE) || close(vertex.z, bendChunk.z * CHUNK_SIZE)
+      || close(vertex.z, (bendChunk.z + 1) * CHUNK_SIZE);
     for (const edge of edgeUse.values()) {
       if (edge.count === 1 && onBoundary(vertices[edge.a]!) && onBoundary(vertices[edge.b]!)) continue;
       expect(edge.count, JSON.stringify({ a: vertices[edge.a], b: vertices[edge.b] })).toBe(2);
     }
     expect(WORLD_RIVER_TERRAIN_STRIP_SAMPLE_SPACING).toBe(0.5);
-    expect(generateChunk("strip-dry", { x: 100, z: 100 }).irregularTerrain).toBeUndefined();
+    expect(generateChunk("strip-dry", dryChunkOutsideRiverInfluence()).irregularTerrain).toBeUndefined();
   });
 });

@@ -3,6 +3,7 @@ import { CHUNK_SIZE, worldToChunk } from "./chunkCoordinates";
 import { WORLD_RIVER_CARVING } from "./worldRiverCarving";
 import { sampleChannelTerrainHeight } from "./terrainSampling";
 import { worldRiverSpine } from "./worldRiverSpine";
+import { cornerNearRiverSeamCrossing, riverSeamCrossing } from "./riverProceduralFixtures";
 import {
   sampleWorldRiverWater, tessellateWorldRiverWater, tessellateWorldRiverWaterChunk,
   WORLD_RIVER_WATER_SAMPLE_SPACING,
@@ -92,12 +93,7 @@ function sharedEdgeValues(geometry: ReturnType<typeof tessellateWorldRiverWater>
 }
 
 describe("direct chunk seam coverage", () => {
-  const cases = [
-    { label: "east/west diagonal crossing", a: { x: 1, z: 0 }, b: { x: 2, z: 0 }, axis: "x" as const, edge: 32 },
-    { label: "north/south crossing", a: { x: 0, z: 2 }, b: { x: 0, z: 3 }, axis: "z" as const, edge: 48 },
-    { label: "strong-bend north/south crossing", a: { x: 3, z: 1 }, b: { x: 3, z: 2 }, axis: "z" as const, edge: 32 },
-    { label: "corner-near north/south crossing", a: { x: -2, z: -2 }, b: { x: -2, z: -1 }, axis: "z" as const, edge: -16 },
-  ];
+  const cases = [riverSeamCrossing("x"), riverSeamCrossing("z", 0), riverSeamCrossing("z", 1), cornerNearRiverSeamCrossing()];
   for (const seam of cases) it(seam.label, () => {
     const first = tessellateWorldRiverWaterChunk(seam.a), second = tessellateWorldRiverWaterChunk(seam.b);
     const reversed = [tessellateWorldRiverWaterChunk(seam.b), tessellateWorldRiverWaterChunk(seam.a)].reverse();

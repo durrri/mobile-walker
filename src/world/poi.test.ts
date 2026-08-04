@@ -15,6 +15,7 @@ import {
   sampleLocalProminence,
   type PoiFootprint,
 } from "./poi";
+import { poiFixture } from "./riverProceduralFixtures";
 
 describe("deterministic POI generation", () => {
   it("registers cabins and watchtowers as data-driven POI definitions", () => {
@@ -117,10 +118,11 @@ describe("POI footprints and exclusions", () => {
 
 describe("POI navigation anchors", () => {
   it("uses entrances normally and a dry terrain-height dock landing for a generated lake house", () => {
-    const ordinary = generatePois(0, { x: 0, z: -8 }).pois.find(poi => poi.typeId === "plains-farmhouse")!;
+    const ordinaryFixture = poiFixture(0, poi => poi.typeId === "plains-farmhouse"), ordinary = ordinaryFixture.poi;
+    expect(generatePois(0, ordinaryFixture.chunk).pois.some(poi => poi.id === ordinary.id)).toBe(true);
     expect(ordinary.navigationAnchor).toEqual({ ...ordinary.entrance.position, kind: "entrance" });
 
-    const lakeHouse = generatePois(0, { x: -16, z: -5 }).pois.find(poi => poi.typeId === "lake-house")!;
+    const lakeFixture = poiFixture(0, poi => poi.typeId === "lake-house"), lakeHouse = lakeFixture.poi;
     const anchor = lakeHouse.navigationAnchor, dock = lakeHouse.dock!;
     expect(anchor.kind).toBe("dock-landing");
     expect([anchor.x, anchor.y, anchor.z].every(Number.isFinite)).toBe(true);
@@ -130,6 +132,6 @@ describe("POI navigation anchors", () => {
     expect(anchor.y).toBeCloseTo(sampleTerrainHeight(0, anchor.x, anchor.z));
     expect(isLakeAt(0, anchor.x, anchor.z)).toBe(false);
     expect(queryWorldRiverRelationship(anchor.x, anchor.z)?.distanceToWaterEdge ?? Infinity).toBeGreaterThan(0);
-    expect(generatePois(0, { x: -16, z: -5 }).pois.find(poi => poi.id === lakeHouse.id)?.navigationAnchor).toEqual(anchor);
+    expect(generatePois(0, lakeFixture.chunk).pois.find(poi => poi.id === lakeHouse.id)?.navigationAnchor).toEqual(anchor);
   });
 });

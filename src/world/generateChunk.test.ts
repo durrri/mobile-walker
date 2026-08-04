@@ -10,6 +10,7 @@ import {
 } from "./terrainSampling";
 import { sampleWorldRiverCarving } from "./worldRiverCarving";
 import { normalizeSeed } from "./random";
+import { dryChunkOutsideRiverInfluence, riverChunkAtProgress, riverReachOutsideLegacyColumn } from "./riverProceduralFixtures";
 
 describe("deterministic chunk generation", () => {
   it("repeats exactly for the same seed and coordinate", () => {
@@ -51,9 +52,17 @@ describe("deterministic chunk generation", () => {
 
   it("carves the same-position natural terrain and matches the generated grid", () => {
     const seed = "channel";
-    const point = { x: 48, z: 38 };
-    const coordinate = worldToChunk(point.x, point.z);
     const normalizedSeed = normalizeSeed(seed);
+    const coordinate = riverChunkAtProgress(.5);
+    const step = CHUNK_SIZE / TERRAIN_SEGMENTS;
+    const point = Array.from({ length: (TERRAIN_SEGMENTS + 1) ** 2 }, (_, index) => ({
+      x: coordinate.x * CHUNK_SIZE + (index % (TERRAIN_SEGMENTS + 1)) * step,
+      z: coordinate.z * CHUNK_SIZE + Math.floor(index / (TERRAIN_SEGMENTS + 1)) * step,
+    })).find(candidate => sampleWorldRiverCarving(candidate.x, candidate.z)?.insideChannel
+      && sampleNaturalTerrainHeight(normalizedSeed, candidate.x, candidate.z)
+        > sampleWorldRiverCarving(candidate.x, candidate.z)!.targetBedHeight);
+    expect(point, `expected carved grid point in ${JSON.stringify(coordinate)}`).toBeDefined();
+    if (!point) throw new Error(`expected carved grid point in ${JSON.stringify(coordinate)}`);
     const natural = sampleNaturalTerrainHeight(normalizedSeed, point.x, point.z);
     const carved = sampleChannelTerrainHeight(normalizedSeed, point.x, point.z);
     const target = sampleWorldRiverCarving(point.x, point.z)!.targetBedHeight;
@@ -68,7 +77,7 @@ describe("deterministic chunk generation", () => {
   });
 
   it("carves the world spine outside the old fixed river column", () => {
-    const point = { x: 62, z: 34 };
+    const point = riverReachOutsideLegacyColumn().position;
     expect(worldToChunk(point.x, point.z).x).not.toBe(0);
     const sample = sampleWorldRiverCarving(point.x, point.z)!;
     expect(sample.insideChannel).toBe(true);
@@ -78,8 +87,8 @@ describe("deterministic chunk generation", () => {
 
 
   it("keeps coarse height data while refining only chunks touched by the world river", () => {
-    const dryChunk = generateChunk("local-river-detail", { x: 1, z: 0 });
-    const riverChunk = generateChunk("local-river-detail", { x: 0, z: 0 });
+    const dryChunk = generateChunk("local-river-detail", dryChunkOutsideRiverInfluence());
+    const riverChunk = generateChunk("local-river-detail", riverChunkAtProgress(.5));
 
     expect(dryChunk.terrainVerticesPerSide).toBe(TERRAIN_SEGMENTS + 1);
     expect(riverChunk.terrainVerticesPerSide).toBe(TERRAIN_SEGMENTS + 1);
@@ -102,7 +111,8 @@ describe("deterministic chunk generation", () => {
   });
 
   it("keeps locally refined rendered vertices on the random-access movement field", () => {
-    const chunk = generateChunk("refined-movement-agreement", { x: 3, z: 2 });
+    const coordinate = riverChunkAtProgress(.5), chunk = generateChunk("refined-movement-agreement", coordinate);
+    expect(chunk.irregularTerrain, `expected refined river chunk ${JSON.stringify(coordinate)}`).toBeDefined();
     const refined = chunk.irregularTerrain!.vertices.filter(vertex =>
       sampleWorldRiverCarving(vertex.x, vertex.z)?.insideCarvingFalloff);
     expect(refined.length).toBeGreaterThan(20);

@@ -31,6 +31,8 @@ and stable suitability ID provide a future biome hook without coupling the domai
 Inside a gentle belt, a dominant sine and 16% harmonic form broad S-curves. Strong belts use a separate
 heading-controlled construction: a smooth local downstream reparameterization can briefly reverse
 heading while a larger lateral curve makes a deep bend, then both offsets return with zero-slope fades.
+The accepted strong-profile minimum bend radius is 4 world units; the permanent reference construction
+reaches a 165-degree local heading reversal while retaining greater than 4.86 units sampled bend radius.
 The configured 48–80 unit wavelengths remain well above constant river width. A bounded global
 amplitude-reduction loop (75% per pass, never below 25%) protects the corridor and non-adjacent channel
 separation deterministically. Endpoint protection is independent of every regional fade.
@@ -42,8 +44,18 @@ displacement connectors only in active belts. Orange cross-lines mark belt bound
 independently and a compact metadata readout includes local strength/profile without exposing raw arrays.
 
 For generation version 8's reference seed, the 262.45-unit macro contains two gentle belts totaling
-111.13 units, no strong belt (strong belts are intentionally uncommon), and 151.32 quiet units. The
+111.13 units, no strong belt (strong belts are intentionally uncommon), and three quiet reaches of
+47.88, 43.66, and 59.78 units (151.32 total). The
 resulting final spine is 265.00 units. Other seeds vary belt lengths, strengths, profiles, and placement.
+
+## Final performance validation
+
+The cache-cleared R6-comparable benchmark after procedural fixture migration reports cold median/p95
+milliseconds of dry 89.07/95.78, diagonal 370.73/455.95, canyon 345.70/395.38, bridge 365.05/402.50,
+and POI-adjacent 387.69/464.83. The former 969 ms POI case is eliminated. Largest median synchronous
+stages are respectively 54.20, 216.00, 170.95, 213.83, and 231.68 ms; the remaining POI-adjacent cost is
+isolated to constrained terrain triangulation rather than repeated spine generation. Cached retained-data
+lookups remain at or below 0.001 ms median, gameplay queries 0.057 ms median, and safe searches 5.424 ms.
 
 R6 is complete. R7 procedural macro path and R8 secondary meanders are complete, followed by R9
 variable width, R10 river-connected lakes, and R11 standalone-lake integration/final water rules.

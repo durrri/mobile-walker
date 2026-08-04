@@ -137,7 +137,7 @@ export function generateMeanderRegions(
       fadeInDistance: Math.min(14, length * .28), fadeOutDistance: Math.min(14, length * .28),
       strength: allowed * (.55 + hashFloat(seed, index, 8205) * .45), profile,
       targetWavelength: profile === "strong" ? Math.max(length * .9, wavelength) : wavelength,
-      targetBendRadius: profile === "strong" ? 8 : 18, correctionApplied: false }));
+      targetBendRadius: profile === "strong" ? 4 : 18, correctionApplied: false }));
   }
   return Object.freeze(regions);
 }
