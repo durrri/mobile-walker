@@ -16,6 +16,7 @@ import { PLAYER_COLLISION_RADIUS } from "../world/treeCollision";
 import { PoiDebugPresentationSystem } from "./poiDebug";
 import { RiverSpineDebugView } from "./riverSpineDebug";
 import { sampleTerrainHeight } from "../world/terrainSampling";
+import { getWorldRiverOwner } from "../world/worldRiverOwner";
 
 export interface GameplayControllers {
   readonly chunks: ChunkStreamingSystem;
@@ -36,6 +37,7 @@ export function createGameplay(
   dragIndicator?: HTMLElement,
 ): GameplayControllers {
   const worldSeed = "mobile-walker-v2";
+  const riverOwner = getWorldRiverOwner(worldSeed);
   const storage = getBrowserStorage();
   const savedState = loadGameState(storage, worldSeed);
   // Restoration precedes chunk streaming, so query canonical deterministic
@@ -122,7 +124,7 @@ export function createGameplay(
   const biomeOverlay = document.querySelector<HTMLElement>("#biome-guide");
   const biomeLabel = document.querySelector<HTMLElement>("#current-biome-name");
   if (!biomeOverlay || !biomeLabel) throw new Error("Biome guide elements could not be found.");
-  const biomeDebug = new BiomeDebugPresentationSystem(worldSeed, biomeOverlay, biomeLabel, () => camera.getFacingYaw());
+  const biomeDebug = new BiomeDebugPresentationSystem(worldSeed, biomeOverlay, biomeLabel, () => camera.getFacingYaw(), riverOwner.spine);
   systems.addRenderSystem(biomeDebug);
   const poiOverlay = document.querySelector<HTMLElement>("#poi-guide");
   if (!poiOverlay) throw new Error("The POI guide element could not be found.");
@@ -130,8 +132,10 @@ export function createGameplay(
   systems.addRenderSystem(poiDebug);
   const riverSpineDebug = new RiverSpineDebugView(
     renderer.scene,
-    undefined,
+    riverOwner.spine,
     (x, z) => sampleTerrainHeight(worldSeed, x, z),
+    riverOwner.macroSpine,
+    riverOwner.generation,
   );
   return { chunks, biomeDebug, poiDebug, camera, persistence, exploration, playerShadow, riverSpineDebug };
 }

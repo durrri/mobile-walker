@@ -12,7 +12,7 @@ import {
 } from "./bridges";
 import { pointInFootprint } from "./poi";
 import { WORLD_RIVER_CARVING } from "./worldRiverCarving";
-import { worldRiverSpine } from "./worldRiverSpine";
+import { getWorldRiverOwner } from "./worldRiverOwner";
 
 const WORLD_BOUNDS = { minX: -90, maxX: 90, minZ: -140, maxZ: 120 };
 const all = (seed = 7) => queryWorldRiverBridgeCandidates(seed, WORLD_BOUNDS);
@@ -66,13 +66,13 @@ describe("world-owned river bridges", () => {
       const result = generateBridges(7, candidate.ownerChunk);
       const diagnostic = result.candidates.find(value => value.id === candidate.id)!;
       expect(diagnostic).toBeDefined();
-      if (candidate.riverDistance < BRIDGE_ENDPOINT_CLEARANCE || candidate.riverDistance > worldRiverSpine.totalLength - BRIDGE_ENDPOINT_CLEARANCE) expect(diagnostic.reason).toBe("near river endpoint");
+      if (candidate.riverDistance < BRIDGE_ENDPOINT_CLEARANCE || candidate.riverDistance > getWorldRiverOwner(7).spine.totalLength - BRIDGE_ENDPOINT_CLEARANCE) expect(diagnostic.reason).toBe("near river endpoint");
       if (candidate.curvatureRadians > BRIDGE_MAX_CURVATURE_RADIANS && diagnostic.reason !== "rarity") expect(diagnostic.reason).toBe("river too curved");
     }
   });
 
   it("has one owner, oriented exact exclusions, and collision/rendering frame parity", () => {
-    const bridges = generated();
+    const seed=2,bridges=generated(seed); // Versioned representative with accepted off-column crossings.
     expect(bridges.length).toBeGreaterThan(0);
     expect(new Set(bridges.map(bridge => bridge.id)).size).toBe(bridges.length);
     expect(bridges.some(bridge => bridge.ownerChunk.x !== 0)).toBe(true);
@@ -80,7 +80,7 @@ describe("world-owned river bridges", () => {
       expect(bridge.collision.direction).toEqual(bridge.crossingDirection);
       expect(createBridgeCollision({ ...bridge, collision: undefined } as never)).toEqual(bridge.collision);
       for (const approach of Object.values(bridge.approachPoints)) expect(bridge.zones.some(zone => zone.purpose === "vegetation-exclusion" && pointInFootprint(approach.x, approach.z, zone.footprint))).toBe(true);
-      expect(generateBridges(7, { x: bridge.ownerChunk.x + 1, z: bridge.ownerChunk.z }).bridges.some(value => value.id === bridge.id)).toBe(false);
+      expect(generateBridges(seed, { x: bridge.ownerChunk.x + 1, z: bridge.ownerChunk.z }).bridges.some(value => value.id === bridge.id)).toBe(false);
     }
   });
 });

@@ -7,7 +7,8 @@ import {
   createCanonicalStructureSafetyQuery,
 } from "./structureCollision";
 import { findSafeRestoredTransformFromCanonicalWorld } from "./safePlayerPosition";
-import { isInsideWorldRiverWater } from "./worldRiverGameplay";
+import { createWorldRiverGameplayContext, isInsideWorldRiverWater } from "./worldRiverGameplay";
+import { getWorldRiverOwner } from "./worldRiverOwner";
 import { worldRiverSpine } from "./worldRiverSpine";
 
 const seed = "mobile-walker-v2", offset = .76;
@@ -27,7 +28,8 @@ describe("production safe restoration structure integration", () => {
   it("keeps an actual generated bridge deck above river water at its authoritative height", () => {
     expect(bridge).toBeDefined();
     const deck = bridge!.collision.surfaces[0]!;
-    expect(isInsideWorldRiverWater(bridge!.crossingCentre.x, bridge!.crossingCentre.z)).toBe(true);
+    const p=bridge!.crossingCentre,spine=getWorldRiverOwner(seed).spine;
+    expect(isInsideWorldRiverWater(p.x,p.z,createWorldRiverGameplayContext({minX:p.x,maxX:p.x,minZ:p.z,maxZ:p.z},spine))).toBe(true);
     const saved = { x: bridge!.crossingCentre.x, y: -20, z: bridge!.crossingCentre.z, yaw: .4 };
     const restored = findSafeRestoredTransformFromCanonicalWorld(seed, saved, offset, PLAYER_COLLISION_RADIUS);
     expect(restored).toEqual({ ...saved, y: deck.startHeight + deck.crownHeight + offset });

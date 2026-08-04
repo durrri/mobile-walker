@@ -8,12 +8,12 @@ describe("riverIndicatorDirection", () => {
   it("points toward the nearest world-river point outside the legacy column", () => {
     const player = { x: 90, z: 40 };
     const nearest = worldRiverSpine.nearestPointToRiver(player.x, player.z);
-    expect(riverIndicatorDirection(player.x, player.z)).toEqual(worldToOverlayDisplacement(player.x, player.z, nearest.position.x, nearest.position.z));
+    expect(riverIndicatorDirection(player.x, player.z, 0, worldRiverSpine)).toEqual(worldToOverlayDisplacement(player.x, player.z, nearest.position.x, nearest.position.z));
   });
 
   it("rotates the river direction with the free-look camera", () => {
-    const facingEast = riverIndicatorDirection(90, 40, Math.PI / 2)!;
-    const facingWest = riverIndicatorDirection(90, 40, -Math.PI / 2)!;
+    const facingEast = riverIndicatorDirection(90, 40, Math.PI / 2, worldRiverSpine)!;
+    const facingWest = riverIndicatorDirection(90, 40, -Math.PI / 2, worldRiverSpine)!;
 
     expect(facingEast.x).toBeCloseTo(-facingWest.x);
     expect(facingEast.y).toBeCloseTo(-facingWest.y);
@@ -21,7 +21,7 @@ describe("riverIndicatorDirection", () => {
 
   it("does not glow while the player is inside the world-river environment", () => {
     const point = worldRiverSpine.samplePosition(.5);
-    expect(riverIndicatorDirection(point.x, point.z)).toBeNull();
+    expect(riverIndicatorDirection(point.x, point.z, 0, worldRiverSpine)).toBeNull();
   });
 });
 

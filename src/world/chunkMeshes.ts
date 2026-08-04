@@ -12,6 +12,7 @@ import { terrainDarkening } from "./terrainOcclusion";
 import { PoiMeshFactory } from "./poiMeshes";
 import { BridgeMeshFactory } from "./bridgeMeshes";
 import { tessellateWorldRiverWaterChunk, WORLD_RIVER_WATER_SAMPLE_SPACING } from "./worldRiverWater";
+import { getWorldRiverOwner } from "./worldRiverOwner";
 
 export interface DebugViewOptions {
   readonly wireframe: boolean;
@@ -343,7 +344,9 @@ export class ChunkMeshFactory {
   }
 
   private createWorldRiverWater(data: GeneratedChunkData): THREE.Mesh | undefined {
-    const fragment = tessellateWorldRiverWaterChunk(data.coordinate);
+    const owner = getWorldRiverOwner(data.seed);
+    if (owner.identity !== data.riverGenerationIdentity) throw new Error(`Chunk ${data.id} river identity does not match its world seed`);
+    const fragment = tessellateWorldRiverWaterChunk(data.coordinate, owner.spine);
     if (fragment.indices.length === 0) return undefined;
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute("position", new THREE.Float32BufferAttribute(fragment.vertices.flatMap(vertex => [vertex.x, vertex.y, vertex.z]), 3));

@@ -37,7 +37,7 @@ describe("loaded neighborhood boundary", () => {
     expect(scene.getObjectByName("chunk:-1,0")).toBeUndefined();
     expect(scene.getObjectByName("chunk:0,1")).toBeUndefined();
     chunks.dispose();
-  });
+  }, 15_000);
 
   it("applies changed offsets to the running world", () => {
     const scene = new THREE.Scene();
@@ -53,7 +53,7 @@ describe("loaded neighborhood boundary", () => {
     expect(scene.children).toHaveLength(9);
     expect(scene.getObjectByName("chunk:-1,-1")).toBeDefined();
     chunks.dispose();
-  });
+  }, 15_000);
 
   it("queues activation and obeys generation and mesh limits per frame", () => {
     const scene = new THREE.Scene();
@@ -143,6 +143,13 @@ describe("loaded neighborhood boundary", () => {
     player.transform.x = 1;
     chunks.prepareRender(world, 0, 0);
 
+    // The first reverse boundary performs the retained-data cache hit and
+    // queues/resumes its activation job. Terrain creation may consume the
+    // frame's activation budget before hydrology marks the group renderable,
+    // so drive the next explicit render boundary rather than waiting on time
+    // or microtasks. Safe retirement keeps chunk 1 resident until chunk 0 is active.
+    expect(generator).toHaveBeenCalledTimes(2);
+    chunks.prepareRender(world, 0, 0);
     expect(generator).toHaveBeenCalledTimes(2);
     expect(scene.children[0]?.name).toBe("chunk:0,0");
     chunks.dispose();

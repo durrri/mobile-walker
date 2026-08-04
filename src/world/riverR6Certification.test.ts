@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { CHUNK_SIZE } from "./chunkCoordinates";
 import { RIVER_R6_FIXTURES } from "./riverR6Fixtures";
-import { sampleTerrainHeight } from "./terrainSampling";
-import { WORLD_RIVER_CARVING } from "./worldRiverCarving";
-import { sampleWorldRiverEnvironment } from "./worldRiverEnvironment";
-import { sampleWorldRiverGameplay } from "./worldRiverGameplay";
+import { sampleChannelTerrainHeightInContext } from "./terrainSampling";
+import { createWorldRiverCarvingContext, WORLD_RIVER_CARVING } from "./worldRiverCarving";
+import { createWorldRiverEnvironmentContext, sampleWorldRiverEnvironment } from "./worldRiverEnvironment";
+import { createWorldRiverGameplayContext, sampleWorldRiverGameplay } from "./worldRiverGameplay";
 import { worldRiverSpine } from "./worldRiverSpine";
 import { sampleWorldRiverWater } from "./worldRiverWater";
+import { normalizeSeed } from "./random";
 
 describe("R6 permanent authored fixtures", () => {
   it("covers the accepted authored-river baseline without duplicate fixture names", () => {
@@ -21,14 +22,16 @@ describe("R6 permanent authored fixtures", () => {
 
   it.each(RIVER_R6_FIXTURES.filter(f => f.kind === "reach"))("keeps $name water, environment, gameplay and terrain authoritative", fixture => {
     const { x, z } = fixture.position;
-    const water = sampleWorldRiverWater(x, z);
-    const environment = sampleWorldRiverEnvironment(x, z);
-    const gameplay = sampleWorldRiverGameplay("r6", x, z);
+    const bounds={minX:x-8,maxX:x+8,minZ:z-8,maxZ:z+8};
+    const carving=createWorldRiverCarvingContext(bounds,worldRiverSpine);
+    const water = sampleWorldRiverWater(x, z,worldRiverSpine);
+    const environment = sampleWorldRiverEnvironment(x, z,createWorldRiverEnvironmentContext(bounds,worldRiverSpine));
+    const gameplay = sampleWorldRiverGameplay("r6", x, z,createWorldRiverGameplayContext(bounds,worldRiverSpine));
     expect(water.halfWidth).toBe(WORLD_RIVER_CARVING.waterHalfWidth);
     expect(water.inside).toBe(true);
     expect(environment.withinWater).toBe(true);
     expect(gameplay.insideWater).toBe(true);
-    expect(gameplay.terrainElevation).toBe(sampleTerrainHeight("r6", x, z));
+    expect(gameplay.terrainElevation).toBe(sampleChannelTerrainHeightInContext(normalizeSeed("r6"), x, z,carving));
     expect(gameplay.waterSurfaceElevation).toBe(WORLD_RIVER_CARVING.surfaceElevation);
   });
 
@@ -41,10 +44,11 @@ describe("R6 permanent authored fixtures", () => {
       // remaining immediately adjacent at world/gameplay scale.
       const inside = sample(WORLD_RIVER_CARVING.waterHalfWidth - .25);
       const outside = sample(WORLD_RIVER_CARVING.waterHalfWidth + .01);
-      expect(sampleWorldRiverWater(inside.x, inside.z).inside).toBe(true);
-      expect(sampleWorldRiverGameplay(7, inside.x, inside.z).insideWater).toBe(true);
-      expect(sampleWorldRiverWater(outside.x, outside.z).inside).toBe(false);
-      expect(sampleWorldRiverGameplay(7, outside.x, outside.z).insideWater).toBe(false);
+      const bounds={minX:inside.x-8,maxX:inside.x+8,minZ:inside.z-8,maxZ:inside.z+8},context=createWorldRiverGameplayContext(bounds,worldRiverSpine);
+      expect(sampleWorldRiverWater(inside.x, inside.z,worldRiverSpine).inside).toBe(true);
+      expect(sampleWorldRiverGameplay(7, inside.x, inside.z,context).insideWater).toBe(true);
+      expect(sampleWorldRiverWater(outside.x, outside.z,worldRiverSpine).inside).toBe(false);
+      expect(sampleWorldRiverGameplay(7, outside.x, outside.z,context).insideWater).toBe(false);
   });
 
   it("keeps dry fixtures outside the controlled environment", () => {

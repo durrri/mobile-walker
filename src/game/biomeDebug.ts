@@ -1,7 +1,7 @@
 import type { RenderSystem } from "../ecs/System";
 import { BIOMES, BIOME_DEBUG_COLORS, BIOME_IDS, sampleBiome, type BiomeId } from "../world/biomes";
 import { WORLD_RIVER_MAX_CARVING_RADIUS } from "../world/worldRiverCarving";
-import { worldRiverSpine } from "../world/worldRiverSpine";
+import type { RiverSpine } from "../world/riverSpineGeometry";
 import { collapseDirectionIndicator, makeDirectionIndicatorExpandable } from "./directionIndicator";
 
 export interface BiomeDirection {
@@ -18,8 +18,8 @@ export interface RiverIndicatorPosition {
 }
 
 /** Returns the camera-relative direction toward the nearest world-river point. */
-export function riverIndicatorDirection(playerX: number, playerZ: number, cameraYaw = 0): { readonly x: number; readonly y: number } | null {
-  const nearest = worldRiverSpine.nearestPointToRiver(playerX, playerZ);
+export function riverIndicatorDirection(playerX: number, playerZ: number, cameraYaw: number, spine: RiverSpine): { readonly x: number; readonly y: number } | null {
+  const nearest = spine.nearestPointToRiver(playerX, playerZ);
   if (nearest.distanceToRiver <= WORLD_RIVER_MAX_CARVING_RADIUS) return null;
   return worldToOverlayDisplacement(playerX, playerZ, nearest.position.x, nearest.position.z, cameraYaw);
 }
@@ -99,7 +99,8 @@ export class BiomeDebugPresentationSystem implements RenderSystem {
     private readonly seed: number | string,
     private readonly overlay: HTMLElement,
     private readonly currentLabel: HTMLElement,
-    private readonly getCameraYaw: () => number = () => 0,
+    private readonly getCameraYaw: () => number,
+    private readonly riverSpine: RiverSpine,
   ) {
     this.riverIndicator = document.createElement("div");
     this.riverIndicator.className = "river-indicator";
@@ -144,7 +145,7 @@ export class BiomeDebugPresentationSystem implements RenderSystem {
     if (!player?.transform) return;
 
     const { x, z } = player.transform;
-    const riverDirection = riverIndicatorDirection(x, z, this.getCameraYaw());
+    const riverDirection = riverIndicatorDirection(x, z, this.getCameraYaw(), this.riverSpine);
     this.riverIndicator.hidden = riverDirection === null;
     if (riverDirection) {
       const edge = directionToOverlayEdge(
