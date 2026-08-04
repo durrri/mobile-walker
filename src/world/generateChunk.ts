@@ -281,6 +281,25 @@ export function generateChunk(
       if (polygon.length < 3) return;
       polygon.forEach(point=>addVertex(point.x,point.z,point.offset));
     };
+    const stripConstraintMap = new Map<string, [number, number]>();
+    const addStripConstraint = (a: StripPoint, b: StripPoint): void => {
+      let t0 = 0, t1 = 1;
+      const clip = (p: number, q: number): boolean => {
+        if (Math.abs(p) < 1e-12) return q >= 0;
+        const r = q / p;
+        if (p < 0) { if (r > t1) return false; if (r > t0) t0 = r; }
+        else { if (r < t0) return false; if (r < t1) t1 = r; }
+        return true;
+      };
+      const dx = b.x - a.x, dz = b.z - a.z;
+      if (!clip(-dx, a.x - minX) || !clip(dx, minX + CHUNK_SIZE - a.x)
+        || !clip(-dz, a.z - minZ) || !clip(dz, minZ + CHUNK_SIZE - a.z) || t1 <= t0) return;
+      const start = interpolate(a, b, t0), end = interpolate(a, b, t1);
+      const ai = addVertex(start.x, start.z, start.offset), bi = addVertex(end.x, end.z, end.offset);
+      if (ai === undefined || bi === undefined || ai === bi) return;
+      const edge: [number, number] = ai < bi ? [ai, bi] : [bi, ai];
+      stripConstraintMap.set(`${edge[0]},${edge[1]}`, edge);
+    };
     for (let cross = 0; cross < offsets.length - 1; cross++) {
       const aOffset = offsets[cross]!, bOffset = offsets[cross + 1]!;
       const aGuide = guides.get(aOffset)!, bGuide = guides.get(bOffset)!;
@@ -291,6 +310,8 @@ export function generateChunk(
         if (Math.max(...xs) < minX || Math.min(...xs) > minX + CHUNK_SIZE
           || Math.max(...zs) < minZ || Math.min(...zs) > minZ + CHUNK_SIZE) continue;
         emit([a, b, c]); emit([c, b, d]);
+        addStripConstraint(a, b); addStripConstraint(c, d);
+        addStripConstraint(a, c); addStripConstraint(b, d);
       }
     }
     // Variable-width rows are point landmarks, not independent polygon shells.
@@ -301,7 +322,7 @@ export function generateChunk(
     const originalByPosition = new Map(vertices.map(vertex =>
       [`${vertex.x.toFixed(9)},${vertex.z.toFixed(9)}`, vertex]));
     const points = vertices.map(vertex => [vertex.x, vertex.z]);
-    const constraints: [number,number][] = [];
+    const constraints: [number,number][] = [...stripConstraintMap.values()];
     cleanPSLG(points, constraints);
     // clean-pslg uses an internally randomized sweep structure. Its geometric
     // result is stable, but insertion/index order is not. Canonicalize the PSLG

@@ -4,6 +4,10 @@ import { RIVER_R6_FIXTURES } from "./riverR6Fixtures";
 import { resetWorldGenerationCachesForDiagnostics } from "./worldGenerationDiagnostics";
 import { tessellateWorldRiverWaterChunk, type WorldRiverWaterGeometry } from "./worldRiverWater";
 import { DEFAULT_RIVER_GENERATION_CONFIG, getWorldRiverGeneration, validateSmoothedSpineSeparation } from "./worldRiverGeneration";
+import { CHUNK_SIZE } from "./chunkCoordinates";
+import { riverChunkAtProgress, riverSeamCrossing, strongestCurvatureProgress } from "./riverProceduralFixtures";
+import { getWorldRiverOwner, resetWorldRiverOwners } from "./worldRiverOwner";
+import { RIVER_WIDTH_CONFIG } from "./worldRiverWidth";
 
 const seed = "r6-extended";
 const key = (coordinate: { x: number; z: number }) => `${coordinate.x},${coordinate.z}`;
@@ -51,4 +55,48 @@ describe("R6 extended river validation", () => {
     const baseline = regenerate();
     for (let cycle = 0; cycle < 5; cycle += 1) expect(regenerate()).toEqual(baseline);
   }, 120_000);
+
+  it("validates R9 width profiles across many seeds, gradients, hairpins, and interpolated dry separation", () => {
+    let observedStrongBendOrClamp=false;
+    for(const worldSeed of ["r9-ext-a","r9-ext-b","r9-ext-c","r9-ext-d","r9-ext-e","r9-ext-f",13,21,34,55]){
+      resetWorldRiverOwners();
+      const owner=getWorldRiverOwner(worldSeed),profile=owner.widthProfile;
+      expect(profile.identity).toContain("width-v9");
+      observedStrongBendOrClamp ||= profile.samples.some(sample=>sample.bendMultiplier>1.01)||profile.samples.some(sample=>sample.safetyClamped);
+      for(let i=1;i<profile.samples.length;i++){
+        const a=profile.samples[i-1]!,b=profile.samples[i]!;
+        expect(Math.abs(b.fullWidth-a.fullWidth)/(b.distance-a.distance)).toBeLessThanOrEqual(RIVER_WIDTH_CONFIG.maximumGradient+1e-10);
+      }
+      const dense=Array.from({length:Math.ceil(owner.spine.totalLength)+1},(_,index)=>profile.sampleAtDistance(Math.min(index,owner.spine.totalLength)));
+      for(let a=0;a<dense.length;a++)for(let b=a+1;b<dense.length;b++){
+        if(dense[b]!.distance-dense[a]!.distance<RIVER_WIDTH_CONFIG.nonLocalDistance)continue;
+        const pa=owner.spine.samplePosition(owner.spine.progressAtDistance(dense[a]!.distance));
+        const pb=owner.spine.samplePosition(owner.spine.progressAtDistance(dense[b]!.distance));
+        const separation=Math.hypot(pa.x-pb.x,pa.z-pb.z);
+        expect(dense[a]!.halfWidth+dense[b]!.halfWidth+RIVER_WIDTH_CONFIG.minimumDrySeparation).toBeLessThanOrEqual(separation+1e-8);
+      }
+    }
+    expect(observedStrongBendOrClamp).toBe(true);
+  },120_000);
+
+  it("keeps R9 seam, topology, and generation-order snapshots stable through cache permutations", () => {
+    const seam=riverSeamCrossing("x",0,"r9-ext-seam"),bend=riverChunkAtProgress(strongestCurvatureProgress("r9-ext-seam"),"r9-ext-seam");
+    const coordinates=[seam.a,seam.b,bend];
+    const orders=[coordinates,[bend,seam.b,seam.a],[seam.b,seam.a,bend]];
+    const snapshots=orders.map(order=>{resetWorldGenerationCachesForDiagnostics();return order.map(coordinate=>structuredClone(generateChunk("r9-ext-seam",coordinate)));});
+    expect(new Map(snapshots[1]!.map(chunk=>[key(chunk.coordinate),chunk]))).toEqual(new Map(snapshots[0]!.map(chunk=>[key(chunk.coordinate),chunk])));
+    expect(new Map(snapshots[2]!.map(chunk=>[key(chunk.coordinate),chunk]))).toEqual(new Map(snapshots[0]!.map(chunk=>[key(chunk.coordinate),chunk])));
+    const [left,right]=snapshots[0]!;
+    const atSeam=(chunk:GeneratedChunkData)=>chunk.irregularTerrain!.vertices.filter(vertex=>Math.abs(vertex.x-seam.edge)<1e-8&&vertex.riverStripOffset!==undefined)
+      .map(vertex=>`${vertex.x},${vertex.z},${vertex.height},${vertex.riverStripOffset}`).sort();
+    expect(atSeam(left!)).toEqual(atSeam(right!));
+    const topology=snapshots[0]!.find(chunk=>chunk.coordinate.x===bend.x&&chunk.coordinate.z===bend.z)!;
+    const edgeUse=new Map<string,number>(),vertices=topology.irregularTerrain!.vertices,indices=topology.irregularTerrain!.indices;
+    for(let index=0;index<indices.length;index+=3)for(let edge=0;edge<3;edge++){
+      const a=indices[index+edge]!,b=indices[index+(edge+1)%3]!,edgeKey=a<b?`${a},${b}`:`${b},${a}`;
+      edgeUse.set(edgeKey,(edgeUse.get(edgeKey)??0)+1);
+    }
+    const onBoundary=(vertex:typeof vertices[number])=>Math.abs(vertex.x-bend.x*CHUNK_SIZE)<1e-8||Math.abs(vertex.x-(bend.x+1)*CHUNK_SIZE)<1e-8||Math.abs(vertex.z-bend.z*CHUNK_SIZE)<1e-8||Math.abs(vertex.z-(bend.z+1)*CHUNK_SIZE)<1e-8;
+    for(const [edge,count] of edgeUse){const [a,b]=edge.split(",").map(Number);if(count===1&&onBoundary(vertices[a!]!)&&onBoundary(vertices[b!]!))continue;expect(count).toBe(2);}
+  },120_000);
 });
