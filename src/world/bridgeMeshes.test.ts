@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { BridgeMeshFactory } from "./bridgeMeshes";
 import { createBridgeCollision, generateBridges, type BridgeArchetype, type GeneratedBridge } from "./bridges";
+import { bridgeFixture } from "./riverProceduralFixtures";
 
 function bridge(archetype:BridgeArchetype):GeneratedBridge{const structural:Omit<GeneratedBridge,"collision">={
  id:`test-${archetype}`,ownerChunk:{x:0,z:0},crossingCentre:{x:0,y:2.18,z:0},riverTangent:{x:0,z:1},crossingDirection:{x:1,z:0},
@@ -35,7 +36,7 @@ describe("bridge entry ramps",()=>{
 
 describe("world-river bridge diagnostics",()=>{
  it("renders bounded candidate frames, status, owner bounds and diagnostic readouts",()=>{
-  const candidates=generateBridges(7,{x:0,z:3}).candidates;
+  const coordinate=bridgeFixture(7).chunk,candidates=generateBridges(7,coordinate).candidates;
   const factory=new BridgeMeshFactory(),debug=factory.createDebug(candidates);
   expect(candidates.length).toBeGreaterThan(0);
   expect(debug.getObjectByName("bridge-debug:tangents")).toBeDefined();

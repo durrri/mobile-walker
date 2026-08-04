@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { CHUNK_SIZE } from "../world/chunkCoordinates";
-import { worldRiverSpine, type RiverSpine } from "../world/worldRiverSpine";
+import { referenceWorldRiverGeneration, referenceWorldRiverMacroSpine, referenceWorldRiverSpine, type MacroRiverGeneration, type RiverSpine } from "../world/worldRiverSpine";
 import { WORLD_RIVER_CARVING, WORLD_RIVER_LIP_CREST_DISTANCE } from "../world/worldRiverCarving";
 import { WORLD_RIVER_WATER_SAMPLE_SPACING } from "../world/worldRiverWater";
 
@@ -10,6 +10,9 @@ export const RIVER_SPINE_DEBUG_SURFACE_OFFSET = 0.08;
 
 export const RIVER_DEBUG_STYLE = {
   centreline: { color: 0x00f5ff, width: 0.24, offset: 0.18 },
+  macroSpine: { color: 0x8396a5, width: 0.14, offset: 0.15 },
+  displacement: { color: 0xb875ff, width: 0.07, offset: 0.2 },
+  regionBoundary: { color: 0xff6b35, width: 0.12, offset: 0.27 },
   controlPolygon: { color: 0xff9d00, width: 0.1, offset: 0.12 },
   tangent: { color: 0x45ff65, width: 0.18, offset: 0.32 },
   normal: { color: 0xff45e6, width: 0.18, offset: 0.34 },
@@ -35,12 +38,37 @@ export function placeRiverDebugPoint(
 /** Lazy presentation-only view of the world-owned spine. It never enters generation/collision. */
 export class RiverSpineDebugView {
   private root?: THREE.Group;
+  private visibility = { macro: true, meandered: true, connectors: true };
 
   constructor(
     private readonly scene: THREE.Scene,
-    private readonly spine: RiverSpine = worldRiverSpine,
+    private readonly spine: RiverSpine = referenceWorldRiverSpine,
     private readonly sampleHeight: TerrainHeightSampler = () => 0,
+    private readonly macroSpine: RiverSpine = referenceWorldRiverMacroSpine,
+    private readonly generation: MacroRiverGeneration = referenceWorldRiverGeneration,
   ) {}
+
+  setLayerVisibility(value: Partial<typeof this.visibility>): void {
+    Object.assign(this.visibility, value);
+    if (!this.root) return;
+    const names = { macro: "debug:river-macro-spine", meandered: "debug:river-centreline", connectors: "debug:river-displacement-connectors" } as const;
+    for (const [key, name] of Object.entries(names)) { const object = this.root.getObjectByName(name); if (object) object.visible = this.visibility[key as keyof typeof this.visibility]; }
+  }
+
+  generationReadout(playerX = 0, playerZ = 0): Readonly<Record<string, string | number | boolean>> {
+    const macro = this.macroSpine.nearestPointToRiver(playerX, playerZ), final = this.spine.nearestPointToRiver(playerX, playerZ);
+    return Object.freeze({ seed: String(this.generation.config.worldSeed), generationVersion: this.generation.config.generationVersion,
+      macroControlPointCount: this.generation.macroControlPoints.length, macroLength: this.macroSpine.totalLength,
+      meanderedLength: this.spine.totalLength, localMacroProgress: macro.progress, localFinalProgress: final.progress,
+      localMeanderDisplacement: Math.hypot(final.position.x - macro.position.x, final.position.z - macro.position.z),
+      amplitudeRange: this.generation.config.meanderAmplitudeRange.join("–"), wavelengthRange: this.generation.config.meanderWavelengthRange.join("–"),
+      meanderRegionCount: this.generation.meanderRegions.length,
+      activeRegionProfile: this.generation.meanderRegions.find(region => macro.distanceAlongRiver >= region.startDistance
+        && macro.distanceAlongRiver <= region.endDistance)?.profile ?? "quiet",
+      activeRegionalStrength: this.generation.meanderRegions.reduce((value, region) => Math.max(value,
+        macro.distanceAlongRiver <= region.startDistance || macro.distanceAlongRiver >= region.endDistance ? 0 : region.strength), 0),
+      correctionApplied: this.generation.correctionApplied });
+  }
 
   setMode(mode: RiverSpineDebugMode): void {
     this.disposeGeometry();
@@ -48,6 +76,27 @@ export class RiverSpineDebugView {
 
     const root = new THREE.Group();
     root.name = "debug:world-river-spine";
+    const macroSmooth = Array.from({ length: 401 }, (_, index) => this.macroSpine.samplePosition(index / 400));
+    const macroLine = this.thickSegments(this.segmentPairs(macroSmooth), RIVER_DEBUG_STYLE.macroSpine, "debug:river-macro-spine");
+    macroLine.visible = this.visibility.macro; root.add(macroLine);
+    const connectors: { x: number; z: number }[] = [];
+    for (const region of this.generation.meanderRegions) {
+      const step = Math.max(6, (region.endDistance - region.startDistance) / 8);
+      for (let distance = region.startDistance; distance <= region.endDistance; distance += step) {
+        const progress = this.macroSpine.progressAtDistance(distance);
+        connectors.push(this.macroSpine.samplePosition(progress), this.spine.nearestPointToRiver(
+          this.macroSpine.samplePosition(progress).x, this.macroSpine.samplePosition(progress).z).position);
+      }
+    }
+    const connectorMesh = this.thickSegments(connectors, RIVER_DEBUG_STYLE.displacement, "debug:river-displacement-connectors");
+    connectorMesh.visible = this.visibility.connectors; root.add(connectorMesh);
+    const boundaries: { x: number; z: number }[] = [];
+    for (const region of this.generation.meanderRegions) for (const distance of [region.startDistance, region.endDistance]) {
+      const frame = this.macroSpine.sampleFrame(this.macroSpine.progressAtDistance(distance));
+      boundaries.push({ x: frame.position.x - frame.normal.x * 5, z: frame.position.z - frame.normal.z * 5 },
+        { x: frame.position.x + frame.normal.x * 5, z: frame.position.z + frame.normal.z * 5 });
+    }
+    root.add(this.thickSegments(boundaries, RIVER_DEBUG_STYLE.regionBoundary, "debug:river-meander-region-boundaries"));
     root.add(this.thickSegments(
       this.segmentPairs(this.spine.controlPoints),
       RIVER_DEBUG_STYLE.controlPolygon,
@@ -56,11 +105,12 @@ export class RiverSpineDebugView {
     root.add(this.points(this.spine.controlPoints, 0xff3b30, 1.05, 0.22, "debug:river-control-points"));
 
     const smooth = Array.from({ length: 401 }, (_, index) => this.spine.samplePosition(index / 400));
-    root.add(this.thickSegments(
+    const finalLine = this.thickSegments(
       this.segmentPairs(smooth),
       RIVER_DEBUG_STYLE.centreline,
       "debug:river-centreline",
-    ));
+    );
+    finalLine.visible = this.visibility.meandered; root.add(finalLine);
 
     if (mode === "ribbon" || mode === "detailed") {
       root.add(this.ribbon(WORLD_RIVER_CARVING.waterHalfWidth * 2, mode === "detailed" ? RIVER_DEBUG_STYLE.detailedRibbonOpacity : RIVER_DEBUG_STYLE.ribbonOpacity));

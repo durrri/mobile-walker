@@ -7,7 +7,7 @@ import {
   WORLD_RIVER_MAX_CARVING_RADIUS,
   type WorldRiverCarvingContext,
 } from "./worldRiverCarving";
-import { worldRiverSpine, type RiverSpine, type WorldBounds2D } from "./worldRiverSpine";
+import { referenceWorldRiverSpine, type RiverSpine, type WorldBounds2D } from "./worldRiverSpine";
 
 /** Ecological placement bands. Outer falloff deliberately delegates to biome rules. */
 export type WorldRiverPlacementZone =
@@ -67,7 +67,7 @@ export const MAX_RIVER_OBJECT_CLEARANCE = Math.max(...Object.values(RIVER_OBJECT
 
 export function createWorldRiverEnvironmentContext(
   bounds: WorldBounds2D,
-  spine: RiverSpine = worldRiverSpine,
+  spine: RiverSpine = referenceWorldRiverSpine,
 ): WorldRiverEnvironmentContext {
   const padding = MAX_RIVER_OBJECT_CLEARANCE;
   const carving = createWorldRiverCarvingContext({

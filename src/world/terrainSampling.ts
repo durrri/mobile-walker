@@ -5,8 +5,11 @@ import {
   applyWorldRiverCarving,
   sampleWorldRiverCarving,
   WORLD_RIVER_CARVING,
+  WORLD_RIVER_MAX_CARVING_RADIUS,
   type WorldRiverCarvingContext,
 } from "./worldRiverCarving";
+import { getWorldRiverOwner } from "./worldRiverOwner";
+import { getCachedWorldRiverCarvingContext } from "./worldRiverContextCache";
 
 export type TerrainSurface = "land" | "river" | "lake";
 /** Default chunk resolution; dry chunks retain the original generation cost. */
@@ -20,6 +23,9 @@ export interface TerrainSample {
 }
 
 const LATTICE_SPACING = CHUNK_SIZE / TERRAIN_SEGMENTS;
+function riverContextForSeed(seed: number | string, x=0,z=0): WorldRiverCarvingContext {
+  return getCachedWorldRiverCarvingContext(getWorldRiverOwner(seed), x, z);
+}
 /**
  * Vertical distance from the water surface to the walkable river bed.
  *
@@ -137,7 +143,7 @@ export function sampleChannelTerrainHeight(seed: number, worldX: number, worldZ:
     const bedHeight = LAKE_SURFACE_ELEVATION - LAKE_BED_DEPTH;
     shapedHeight = naturalHeight + (Math.min(naturalHeight, bedHeight) - naturalHeight) * basinBlend;
   }
-  return applyWorldRiverCarving(shapedHeight, sampleWorldRiverCarving(worldX, worldZ));
+  return applyWorldRiverCarving(shapedHeight, sampleWorldRiverCarving(worldX, worldZ,riverContextForSeed(seed,worldX,worldZ)));
 }
 
 /** Bounded variant used by chunk generation; it never invokes the global diagnostic scan. */
@@ -162,8 +168,9 @@ export function sampleChannelTerrainHeightInContext(
  */
 export function sampleTerrainHeight(seedInput: number | string, worldX: number, worldZ: number): number {
   const seed = normalizeSeed(seedInput);
-  const river = sampleWorldRiverCarving(worldX, worldZ);
-  if (river?.insideCarvingFalloff) {
+  const riverContext = riverContextForSeed(seedInput,worldX,worldZ);
+  const river = sampleWorldRiverCarving(worldX, worldZ, riverContext);
+  if (river && river.distanceToCentreline <= WORLD_RIVER_MAX_CARVING_RADIUS + 1e-3) {
     // The locally refined river terrain samples this exact authoritative field;
     // movement must not interpolate the old coarse lattice across its bank.
     return sampleChannelTerrainHeight(seed, worldX, worldZ);
@@ -193,9 +200,10 @@ export function isLakeAt(seedInput: number | string, worldX: number, worldZ: num
 
 export function sampleTerrain(seed: number | string, worldX: number, worldZ: number): TerrainSample {
   const biome = sampleBiome(seed, worldX, worldZ);
+  const spine = getWorldRiverOwner(seed).spine;
   return {
     height: sampleTerrainHeight(seed, worldX, worldZ),
-    surface: (sampleWorldRiverCarving(worldX, worldZ)?.distanceToCentreline ?? Infinity) <= WORLD_RIVER_CARVING.waterHalfWidth
+    surface: (spine.nearestPointToRiver(worldX, worldZ).distanceToRiver ?? Infinity) <= WORLD_RIVER_CARVING.waterHalfWidth
       ? "river" : isLakeAt(seed, worldX, worldZ) ? "lake" : "land",
     biome: biome.dominant,
     biomeWeights: biome.weights,

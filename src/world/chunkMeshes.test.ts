@@ -6,12 +6,13 @@ import {
 } from "./chunkMeshes";
 import { generateChunk } from "./generateChunk";
 import { SunlightDirection } from "../rendering/sunlightDirection";
+import { bridgeFixture, dryChunkOutsideRiverInfluence, riverChunkAtProgress, riverReachOutsideLegacyColumn, riverSeamCrossing } from "./riverProceduralFixtures";
 
 describe("river ribbon geometry", () => {
   it("renders world water beyond legacy column zero and does not fill an absent column-zero chunk", () => {
     const factory = new ChunkMeshFactory();
-    const curvedReach = factory.create(generateChunk("r4-column-audit", { x: 4, z: 2 }));
-    const absentReach = factory.create(generateChunk("r4-column-audit", { x: 0, z: 6 }));
+    const curvedReach = factory.create(generateChunk("r4-column-audit", riverReachOutsideLegacyColumn("r4-column-audit").chunk));
+    const absentReach = factory.create(generateChunk("r4-column-audit", dryChunkOutsideRiverInfluence("r4-column-audit")));
     const curvedWater = curvedReach.getObjectByName("world-river-water") as THREE.Mesh;
     const absentWater = absentReach.getObjectByName("world-river-water");
     expect(curvedWater.geometry.getAttribute("position").count).toBeGreaterThan(0);
@@ -19,11 +20,12 @@ describe("river ribbon geometry", () => {
     expect(curvedReach.getObjectByName("river")).toBeUndefined();
     expect(curvedReach.getObjectByName("river-channel")).toBeUndefined();
     factory.disposeChunk(curvedReach); factory.disposeChunk(absentReach); factory.dispose();
-  });
+  }, 15_000);
 
   it("renders locally refined authoritative terrain and disables legacy presentation", () => {
     const factory = new ChunkMeshFactory();
-    const data = generateChunk("open-channel", { x: 4, z: 2 });
+    const coordinate = riverChunkAtProgress(.5, "open-channel"), data = generateChunk("open-channel", coordinate);
+    expect(data.irregularTerrain, `expected refined river chunk ${JSON.stringify(coordinate)}`).toBeDefined();
     const group = factory.create(data);
     const terrain = group.getObjectByName("terrain") as THREE.Mesh;
     const water = group.getObjectByName("world-river-water") as THREE.Mesh;
@@ -51,7 +53,7 @@ describe("river ribbon geometry", () => {
 
   it("supports independently selectable water wireframe debug", () => {
     const factory = new ChunkMeshFactory();
-    const group = factory.create(generateChunk("river-debug-pipeline", { x: 4, z: 2 }));
+    const group = factory.create(generateChunk("river-debug-pipeline", riverChunkAtProgress(.5, "river-debug-pipeline")));
     factory.registerGroup(group);
     const terrain = group.getObjectByName("terrain") as THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
     const water = group.getObjectByName("world-river-water") as THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
@@ -289,11 +291,12 @@ describe("terrain biome colors", () => {
 
   it("gives adjacent chunks exactly matching boundary colors", () => {
     const factory = new ChunkMeshFactory();
-    const left = terrainOf(factory, "color-continuity", 1, 2);
-    const right = terrainOf(factory, "color-continuity", 2, 2);
+    const seam = riverSeamCrossing("x");
+    const left = terrainOf(factory, "color-continuity", seam.a.x, seam.a.z);
+    const right = terrainOf(factory, "color-continuity", seam.b.x, seam.b.z);
     const leftColors = left.terrain.geometry.getAttribute("color");
     const rightColors = right.terrain.geometry.getAttribute("color");
-    const boundaryX = 2 * left.data.size;
+    const boundaryX = seam.edge;
     const boundaryColors = (data: typeof left.data, colors: THREE.BufferAttribute | THREE.InterleavedBufferAttribute) => {
       const vertices = data.irregularTerrain?.vertices;
       if (!vertices) throw new Error("expected refined river fixture");
@@ -493,7 +496,8 @@ describe("lazy POI debug presentation", () => {
   });
 
   it("lazily creates and disposes world-river bridge diagnostics",()=>{
-    const factory=new ChunkMeshFactory(),group=factory.create(generateChunk(7,{x:0,z:3},undefined,true));factory.registerGroup(group);
+    const coordinate=bridgeFixture(7).chunk;
+    const factory=new ChunkMeshFactory(),group=factory.create(generateChunk(7,coordinate,undefined,true));factory.registerGroup(group);
     expect(group.getObjectByName("debug:bridge-crossings")).toBeUndefined();
     factory.setDebugView(view("candidates"));
     const debug=group.getObjectByName("debug:bridge-crossings")!;

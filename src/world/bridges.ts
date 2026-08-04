@@ -5,7 +5,9 @@ import { hashFloat, normalizeSeed } from "./random";
 import type { StructureBoxCollider, StructureCollisionDefinition, StructureSegmentCollider, StructureSurfaceRecord } from "./structureTypes";
 import { sampleTerrainHeight } from "./terrainSampling";
 import { WORLD_RIVER_CARVING, WORLD_RIVER_LIP_CREST_DISTANCE } from "./worldRiverCarving";
-import { worldRiverSpine, type WorldBounds2D } from "./worldRiverSpine";
+import type { WorldBounds2D } from "./worldRiverSpine";
+import { getWorldRiverOwner } from "./worldRiverOwner";
+import type { RiverSpine } from "./riverSpineGeometry";
 
 export type BridgeArchetype = "pedestrian-footbridge" | "heavy-timber-bridge" | "stone-bridge";
 export type BridgeVariant = "bare-plank" | "rope-railed" | "low-timber-railed" | "simple-beam" | "trestle" | "reinforced-timber" | "shallow-stone-span" | "single-arch" | "hump-backed-stone";
@@ -56,10 +58,10 @@ function latticePhase(seed:number):number{return hashFloat(seed,0,0,1791)*BRIDGE
 function candidatePriority(seed:number,index:number):number{return hashFloat(seed,index,1801)}
 function angleBetween(a:{x:number;z:number},b:{x:number;z:number}):number{return Math.acos(Math.max(-1,Math.min(1,a.x*b.x+a.z*b.z)))}
 
-function rawCandidate(seed:number,index:number):BridgeCrossingCandidate|undefined{
+function rawCandidate(seed:number,index:number,spine:RiverSpine):BridgeCrossingCandidate|undefined{
  const riverDistance=latticePhase(seed)+index*BRIDGE_CANDIDATE_SPACING;
- if(riverDistance<0||riverDistance>worldRiverSpine.totalLength)return;
- const riverProgress=worldRiverSpine.progressAtDistance(riverDistance),frame=worldRiverSpine.sampleFrame(riverProgress);
+ if(riverDistance<0||riverDistance>spine.totalLength)return;
+ const riverProgress=spine.progressAtDistance(riverDistance),frame=spine.sampleFrame(riverProgress);
  // RiverFrame.normal is the deterministic left direction. The bridge's positive
  // longitudinal direction follows it, so every consumer shares left/right.
  const tangent=frame.tangent,direction=frame.normal;
@@ -68,7 +70,7 @@ function rawCandidate(seed:number,index:number):BridgeCrossingCandidate|undefine
  const point=(side:number,distance:number):BridgePoint=>{const x=frame.position.x+direction.x*distance*side,z=frame.position.z+direction.z*distance*side;return{x,y:sampleTerrainHeight(seed,x,z),z}};
  const left=point(1,bankExtent),right=point(-1,bankExtent),leftApproach=point(1,bankExtent+BRIDGE_APPROACH_DISTANCE),rightApproach=point(-1,bankExtent+BRIDGE_APPROACH_DISTANCE);
  const landingDifference=Math.abs(left.y-right.y),approachSlope=Math.max(Math.abs(leftApproach.y-left.y),Math.abs(rightApproach.y-right.y),landingDifference)/BRIDGE_APPROACH_DISTANCE;
- const probe=spanLength/2+BRIDGE_APPROACH_DISTANCE,before=worldRiverSpine.sampleFrame(worldRiverSpine.progressAtDistance(riverDistance-probe)),after=worldRiverSpine.sampleFrame(worldRiverSpine.progressAtDistance(riverDistance+probe));
+ const probe=spanLength/2+BRIDGE_APPROACH_DISTANCE,before=spine.sampleFrame(spine.progressAtDistance(riverDistance-probe)),after=spine.sampleFrame(spine.progressAtDistance(riverDistance+probe));
  const curvatureRadians=Math.max(angleBetween(before.tangent,tangent),angleBetween(tangent,after.tangent),angleBetween(before.tangent,after.tangent));
  const bankStability=Math.max(0,1-approachSlope*3-curvatureRadians);
  // Higher landing + clearance is deterministic, keeps both ends exposed, and
@@ -79,13 +81,13 @@ function rawCandidate(seed:number,index:number):BridgeCrossingCandidate|undefine
 }
 
 /** Bounded spatial discovery; lattice indices are obtained from indexed river segments. */
-export function queryWorldRiverBridgeCandidates(seedInput:number|string,bounds:WorldBounds2D):readonly BridgeCrossingCandidate[]{
- const seed=normalizeSeed(seedInput),segments=worldRiverSpine.queryRiverSegments(bounds,BRIDGE_CANDIDATE_SPACING);
+export function queryWorldRiverBridgeCandidates(seedInput:number|string,bounds:WorldBounds2D,spine:RiverSpine=getWorldRiverOwner(seedInput).spine):readonly BridgeCrossingCandidate[]{
+ const seed=normalizeSeed(seedInput),segments=spine.queryRiverSegments(bounds,BRIDGE_CANDIDATE_SPACING);
  if(!segments.length)return[];
  const minimum=Math.min(...segments.map(s=>s.start.distance),...segments.map(s=>s.end.distance))-BRIDGE_CANDIDATE_SPACING;
  const maximum=Math.max(...segments.map(s=>s.start.distance),...segments.map(s=>s.end.distance))+BRIDGE_CANDIDATE_SPACING;
  const phase=latticePhase(seed),first=Math.ceil((minimum-phase)/BRIDGE_CANDIDATE_SPACING),last=Math.floor((maximum-phase)/BRIDGE_CANDIDATE_SPACING),found:BridgeCrossingCandidate[]=[];
- for(let index=first;index<=last;index++){const candidate=rawCandidate(seed,index);if(candidate&&candidate.bounds.maxX>=bounds.minX&&candidate.bounds.minX<=bounds.maxX&&candidate.bounds.maxZ>=bounds.minZ&&candidate.bounds.minZ<=bounds.maxZ)found.push(candidate)}
+ for(let index=first;index<=last;index++){const candidate=rawCandidate(seed,index,spine);if(candidate&&candidate.bounds.maxX>=bounds.minX&&candidate.bounds.minX<=bounds.maxX&&candidate.bounds.maxZ>=bounds.minZ&&candidate.bounds.minZ<=bounds.maxZ)found.push(candidate)}
  return found;
 }
 
@@ -106,15 +108,16 @@ export function createBridgeCollision(bridge:Omit<GeneratedBridge,"collision">):
  const extent=bridge.spanLength/2+rampLength+.5,radius=Math.abs(d.x)*extent+Math.abs(n.x)*(bridge.deckWidth/2+.5),radiusZ=Math.abs(d.z)*extent+Math.abs(n.z)*(bridge.deckWidth/2+.5);
  return{structureId:bridge.id,bridgeId:bridge.id,source:"bridge",ownerChunk:{...bridge.ownerChunk},centre:{...bridge.crossingCentre},direction:{...d},deckWidth:bridge.deckWidth,deckLength:bridge.spanLength,deckThickness:thickness,surfaces,segments:railings,railings,boxes:solids,solids,circles:[],bounds:{minX:bridge.crossingCentre.x-radius,maxX:bridge.crossingCentre.x+radius,minZ:bridge.crossingCentre.z-radiusZ,maxZ:bridge.crossingCentre.z+radiusZ}};
 }
-export function generateBridges(seedInput:number|string,coordinate:ChunkCoordinate,obstacles:readonly GeneratedPoi[]=[]):Readonly<{bridges:readonly GeneratedBridge[];candidates:readonly BridgeCrossingCandidate[]}>{
+export function generateBridges(seedInput:number|string,coordinate:ChunkCoordinate,obstacles:readonly GeneratedPoi[]=[],spine?:RiverSpine,riverIdentity?:string):Readonly<{bridges:readonly GeneratedBridge[];candidates:readonly BridgeCrossingCandidate[]}>{
  void obstacles; // compatibility parameter; canonical POIs below prevent caller-order dependence.
+ const owner=spine?undefined:getWorldRiverOwner(seedInput);spine??=owner!.spine;riverIdentity??=owner?.identity??"explicit-spine";
  const seed=normalizeSeed(seedInput),originX=coordinate.x*CHUNK_SIZE,originZ=coordinate.z*CHUNK_SIZE;
- const cacheKey=`${seed}:${coordinate.x}:${coordinate.z}`,cached=bridgeGenerationCache.get(cacheKey);if(cached)return cached;
- const raw=queryWorldRiverBridgeCandidates(seed,{minX:originX,maxX:originX+CHUNK_SIZE,minZ:originZ,maxZ:originZ+CHUNK_SIZE}).filter(candidate=>candidate.ownerChunk.x===coordinate.x&&candidate.ownerChunk.z===coordinate.z);
+ const cacheKey=`${seed}:${riverIdentity}:${coordinate.x}:${coordinate.z}`,cached=bridgeGenerationCache.get(cacheKey);if(cached)return cached;
+ const raw=queryWorldRiverBridgeCandidates(seed,{minX:originX,maxX:originX+CHUNK_SIZE,minZ:originZ,maxZ:originZ+CHUNK_SIZE},spine).filter(candidate=>candidate.ownerChunk.x===coordinate.x&&candidate.ownerChunk.z===coordinate.z);
  const candidates:BridgeCrossingCandidate[]=[],bridges:GeneratedBridge[]=[];
  for(const c of raw){
   let reason:BridgeRejectionReason|undefined;
-  if(c.riverDistance<BRIDGE_ENDPOINT_CLEARANCE||c.riverDistance>worldRiverSpine.totalLength-BRIDGE_ENDPOINT_CLEARANCE)reason="near river endpoint";
+  if(c.riverDistance<BRIDGE_ENDPOINT_CLEARANCE||c.riverDistance>spine.totalLength-BRIDGE_ENDPOINT_CLEARANCE)reason="near river endpoint";
   else if(candidatePriority(seed,c.latticeIndex)>.72)reason="rarity";
   else if(c.curvatureRadians>BRIDGE_MAX_CURVATURE_RADIANS)reason="river too curved";
   else if(Math.abs(c.landingHeights.left-c.landingHeights.right)>BRIDGE_MAX_LANDING_DIFFERENCE||c.approachSlope>.22)reason="approach slope too high";

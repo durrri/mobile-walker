@@ -5,7 +5,7 @@ import {
   sampleWorldRiverCarving,
   type WorldRiverCarvingContext,
 } from "./worldRiverCarving";
-import { worldRiverSpine, type RiverSpine, type WorldBounds2D } from "./worldRiverSpine";
+import { referenceWorldRiverSpine, type RiverSpine, type WorldBounds2D } from "./worldRiverSpine";
 
 export interface WorldRiverRelationshipContext {
   readonly carving: WorldRiverCarvingContext;
@@ -46,11 +46,11 @@ export interface WorldRiverRelationshipOptions {
 export function createWorldRiverRelationshipContext(
   bounds: WorldBounds2D,
   queryRadius = WORLD_RIVER_MAX_CARVING_RADIUS,
-  spine: RiverSpine = worldRiverSpine,
+  spine: RiverSpine = referenceWorldRiverSpine,
 ): WorldRiverRelationshipContext {
   const radius = Math.max(0, queryRadius);
   const segments = spine.queryRiverSegments(bounds, radius);
-  const carving = spine === worldRiverSpine && radius === WORLD_RIVER_MAX_CARVING_RADIUS
+  const carving = spine === referenceWorldRiverSpine && radius === WORLD_RIVER_MAX_CARVING_RADIUS
     ? createWorldRiverCarvingContext(bounds, spine)
     : Object.freeze({ spine, segments, hasRiver: segments.length > 0 });
   return Object.freeze({ carving, bounds: Object.freeze({ ...bounds }), queryRadius: radius, hasRiver: carving.hasRiver });

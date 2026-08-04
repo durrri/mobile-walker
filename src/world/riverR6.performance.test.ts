@@ -5,6 +5,8 @@ import { RIVER_R6_FIXTURES } from "./riverR6Fixtures";
 import { findSafeRestoredTransformFromCanonicalWorld } from "./safePlayerPosition";
 import { resetWorldGenerationCachesForDiagnostics } from "./worldGenerationDiagnostics";
 import { sampleWorldRiverGameplay } from "./worldRiverGameplay";
+import { dryChunkOutsideRiverInfluence, riverChunkAtProgress, riverPointAtProgress } from "./riverProceduralFixtures";
+import { getWorldRiverOwner } from "./worldRiverOwner";
 
 const SAMPLE_COUNT = 10;
 const rounded = (value: number) => +value.toFixed(3);
@@ -25,16 +27,22 @@ describe("R6 reproducible performance diagnostic", () => {
   it("reports cache-cleared cold, cached lookup, stage, mesh, and Node heap diagnostics", () => {
     const heapStartMb = process.memoryUsage().heapUsed / 1_048_576;
     const named = ["dry-far", "diagonal", "canyon", "bridge", "poi-adjacent"];
+    const benchmarkSeed="r6-baseline";
+    const spine=getWorldRiverOwner(benchmarkSeed).spine;
+    const diagonalProgress=Array.from({length:81},(_,index)=>(index+10)/100)
+      .sort((a,b)=>{const ta=spine.sampleTangent(a),tb=spine.sampleTangent(b);return Math.abs(Math.abs(ta.x)-Math.abs(ta.z))-Math.abs(Math.abs(tb.x)-Math.abs(tb.z));})[0]!;
     const chunks = Object.fromEntries(named.map(name => {
       const fixture = RIVER_R6_FIXTURES.find(candidate => candidate.name === name)!;
+      const chunk=name==="dry-far"?dryChunkOutsideRiverInfluence(benchmarkSeed)
+        :riverChunkAtProgress(name==="diagonal"?diagonalProgress:fixture.progress!,benchmarkSeed);
       // Untimed warm-up isolates module/JIT startup; it is discarded before all cold samples.
-      generateChunk("r6-baseline", fixture.chunk);
+      generateChunk(benchmarkSeed, chunk);
       const coldSamples: number[] = [], stages: ChunkGenerationStageTimings[] = [];
       let data!: GeneratedChunkData;
       for (let run = 0; run < SAMPLE_COUNT; run += 1) {
         resetWorldGenerationCachesForDiagnostics();
         const start = performance.now();
-        data = generateChunk("r6-baseline", fixture.chunk, undefined, false, { record: timing => stages.push({ ...timing }) });
+        data = generateChunk(benchmarkSeed, chunk, undefined, false, { record: timing => stages.push({ ...timing }) });
         coldSamples.push(performance.now() - start);
       }
       // This models the runtime data-cache hit accurately: streaming returns the
@@ -54,7 +62,7 @@ describe("R6 reproducible performance diagnostic", () => {
           + data.vegetation.leafTrees.length + data.vegetation.bushes.length + data.vegetation.flowers.length,
         bridges: data.bridges.length, pois: data.pois.length }];
     }));
-    const hotPoint = RIVER_R6_FIXTURES.find(f => f.name === "strongest-bend")!.position;
+    const hotPoint = riverPointAtProgress(RIVER_R6_FIXTURES.find(f => f.name === "strongest-bend")!.progress!,benchmarkSeed);
     const gameplay = summarize(sampleOperation(2_000, () => sampleWorldRiverGameplay("r6-baseline", hotPoint.x, hotPoint.z)), false);
     const safePosition = summarize(sampleOperation(30, () => findSafeRestoredTransformFromCanonicalWorld(
       "r6-baseline", { ...hotPoint, y: 0, yaw: 0 }, .76, .3,

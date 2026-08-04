@@ -1,6 +1,6 @@
 import { CHUNK_SIZE, type ChunkCoordinate } from "./chunkCoordinates";
 import { WORLD_RIVER_CARVING } from "./worldRiverCarving";
-import { worldRiverSpine, type RiverSpine, type WorldBounds2D } from "./worldRiverSpine";
+import { referenceWorldRiverSpine, type RiverSpine, type WorldBounds2D } from "./worldRiverSpine";
 
 /** Global arc-length lattice used by every chunk. It never restarts at a seam. */
 export const WORLD_RIVER_WATER_SAMPLE_SPACING = 1;
@@ -17,7 +17,7 @@ export interface WorldRiverWaterSample {
   readonly distanceAlongRiver: number;
 }
 
-export function sampleWorldRiverWater(x: number, z: number, spine: RiverSpine = worldRiverSpine): WorldRiverWaterSample {
+export function sampleWorldRiverWater(x: number, z: number, spine: RiverSpine = referenceWorldRiverSpine): WorldRiverWaterSample {
   const nearest = spine.nearestPointToRiver(x, z);
   const signedDistanceToEdge = nearest.distanceToRiver - WORLD_RIVER_CARVING.waterHalfWidth;
   return {
@@ -32,7 +32,7 @@ export function sampleWorldRiverWater(x: number, z: number, spine: RiverSpine = 
   };
 }
 
-export const isInsideWorldRiverWater = (x: number, z: number, spine: RiverSpine = worldRiverSpine): boolean =>
+export const isInsideWorldRiverWater = (x: number, z: number, spine: RiverSpine = referenceWorldRiverSpine): boolean =>
   sampleWorldRiverWater(x, z, spine).inside;
 
 export interface WaterVertex { readonly x: number; readonly y: number; readonly z: number; readonly u: number; readonly v: number }
@@ -134,7 +134,7 @@ function queryWaterIntervals(lattice: WaterLattice, bounds?: WorldBounds2D): rea
   return [...found.values()].sort((a, b) => a.index - b.index);
 }
 
-export function tessellateWorldRiverWater(bounds?: WorldBounds2D, spine: RiverSpine = worldRiverSpine): WorldRiverWaterGeometry {
+export function tessellateWorldRiverWater(bounds?: WorldBounds2D, spine: RiverSpine = referenceWorldRiverSpine): WorldRiverWaterGeometry {
   const lattice = waterLattice(spine);
   const candidates = queryWaterIntervals(lattice, bounds);
   const vertices: MutableVertex[] = [], indices: number[] = [];
@@ -161,7 +161,7 @@ export function tessellateWorldRiverWater(bounds?: WorldBounds2D, spine: RiverSp
   return { vertices, indices, sampleDistances, candidateIntervalCount: candidates.length, globalIntervalCount: lattice.intervals.length };
 }
 
-export function tessellateWorldRiverWaterChunk(coordinate: ChunkCoordinate, spine: RiverSpine = worldRiverSpine): WorldRiverWaterGeometry {
+export function tessellateWorldRiverWaterChunk(coordinate: ChunkCoordinate, spine: RiverSpine = referenceWorldRiverSpine): WorldRiverWaterGeometry {
   const minX = coordinate.x * CHUNK_SIZE, minZ = coordinate.z * CHUNK_SIZE;
   const bounds = { minX, maxX: minX + CHUNK_SIZE, minZ, maxZ: minZ + CHUNK_SIZE };
   return tessellateWorldRiverWater(bounds, spine);

@@ -5,6 +5,8 @@ import { isInsideWorldRiverWater } from "./worldRiverGameplay";
 import { worldToChunk } from "./chunkCoordinates";
 import { generateWetlandPools } from "./wetlands";
 import { createCanonicalStructureSafetyQuery } from "./structureCollision";
+import { createWorldRiverGameplayContext } from "./worldRiverGameplay";
+import { getWorldRiverOwner } from "./worldRiverOwner";
 
 export const DEFAULT_PLAYER_SPAWN: TransformComponent = { x: 0, y: 0.76, z: 0, yaw: 0 };
 
@@ -26,10 +28,19 @@ function findNear(
   overlapsTrunk: PlayerTrunkOverlapQuery,
   structureSafety?: PlayerStructureSafetyQuery,
 ): TransformComponent | undefined {
+  const river = getWorldRiverOwner(seed).spine;
+  const riverContext = createWorldRiverGameplayContext({
+    minX: origin.x - maximumSearchRadius - collisionRadius,
+    maxX: origin.x + maximumSearchRadius + collisionRadius,
+    minZ: origin.z - maximumSearchRadius - collisionRadius,
+    maxZ: origin.z + maximumSearchRadius + collisionRadius,
+  }, river);
   const isUnsafe = (x: number, z: number): boolean => {
     const structure = structureSafety?.(x, z, collisionRadius);
     if (structure?.kind === "walkable") return false;
-    if (structure?.kind === "solid" || overlapsTrunk(x, z, collisionRadius) || isInsideWorldRiverWater(x, z) || isLakeAt(seed, x, z)) return true;
+    if (structure?.kind === "solid" || overlapsTrunk(x, z, collisionRadius)
+      || isInsideWorldRiverWater(x, z, riverContext)
+      || isLakeAt(seed, x, z)) return true;
     return generateWetlandPools(seed, worldToChunk(x, z)).some(pool => {
       const cosine = Math.cos(pool.rotation), sine = Math.sin(pool.rotation);
       const dx = x - pool.x, dz = z - pool.z;
