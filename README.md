@@ -84,8 +84,9 @@ tangent.x)`. Nearest queries choose candidates from the reusable world-bounds
 segment grid, project onto its polyline, then refine on the spline. Bounds queries
 return ordered, potentially shared intervals and accept a margin. R5a world-river
 bridges, R5b ordinary-object exclusion, and R5c POIs/navigation are complete.
-R5d gameplay queries and final legacy removal are complete; R6 next performs full
-seam, streaming, regeneration, and generation-order validation. All active river
+R5d gameplay queries and final legacy removal are complete. R6 certification and
+stabilization is complete when its gate is accepted; R7 procedural macro path is
+next. All active river
 consumers must use the world-owned river before procedural paths, secondary
 meanders, variable width, or river lakes are introduced.
 
@@ -97,11 +98,10 @@ at their own world X/Z and add a small surface offset; ordinary depth testing
 keeps hills and structures occluding them. Objects are created lazily and disposed
 on every mode change. No debug view supplies gameplay classification or collision.
 
-Planned phases are: **R1** world-space river ownership; **R2** arbitrary smooth
-manual test spine; R3 chunk-independent terrain carving; R4 chunk-independent
-water and banks; R5 downstream systems adaptation; R6 seam and generation-order
-validation; R7 procedural macro spine; R8 secondary meanders; R9 variable width;
-and R10 river lakes.
+The milestone is: **R1–R5d complete**; **R6 certification and stabilization**;
+**R7 procedural macro path** next; **R8 secondary meanders** after R7; **R9
+variable width**; **R10 river-connected lakes**; and **R11 standalone-lake
+integration and final water rules**.
 
 `generateChunk(seed, coordinate)` is a pure data boundary: the normalized seed
 and integer `(x, z)` coordinate completely determine its plain-object result.

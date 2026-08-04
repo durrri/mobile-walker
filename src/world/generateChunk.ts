@@ -43,6 +43,9 @@ export interface IrregularTerrainVertex {
 export const WORLD_RIVER_TERRAIN_STRIP_SAMPLE_SPACING = 0.5;
 let terrainStripFrames: readonly ReturnType<typeof worldRiverSpine.sampleFrame>[] | undefined;
 
+/** Resets the immutable strip-lattice memo for independent cold diagnostics. */
+export function clearWorldRiverTerrainStripCache(): void { terrainStripFrames = undefined; }
+
 function worldRiverTerrainStripFrames(): readonly ReturnType<typeof worldRiverSpine.sampleFrame>[] {
   if (terrainStripFrames) return terrainStripFrames;
   const count = Math.ceil(worldRiverSpine.totalLength / WORLD_RIVER_TERRAIN_STRIP_SAMPLE_SPACING);
@@ -84,13 +87,24 @@ export interface GeneratedChunkData {
 
 }
 
+export interface ChunkGenerationStageTimings {
+  terrainFieldMs: number;
+  poiAndBridgeMs: number;
+  terrainTriangulationMs: number;
+  objectPlacementMs: number;
+  totalMs: number;
+}
+export interface ChunkGenerationDiagnostics { record(timings: Readonly<ChunkGenerationStageTimings>): void }
+
 /** Pure, random-access generation: output is solely a function of seed and coordinate. */
 export function generateChunk(
   seedInput: number | string,
   coordinate: ChunkCoordinate,
   occlusionOptions: Readonly<TerrainOcclusionOptions> = DEFAULT_TERRAIN_OCCLUSION_OPTIONS,
   includeDebugData = false,
+  diagnostics?: ChunkGenerationDiagnostics,
 ): GeneratedChunkData {
+  const generationStarted = diagnostics ? performance.now() : 0;
   const seed = normalizeSeed(seedInput);
   const terrainSegments = TERRAIN_SEGMENTS;
   const verticesPerSide = terrainSegments + 1;
@@ -120,6 +134,7 @@ export function generateChunk(
       ));
     }
   }
+  const terrainFieldFinished = diagnostics ? performance.now() : 0;
 
   // POIs deliberately precede every placed-object pass. Their global zones may
   // cross this chunk even when the owning origin is in a neighbor.
@@ -139,6 +154,7 @@ export function generateChunk(
   // never during rendering or a movement query.
   for(const definition of [...pois.map(poi=>poi.structure),...bridges.map(bridge=>bridge.collision)])validateStructureDefinition(definition);
   const exclusionZones = [...poiNeighborhood.flatMap(poi => poi.zones),...bridgeNeighborhood.flatMap(bridge=>bridge.zones)];
+  const structuresFinished = diagnostics ? performance.now() : 0;
   let irregularTerrain: GeneratedChunkData["irregularTerrain"] = undefined;
   let meshVertices = terrainHeights.map((height, vertexIndex) => ({
     x: coordinate.x * CHUNK_SIZE + vertexIndex % verticesPerSide * CHUNK_SIZE / terrainSegments,
@@ -288,12 +304,28 @@ export function generateChunk(
     const points = vertices.map(vertex => [vertex.x, vertex.z]);
     const constraints = [...constraintMap.values()];
     cleanPSLG(points, constraints);
+    // clean-pslg uses an internally randomized sweep structure. Its geometric
+    // result is stable, but insertion/index order is not. Canonicalize the PSLG
+    // before CDT so generation order and cache history cannot leak into buffers.
+    const pointOrder = points.map((_, index) => index).sort((a, b) =>
+      points[a]![0]! - points[b]![0]! || points[a]![1]! - points[b]![1]!);
+    const remap = new Map(pointOrder.map((oldIndex, newIndex) => [oldIndex, newIndex]));
+    const canonicalPoints = pointOrder.map(index => points[index]!);
+    points.splice(0, points.length, ...canonicalPoints);
+    for (const edge of constraints) {
+      edge[0] = remap.get(edge[0])!; edge[1] = remap.get(edge[1])!;
+      if (edge[0] > edge[1]) [edge[0], edge[1]] = [edge[1], edge[0]];
+    }
+    constraints.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
     vertices = points.map(([x, z]) => originalByPosition.get(`${x!.toFixed(9)},${z!.toFixed(9)}`) ?? (() => {
       const height = sampleTerrainHeight(seed, x!, z!);
       return { x: x!, z: z!, height, biomeWeights: sampleBiome(seed, x!, z!).weights,
         occlusion: 0 };
     })());
-    const triangulated = cdt2d(points, constraints);
+    const triangulated = cdt2d(points, constraints).sort((a, b) => {
+      const sortedA = [...a].sort((x, y) => x - y), sortedB = [...b].sort((x, y) => x - y);
+      return sortedA[0]! - sortedB[0]! || sortedA[1]! - sortedB[1]! || sortedA[2]! - sortedB[2]!;
+    });
     const indices: number[] = [];
     for (const triangle of triangulated) {
       const [a, b, c] = triangle;
@@ -318,7 +350,14 @@ export function generateChunk(
     for(const offset of [a,b,c]) { normals[offset]!+=nx;normals[offset+1]!+=ny;normals[offset+2]!+=nz; }
   }
   for(let i=0;i<normals.length;i+=3){const length=Math.hypot(normals[i]!,normals[i+1]!,normals[i+2]!)||1;normals[i]!/=length;normals[i+1]!/=length;normals[i+2]!/=length;}
-  return {
+  const triangulationFinished = diagnostics ? performance.now() : 0;
+  const pines = generateTrees(seed, coordinate, exclusionZones, riverEnvironmentContext);
+  const collectibles = placeCollectibles(seed, coordinate, exclusionZones, riverEnvironmentContext);
+  const vegetation = generateVegetation(seed, coordinate, exclusionZones, riverEnvironmentContext);
+  const wetlandPools = generateWetlandPools(seed, coordinate, riverEnvironmentContext)
+    .filter(pool => !isVegetationExcluded(pool.x, pool.z, exclusionZones));
+  const objectsFinished = diagnostics ? performance.now() : 0;
+  const result: GeneratedChunkData = {
     seed,
     id: chunkId(coordinate),
     coordinate: { ...coordinate },
@@ -330,13 +369,21 @@ export function generateChunk(
     terrainMaximumDarkening: occlusionOptions.maximumDarkening,
     terrainVerticesPerSide: verticesPerSide,
     irregularTerrain,
-    pines: generateTrees(seed, coordinate, exclusionZones, riverEnvironmentContext),
+    pines,
     pois,
     bridges,
     poiCandidates: includeDebugData ? ownedCandidates : undefined,
     bridgeCandidates:includeDebugData?ownedBridgeCandidates:undefined,
-    collectibles: placeCollectibles(seed, coordinate, exclusionZones, riverEnvironmentContext),
-    vegetation: generateVegetation(seed, coordinate, exclusionZones, riverEnvironmentContext),
-    wetlandPools: generateWetlandPools(seed, coordinate, riverEnvironmentContext).filter(pool => !isVegetationExcluded(pool.x, pool.z, exclusionZones)),
+    collectibles,
+    vegetation,
+    wetlandPools,
   };
+  diagnostics?.record({
+    terrainFieldMs: terrainFieldFinished - generationStarted,
+    poiAndBridgeMs: structuresFinished - terrainFieldFinished,
+    terrainTriangulationMs: triangulationFinished - structuresFinished,
+    objectPlacementMs: objectsFinished - triangulationFinished,
+    totalMs: objectsFinished - generationStarted,
+  });
+  return result;
 }

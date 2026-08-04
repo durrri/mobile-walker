@@ -32,6 +32,8 @@ export function sampleWetlandSpeedMultiplier(
 const wetlandPoolCache = new Map<string, readonly WetlandPoolPlacement[]>();
 /** Lightweight cache diagnostic used by deterministic-generation regression tests. */
 export function getWetlandPoolCacheSize(): number { return wetlandPoolCache.size; }
+/** Supported deterministic-test/diagnostic reset; production never needs it. */
+export function clearWetlandPoolCache(): void { wetlandPoolCache.clear(); }
 
 /** Generates many small, deterministic pools only where the wetland blend is strong. Results are shared by dry-footprint and chunk generation queries. */
 export function generateWetlandPools(

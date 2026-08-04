@@ -83,7 +83,10 @@ interface WaterLattice {
 }
 
 const WATER_INDEX_CELL_SIZE = CHUNK_SIZE;
-const lattices = new WeakMap<RiverSpine, WaterLattice>();
+let lattices = new WeakMap<RiverSpine, WaterLattice>();
+
+/** Resets presentation-neutral water lattices for independent regeneration diagnostics. */
+export function clearWorldRiverWaterCaches(): void { lattices = new WeakMap<RiverSpine, WaterLattice>(); }
 
 /** Builds the immutable global distance lattice and interval index once per spine. */
 function waterLattice(spine: RiverSpine): WaterLattice {
