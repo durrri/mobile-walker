@@ -288,12 +288,28 @@ export function generateChunk(
     const points = vertices.map(vertex => [vertex.x, vertex.z]);
     const constraints = [...constraintMap.values()];
     cleanPSLG(points, constraints);
+    // clean-pslg uses an internally randomized sweep structure. Its geometric
+    // result is stable, but insertion/index order is not. Canonicalize the PSLG
+    // before CDT so generation order and cache history cannot leak into buffers.
+    const pointOrder = points.map((_, index) => index).sort((a, b) =>
+      points[a]![0]! - points[b]![0]! || points[a]![1]! - points[b]![1]!);
+    const remap = new Map(pointOrder.map((oldIndex, newIndex) => [oldIndex, newIndex]));
+    const canonicalPoints = pointOrder.map(index => points[index]!);
+    points.splice(0, points.length, ...canonicalPoints);
+    for (const edge of constraints) {
+      edge[0] = remap.get(edge[0])!; edge[1] = remap.get(edge[1])!;
+      if (edge[0] > edge[1]) [edge[0], edge[1]] = [edge[1], edge[0]];
+    }
+    constraints.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
     vertices = points.map(([x, z]) => originalByPosition.get(`${x!.toFixed(9)},${z!.toFixed(9)}`) ?? (() => {
       const height = sampleTerrainHeight(seed, x!, z!);
       return { x: x!, z: z!, height, biomeWeights: sampleBiome(seed, x!, z!).weights,
         occlusion: 0 };
     })());
-    const triangulated = cdt2d(points, constraints);
+    const triangulated = cdt2d(points, constraints).sort((a, b) => {
+      const sortedA = [...a].sort((x, y) => x - y), sortedB = [...b].sort((x, y) => x - y);
+      return sortedA[0]! - sortedB[0]! || sortedA[1]! - sortedB[1]! || sortedA[2]! - sortedB[2]!;
+    });
     const indices: number[] = [];
     for (const triangle of triangulated) {
       const [a, b, c] = triangle;

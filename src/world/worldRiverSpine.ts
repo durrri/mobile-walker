@@ -1,5 +1,4 @@
-/** Presentation-neutral, world-space river geometry. The legacy river in river.ts
- * still drives gameplay; this is the future authoritative river source. */
+/** Presentation-neutral, authoritative world-space river geometry. */
 
 export interface RiverControlPoint { readonly x: number; readonly z: number }
 export interface WorldBounds2D { readonly minX: number; readonly maxX: number; readonly minZ: number; readonly maxZ: number }

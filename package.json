@@ -8,7 +8,9 @@
     "build": "tsc && vite build",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run --exclude '**/*.extended.test.ts' --exclude '**/*.performance.test.ts'",
+    "test:extended": "vitest run src/world/riverR6.extended.test.ts",
+    "benchmark:river": "vitest run src/world/riverR6.performance.test.ts --reporter=verbose"
   },
   "dependencies": {
     "buffer": "^6.0.3",
