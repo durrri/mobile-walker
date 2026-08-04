@@ -40,7 +40,9 @@ export interface MeanderRegion {
 export type RiverCorrectionReason = "macro-segment-length" | "macro-curvature" | "outside-bounds" | "self-separation" | "final-curvature" | "non-finite-frame" | "fallback-straight";
 export type RegionalSuitability = (macroDistance: number, macroLength: number) => number;
 
-export const PROCEDURAL_RIVER_GENERATION_VERSION = 8;
+export const PROCEDURAL_RIVER_GENERATION_VERSION = 9;
+/** R9 changes the channel envelope, not the already accepted R7/R8 centreline. */
+const RIVER_SPINE_ALGORITHM_VERSION = 8;
 export const DEFAULT_RIVER_GENERATION_CONFIG: Readonly<RiverGenerationConfig> = Object.freeze({
   generationVersion: PROCEDURAL_RIVER_GENERATION_VERSION,
   worldSeed: 0x52495645,
@@ -89,7 +91,7 @@ const stableConfigKey = (config: RiverGenerationConfig): string => JSON.stringif
  * is the documented fallback should validation ever reject the relaxed polygon.
  */
 export function generateMacroControlPoints(config: RiverGenerationConfig): readonly RiverControlPoint[] {
-  const seed = normalizeSeed(config.worldSeed) ^ config.generationVersion;
+  const seed = normalizeSeed(config.worldSeed) ^ RIVER_SPINE_ALGORITHM_VERSION;
   const span = config.bounds.maxZ - config.bounds.minZ;
   const count = Math.max(2, Math.round(span / config.macroWaypointSpacing));
   const values = Array.from({ length: count + 1 }, (_, index) => {
@@ -145,7 +147,7 @@ export function generateMeanderRegions(
   config: RiverGenerationConfig,
   suitability: RegionalSuitability = () => 1,
 ): readonly MeanderRegion[] {
-  const seed = normalizeSeed(config.worldSeed) ^ config.generationVersion;
+  const seed = normalizeSeed(config.worldSeed) ^ RIVER_SPINE_ALGORITHM_VERSION;
   const protectedLength = config.endpointProtectionDistance;
   const available = Math.max(0, macroLength - protectedLength * 2);
   const desiredCount = available > 150 ? 2 : available > 60 ? 1 : 0;
@@ -186,7 +188,7 @@ export function generateMeanderedControlPoints(
   regions: readonly MeanderRegion[] = generateMeanderRegions(macroSpine.totalLength, config),
   amplitudeScale = 1,
 ): readonly RiverControlPoint[] {
-  const seed = normalizeSeed(config.worldSeed) ^ config.generationVersion;
+  const seed = normalizeSeed(config.worldSeed) ^ RIVER_SPINE_ALGORITHM_VERSION;
   const amplitude = config.meanderAmplitudeRange[0] + hashFloat(seed, 8101)
     * (config.meanderAmplitudeRange[1] - config.meanderAmplitudeRange[0]);
   const phase = hashFloat(seed, 8103) * Math.PI * 2;
@@ -356,7 +358,7 @@ export function getWorldRiverGeneration(config: RiverGenerationConfig = DEFAULT_
     }
   }
   const measuredCurvature = measureMaximumCurvature(meanderedResampleForMeasurement(meanderedSpine, config.resamplingSpacing));
-  const seed = normalizeSeed(config.worldSeed) ^ config.generationVersion;
+  const seed = normalizeSeed(config.worldSeed) ^ RIVER_SPINE_ALGORITHM_VERSION;
   const meanderAmplitude = (config.meanderAmplitudeRange[0] + hashFloat(seed, 8101)
     * (config.meanderAmplitudeRange[1] - config.meanderAmplitudeRange[0])) * scale;
   const meanderWavelength = config.meanderWavelengthRange[0] + hashFloat(seed, 8102)

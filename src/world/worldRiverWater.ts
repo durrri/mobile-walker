@@ -1,6 +1,13 @@
 import { CHUNK_SIZE, type ChunkCoordinate } from "./chunkCoordinates";
-import { WORLD_RIVER_CARVING } from "./worldRiverCarving";
+import { getReferenceRiverWidthProfile, WORLD_RIVER_CARVING } from "./worldRiverCarving";
 import { referenceWorldRiverSpine, type RiverSpine, type WorldBounds2D } from "./worldRiverSpine";
+import { sampleRiverWidth, type RiverWidthProfile } from "./worldRiverWidth";
+
+function requireProfile(spine:RiverSpine,profile?:RiverWidthProfile):RiverWidthProfile{
+  profile??=spine===referenceWorldRiverSpine?getReferenceRiverWidthProfile():undefined;
+  if(!profile)throw new Error("Authoritative river width profile is required for water geometry");
+  if(profile.spine!==spine)throw new Error("River water width profile/spine identity mismatch");return profile;
+}
 
 /** Global arc-length lattice used by every chunk. It never restarts at a seam. */
 export const WORLD_RIVER_WATER_SAMPLE_SPACING = 1;
@@ -15,25 +22,29 @@ export interface WorldRiverWaterSample {
   readonly halfWidth: number;
   readonly progress: number;
   readonly distanceAlongRiver: number;
+  readonly widthProfileIdentity: string;
 }
 
-export function sampleWorldRiverWater(x: number, z: number, spine: RiverSpine = referenceWorldRiverSpine): WorldRiverWaterSample {
+export function sampleWorldRiverWater(x: number, z: number, spine: RiverSpine = referenceWorldRiverSpine,profile?:RiverWidthProfile): WorldRiverWaterSample {
+  profile=requireProfile(spine,profile);
   const nearest = spine.nearestPointToRiver(x, z);
-  const signedDistanceToEdge = nearest.distanceToRiver - WORLD_RIVER_CARVING.waterHalfWidth;
+  const halfWidth = sampleRiverWidth(profile, nearest.distanceAlongRiver,spine).halfWidth;
+  const signedDistanceToEdge = nearest.distanceToRiver - halfWidth;
   return {
     inside: signedDistanceToEdge <= 0,
     signedDistanceToEdge,
     distanceToCentreline: nearest.distanceToRiver,
     signedSide: nearest.signedSide,
     surfaceElevation: WORLD_RIVER_CARVING.surfaceElevation,
-    halfWidth: WORLD_RIVER_CARVING.waterHalfWidth,
+    halfWidth,
     progress: nearest.progress,
     distanceAlongRiver: nearest.distanceAlongRiver,
+    widthProfileIdentity: profile.identity,
   };
 }
 
-export const isInsideWorldRiverWater = (x: number, z: number, spine: RiverSpine = referenceWorldRiverSpine): boolean =>
-  sampleWorldRiverWater(x, z, spine).inside;
+export const isInsideWorldRiverWater = (x: number, z: number, spine: RiverSpine = referenceWorldRiverSpine,profile?:RiverWidthProfile): boolean =>
+  sampleWorldRiverWater(x, z, spine,profile).inside;
 
 export interface WaterVertex { readonly x: number; readonly y: number; readonly z: number; readonly u: number; readonly v: number }
 export interface WorldRiverWaterGeometry {
@@ -83,21 +94,21 @@ interface WaterLattice {
 }
 
 const WATER_INDEX_CELL_SIZE = CHUNK_SIZE;
-let lattices = new WeakMap<RiverSpine, WaterLattice>();
+let lattices = new WeakMap<RiverWidthProfile, WaterLattice>();
 
 /** Resets presentation-neutral water lattices for independent regeneration diagnostics. */
-export function clearWorldRiverWaterCaches(): void { lattices = new WeakMap<RiverSpine, WaterLattice>(); }
+export function clearWorldRiverWaterCaches(): void { lattices = new WeakMap<RiverWidthProfile, WaterLattice>(); }
 
 /** Builds the immutable global distance lattice and interval index once per spine. */
-function waterLattice(spine: RiverSpine): WaterLattice {
-  const existing = lattices.get(spine); if (existing) return existing;
+function waterLattice(spine: RiverSpine,profile:RiverWidthProfile): WaterLattice {
+  const existing = lattices.get(profile); if (existing) return existing;
   const spacing = WORLD_RIVER_WATER_SAMPLE_SPACING;
   const count = Math.ceil(spine.totalLength / spacing);
   const frames: WaterFrame[] = [];
   for (let index = 0; index <= count; index += 1) {
     const distance = Math.min(index * spacing, spine.totalLength);
     const frame = spine.sampleFrame(spine.progressAtDistance(distance));
-    const half = WORLD_RIVER_CARVING.waterHalfWidth, y = WORLD_RIVER_CARVING.surfaceElevation;
+    const half = sampleRiverWidth(profile, distance,spine).halfWidth, y = WORLD_RIVER_CARVING.surfaceElevation;
     frames.push({ distance,
       left: { x: frame.position.x + frame.normal.x * half, y, z: frame.position.z + frame.normal.z * half, u: distance, v: 0 },
       right: { x: frame.position.x - frame.normal.x * half, y, z: frame.position.z - frame.normal.z * half, u: distance, v: 1 },
@@ -117,7 +128,7 @@ function waterLattice(spine: RiverSpine): WaterLattice {
     }
   }
   const lattice = { frames, intervals, cells: new Map([...mutableCells].map(([key, value]) => [key, Object.freeze(value)])) };
-  lattices.set(spine, lattice); return lattice;
+  lattices.set(profile, lattice); return lattice;
 }
 
 const intersects = (a: WorldBounds2D, b: WorldBounds2D): boolean =>
@@ -134,8 +145,8 @@ function queryWaterIntervals(lattice: WaterLattice, bounds?: WorldBounds2D): rea
   return [...found.values()].sort((a, b) => a.index - b.index);
 }
 
-export function tessellateWorldRiverWater(bounds?: WorldBounds2D, spine: RiverSpine = referenceWorldRiverSpine): WorldRiverWaterGeometry {
-  const lattice = waterLattice(spine);
+export function tessellateWorldRiverWater(bounds?: WorldBounds2D, spine: RiverSpine = referenceWorldRiverSpine,profile?:RiverWidthProfile): WorldRiverWaterGeometry {
+  const lattice = waterLattice(spine,requireProfile(spine,profile));
   const candidates = queryWaterIntervals(lattice, bounds);
   const vertices: MutableVertex[] = [], indices: number[] = [];
   const emit = (triangle: MutableVertex[]): void => {
@@ -161,8 +172,8 @@ export function tessellateWorldRiverWater(bounds?: WorldBounds2D, spine: RiverSp
   return { vertices, indices, sampleDistances, candidateIntervalCount: candidates.length, globalIntervalCount: lattice.intervals.length };
 }
 
-export function tessellateWorldRiverWaterChunk(coordinate: ChunkCoordinate, spine: RiverSpine = referenceWorldRiverSpine): WorldRiverWaterGeometry {
+export function tessellateWorldRiverWaterChunk(coordinate: ChunkCoordinate, spine: RiverSpine = referenceWorldRiverSpine,profile?:RiverWidthProfile): WorldRiverWaterGeometry {
   const minX = coordinate.x * CHUNK_SIZE, minZ = coordinate.z * CHUNK_SIZE;
   const bounds = { minX, maxX: minX + CHUNK_SIZE, minZ, maxZ: minZ + CHUNK_SIZE };
-  return tessellateWorldRiverWater(bounds, spine);
+  return tessellateWorldRiverWater(bounds, spine,profile);
 }

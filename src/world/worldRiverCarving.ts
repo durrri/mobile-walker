@@ -4,6 +4,8 @@ import {
   type RiverSpine,
   type WorldBounds2D,
 } from "./worldRiverSpine";
+import { createRiverWidthProfile, RIVER_WIDTH_CONFIG, sampleRiverWidth, type RiverWidthProfile } from "./worldRiverWidth";
+import { DEFAULT_RIVER_GENERATION_CONFIG } from "./worldRiverGeneration";
 
 /** One shared footprint consumed by water tessellation, terrain, queries, and debug guides. */
 export const WORLD_RIVER_WATER_HALF_WIDTH = 2;
@@ -30,7 +32,7 @@ export const WORLD_RIVER_CARVING = Object.freeze({
 });
 
 export const WORLD_RIVER_MAX_CARVING_RADIUS =
-  WORLD_RIVER_CARVING.waterHalfWidth + WORLD_RIVER_CARVING.bankWidth + WORLD_RIVER_CARVING.falloffWidth;
+  RIVER_WIDTH_CONFIG.maximumWidth / 2 + WORLD_RIVER_CARVING.bankWidth + WORLD_RIVER_CARVING.falloffWidth;
 
 export const WORLD_RIVER_LIP_CREST_DISTANCE =
   WORLD_RIVER_CARVING.waterHalfWidth + WORLD_RIVER_CARVING.shoreTransitionWidth;
@@ -48,8 +50,15 @@ export const WORLD_RIVER_NOMINAL_SLOPES = Object.freeze({
   innerBank: WORLD_RIVER_CARVING.innerBankRise / WORLD_RIVER_INNER_BANK_WIDTH,
 });
 
+/** Authoritative profile for the exported reference world used by compatibility fixtures. */
+let retainedReferenceWidthProfile:RiverWidthProfile|undefined;
+export function getReferenceRiverWidthProfile():RiverWidthProfile{
+  return retainedReferenceWidthProfile??=createRiverWidthProfile(DEFAULT_RIVER_GENERATION_CONFIG.worldSeed,referenceWorldRiverSpine);
+}
+
 export interface WorldRiverCarvingContext {
   readonly spine: RiverSpine;
+  readonly widthProfile: RiverWidthProfile;
   readonly segments: readonly RiverIndexedSegment[];
   readonly hasRiver: boolean;
 }
@@ -89,9 +98,13 @@ const smoothstep = (value: number): number => {
 export function createWorldRiverCarvingContext(
   bounds: WorldBounds2D,
   spine: RiverSpine = referenceWorldRiverSpine,
+  widthProfile?: RiverWidthProfile,
 ): WorldRiverCarvingContext {
+  widthProfile ??= spine === referenceWorldRiverSpine ? getReferenceRiverWidthProfile() : undefined;
+  if (!widthProfile) throw new Error("Authoritative river width profile is required for a non-reference spine");
+  if (widthProfile.spine !== spine) throw new Error("River carving context width profile/spine identity mismatch");
   const segments = spine.queryRiverSegments(bounds, WORLD_RIVER_MAX_CARVING_RADIUS);
-  return Object.freeze({ spine, segments, hasRiver: segments.length > 0 });
+  return Object.freeze({ spine, widthProfile, segments, hasRiver: segments.length > 0 });
 }
 
 function nearestOnSegments(
@@ -148,9 +161,10 @@ export function sampleWorldRiverCarving(
   const nearestX = frame.position.x, nearestZ = frame.position.z;
   const signedSide = (worldX - nearestX) * normalX + (worldZ - nearestZ) * normalZ;
   const distanceToCentreline = Math.hypot(worldX - nearestX, worldZ - nearestZ);
-  const { waterHalfWidth, bankWidth, falloffWidth, surfaceElevation, nominalBedDepth, floorCurvature,
+  const { bankWidth, falloffWidth, surfaceElevation, nominalBedDepth, floorCurvature,
     shoreClearance, shoreTransitionWidth, lipHeight, innerBankRise } =
     WORLD_RIVER_CARVING;
+  const waterHalfWidth = sampleRiverWidth(context.widthProfile, progress * context.spine.totalLength, context.spine).halfWidth;
   const halfWidth = waterHalfWidth;
   const lipCrestDistance = waterHalfWidth + shoreTransitionWidth;
   const innerBankWidth = bankWidth - shoreTransitionWidth;

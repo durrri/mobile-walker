@@ -46,6 +46,23 @@ describe("RiverSpineDebugView", () => {
     view.dispose();
   });
 
+  it("allocates bounded width diagnostics only in detailed mode and disposes them once",()=>{
+    const scene=new THREE.Scene(),view=new RiverSpineDebugView(scene);
+    expect(scene.getObjectByName("debug:river-width-cross-sections")).toBeUndefined();
+    view.setMode("ribbon");
+    expect(scene.getObjectByName("debug:river-width-cross-sections")).toBeUndefined();
+    view.setMode("detailed");
+    const sections=scene.getObjectByName("debug:river-width-cross-sections") as THREE.Mesh<THREE.BufferGeometry,THREE.Material>;
+    const targets=scene.getObjectByName("debug:river-width-target-cross-sections") as THREE.Mesh<THREE.BufferGeometry,THREE.Material>;
+    const clamps=scene.getObjectByName("debug:river-width-safety-clamps") as THREE.Points<THREE.BufferGeometry,THREE.Material>;
+    expect(sections.geometry.getAttribute("position").count).toBeLessThanOrEqual(128*4);
+    expect(targets.geometry.getAttribute("position").count).toBeLessThanOrEqual(128*4);
+    expect(clamps.geometry.getAttribute("position").count).toBeLessThanOrEqual(128);
+    const sectionDispose=vi.spyOn(sections.geometry,"dispose"),clampDispose=vi.spyOn(clamps.geometry,"dispose");
+    view.setMode("off");expect(sectionDispose).toHaveBeenCalledOnce();expect(clampDispose).toHaveBeenCalledOnce();
+    view.dispose();expect(sectionDispose).toHaveBeenCalledOnce();expect(clampDispose).toHaveBeenCalledOnce();
+  });
+
   it("dims only the Detailed ribbon", () => {
     const scene = new THREE.Scene(), view = new RiverSpineDebugView(scene);
     view.setMode("ribbon");
@@ -110,7 +127,8 @@ describe("RiverSpineDebugView", () => {
     view.setLayerVisibility({ macro: false });
     expect(macro.visible).toBe(false); expect(final.visible).toBe(true); expect(connectors.visible).toBe(true);
     const labels = view.generationReadout();
-    expect(labels.generationVersion).toBe(8); expect(labels.macroControlPointCount).toBeGreaterThan(2);
+    expect(labels.generationVersion).toBe(9); expect(labels.macroControlPointCount).toBeGreaterThan(2);
+    expect(labels.widthMinimum).toBeGreaterThan(0);expect(labels.widthMaximum).toBeGreaterThanOrEqual(labels.widthMinimum as number);
     view.dispose();
   });
 });

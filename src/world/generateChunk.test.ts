@@ -56,7 +56,7 @@ describe("deterministic chunk generation", () => {
     const normalizedSeed = normalizeSeed(seed);
     const coordinate = riverChunkAtProgress(.5, seed);
     const owner = getWorldRiverOwner(seed);
-    const carving = createWorldRiverCarvingContext(owner.spine.bounds, owner.spine);
+    const carving = createWorldRiverCarvingContext(owner.spine.bounds, owner.spine,owner.widthProfile);
     const step = CHUNK_SIZE / TERRAIN_SEGMENTS;
     const point = Array.from({ length: (TERRAIN_SEGMENTS + 1) ** 2 }, (_, index) => ({
       x: coordinate.x * CHUNK_SIZE + (index % (TERRAIN_SEGMENTS + 1)) * step,
@@ -116,8 +116,8 @@ describe("deterministic chunk generation", () => {
   it("keeps locally refined rendered vertices on the random-access movement field", () => {
     const coordinate = riverChunkAtProgress(.5, "refined-movement-agreement"), chunk = generateChunk("refined-movement-agreement", coordinate);
     expect(chunk.irregularTerrain, `expected refined river chunk ${JSON.stringify(coordinate)}`).toBeDefined();
-    const spine = getWorldRiverOwner("refined-movement-agreement").spine;
-    const context = createWorldRiverCarvingContext(spine.bounds, spine);
+    const owner=getWorldRiverOwner("refined-movement-agreement"),spine = owner.spine;
+    const context = createWorldRiverCarvingContext(spine.bounds, spine,owner.widthProfile);
     const refined = chunk.irregularTerrain!.vertices.filter(vertex =>
       sampleWorldRiverCarving(vertex.x, vertex.z, context)?.insideCarvingFalloff);
     expect(refined.length).toBeGreaterThan(20);

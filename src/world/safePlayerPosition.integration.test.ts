@@ -9,7 +9,6 @@ import {
 import { findSafeRestoredTransformFromCanonicalWorld } from "./safePlayerPosition";
 import { createWorldRiverGameplayContext, isInsideWorldRiverWater } from "./worldRiverGameplay";
 import { getWorldRiverOwner } from "./worldRiverOwner";
-import { worldRiverSpine } from "./worldRiverSpine";
 
 const seed = "mobile-walker-v2", offset = .76;
 const structures = (() => {
@@ -28,8 +27,8 @@ describe("production safe restoration structure integration", () => {
   it("keeps an actual generated bridge deck above river water at its authoritative height", () => {
     expect(bridge).toBeDefined();
     const deck = bridge!.collision.surfaces[0]!;
-    const p=bridge!.crossingCentre,spine=getWorldRiverOwner(seed).spine;
-    expect(isInsideWorldRiverWater(p.x,p.z,createWorldRiverGameplayContext({minX:p.x,maxX:p.x,minZ:p.z,maxZ:p.z},spine))).toBe(true);
+    const p=bridge!.crossingCentre,owner=getWorldRiverOwner(seed),spine=owner.spine;
+    expect(isInsideWorldRiverWater(p.x,p.z,createWorldRiverGameplayContext({minX:p.x,maxX:p.x,minZ:p.z,maxZ:p.z},spine,owner.widthProfile))).toBe(true);
     const saved = { x: bridge!.crossingCentre.x, y: -20, z: bridge!.crossingCentre.z, yaw: .4 };
     const restored = findSafeRestoredTransformFromCanonicalWorld(seed, saved, offset, PLAYER_COLLISION_RADIUS);
     expect(restored).toEqual({ ...saved, y: deck.startHeight + deck.crownHeight + offset });
@@ -50,8 +49,8 @@ describe("production safe restoration structure integration", () => {
   });
 
   it("rejects ordinary river water where no structure owns the point", () => {
-    const point = Array.from({ length: 81 }, (_, index) => worldRiverSpine.samplePosition(index / 80))
-      .find(value => isInsideWorldRiverWater(value.x, value.z)
+    const owner=getWorldRiverOwner(seed),point = Array.from({ length: 81 }, (_, index) => owner.spine.samplePosition(index / 80))
+      .find(value => isInsideWorldRiverWater(value.x, value.z,createWorldRiverGameplayContext({minX:value.x,maxX:value.x,minZ:value.z,maxZ:value.z},owner.spine,owner.widthProfile))
         && canonical(value.x, value.z, PLAYER_COLLISION_RADIUS) === undefined)!;
     expect(point).toBeDefined();
     const restored = findSafeRestoredTransformFromCanonicalWorld(seed, { ...point, y: 0, yaw: 0 }, offset, PLAYER_COLLISION_RADIUS);

@@ -21,7 +21,7 @@ export function getCachedWorldRiverCarvingContext(
   const context = createWorldRiverCarvingContext({
     minX: chunkX * CHUNK_SIZE, maxX: (chunkX + 1) * CHUNK_SIZE,
     minZ: chunkZ * CHUNK_SIZE, maxZ: (chunkZ + 1) * CHUNK_SIZE,
-  }, owner.spine);
+  }, owner.spine, owner.widthProfile);
   contexts.set(key, context);
   while (contexts.size > WORLD_RIVER_CONTEXT_CACHE_LIMIT) contexts.delete(contexts.keys().next().value!);
   return context;

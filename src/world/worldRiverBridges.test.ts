@@ -53,7 +53,7 @@ describe("world-owned river bridges", () => {
   it("derives orientation, span, landings, elevation and ownership from the world river", () => {
     for (const candidate of all()) {
       expect(Math.abs(candidate.riverTangent.x * candidate.crossingDirection.x + candidate.riverTangent.z * candidate.crossingDirection.z)).toBeLessThan(1e-9);
-      expect(candidate.spanLength).toBeCloseTo(2 * (WORLD_RIVER_CARVING.waterHalfWidth + WORLD_RIVER_CARVING.bankWidth + BRIDGE_LANDING_MARGIN));
+      expect(candidate.spanLength).toBeCloseTo(2 * (candidate.waterHalfWidth + WORLD_RIVER_CARVING.bankWidth + BRIDGE_LANDING_MARGIN));
       expect(candidate.proposedDeckElevation).toBeGreaterThan(WORLD_RIVER_CARVING.surfaceElevation);
       expect(candidate.ownerChunk).toEqual(worldToChunk(candidate.centre.x, candidate.centre.z));
       expect(Math.hypot(candidate.leftBankAnchor.x - candidate.centre.x, candidate.leftBankAnchor.z - candidate.centre.z)).toBeCloseTo(candidate.bankExtent);

@@ -1,11 +1,11 @@
 import {
-  WORLD_RIVER_CARVING,
   WORLD_RIVER_MAX_CARVING_RADIUS,
   createWorldRiverCarvingContext,
   sampleWorldRiverCarving,
   type WorldRiverCarvingContext,
 } from "./worldRiverCarving";
 import { referenceWorldRiverSpine, type RiverSpine, type WorldBounds2D } from "./worldRiverSpine";
+import type { RiverWidthProfile } from "./worldRiverWidth";
 
 export interface WorldRiverRelationshipContext {
   readonly carving: WorldRiverCarvingContext;
@@ -47,12 +47,10 @@ export function createWorldRiverRelationshipContext(
   bounds: WorldBounds2D,
   queryRadius = WORLD_RIVER_MAX_CARVING_RADIUS,
   spine: RiverSpine = referenceWorldRiverSpine,
+  widthProfile?: RiverWidthProfile,
 ): WorldRiverRelationshipContext {
   const radius = Math.max(0, queryRadius);
-  const segments = spine.queryRiverSegments(bounds, radius);
-  const carving = spine === referenceWorldRiverSpine && radius === WORLD_RIVER_MAX_CARVING_RADIUS
-    ? createWorldRiverCarvingContext(bounds, spine)
-    : Object.freeze({ spine, segments, hasRiver: segments.length > 0 });
+  const carving = createWorldRiverCarvingContext(bounds, spine, widthProfile);
   return Object.freeze({ carving, bounds: Object.freeze({ ...bounds }), queryRadius: radius, hasRiver: carving.hasRiver });
 }
 
@@ -104,11 +102,3 @@ export function queryWorldRiverRelationship(
     curvatureExceedsThreshold: curvatureRadians > (options.curvatureThresholdRadians ?? Number.POSITIVE_INFINITY),
   });
 }
-
-/** Largest controlled river extent, useful for explicit POI footprint clearances. */
-export const WORLD_RIVER_POI_ENVIRONMENT = Object.freeze({
-  water: WORLD_RIVER_CARVING.waterHalfWidth,
-  shoreline: WORLD_RIVER_CARVING.waterHalfWidth + WORLD_RIVER_CARVING.shoreTransitionWidth,
-  walkableBank: WORLD_RIVER_CARVING.waterHalfWidth + WORLD_RIVER_CARVING.bankWidth,
-  outerInfluence: WORLD_RIVER_MAX_CARVING_RADIUS,
-});

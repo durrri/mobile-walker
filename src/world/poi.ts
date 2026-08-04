@@ -10,6 +10,7 @@ import {
 } from "./worldRiverRelationship";
 import { generateWetlandPools } from "./wetlands";
 import { createPoiStructure } from "./poiStructures";
+import type { RiverWidthProfile } from "./worldRiverWidth";
 import type { StructureCollisionDefinition } from "./structureTypes";
 import { getWorldRiverOwner } from "./worldRiverOwner";
 import type { RiverSpine } from "./riverSpineGeometry";
@@ -150,12 +151,12 @@ export function getPoiCacheSizes():Readonly<{generation:number;candidates:number
 /** Supported deterministic-test/diagnostic reset; production never needs it. */
 export function clearPoiGenerationCaches():void{generationCache.clear();candidateCache.clear();prominenceCache.clear();}
 
-export function generatePois(seedInput:number|string,coordinate:ChunkCoordinate, spine?: RiverSpine, riverIdentity?: string):Readonly<{pois:readonly GeneratedPoi[];candidates:readonly PoiDebugCandidate[]}>{
-  const owner = spine ? undefined : getWorldRiverOwner(seedInput); spine ??= owner!.spine; riverIdentity ??= owner?.identity ?? "explicit-spine";
+export function generatePois(seedInput:number|string,coordinate:ChunkCoordinate, spine?: RiverSpine, riverIdentity?: string,widthProfile?:RiverWidthProfile):Readonly<{pois:readonly GeneratedPoi[];candidates:readonly PoiDebugCandidate[]}>{
+  const owner = spine ? undefined : getWorldRiverOwner(seedInput); spine ??= owner!.spine;widthProfile??=owner?.widthProfile; riverIdentity ??= owner?.identity ?? "explicit-spine";
   const seed=normalizeSeed(seedInput),key=`${seed}:${riverIdentity}:${definitions.size}:${coordinate.x}:${coordinate.z}`,cached=generationCache.get(key);if(cached)return cached;
   const baseX=Math.floor(coordinate.x*CHUNK_SIZE/CELL_SIZE),endX=Math.floor((coordinate.x+1)*CHUNK_SIZE/CELL_SIZE),baseZ=Math.floor(coordinate.z*CHUNK_SIZE/CELL_SIZE),endZ=Math.floor((coordinate.z+1)*CHUNK_SIZE/CELL_SIZE),all:Evaluated[]=[];
   const maximumMargin=Math.max(...Object.values(getPoiCandidateSearchMargins()));
-  const riverContext=createWorldRiverRelationshipContext({minX:(baseX-maximumMargin)*CELL_SIZE,maxX:(endX+maximumMargin+1)*CELL_SIZE,minZ:(baseZ-maximumMargin)*CELL_SIZE,maxZ:(endZ+maximumMargin+1)*CELL_SIZE},16,spine);
+  const riverContext=createWorldRiverRelationshipContext({minX:(baseX-maximumMargin)*CELL_SIZE,maxX:(endX+maximumMargin+1)*CELL_SIZE,minZ:(baseZ-maximumMargin)*CELL_SIZE,maxZ:(endZ+maximumMargin+1)*CELL_SIZE},16,spine,widthProfile);
   for(const definition of definitions.values()){const margin=definition.id==="highland-watchtower"?Math.ceil((definition.spacingByType?.[definition.id]??definition.minimumSpacing)/CELL_SIZE)+1:ORDINARY_SEARCH_MARGIN;for(let cz=baseZ-margin;cz<=endZ+margin;cz++)for(let cx=baseX-margin;cx<=endX+margin;cx++)all.push(evaluate(seed,definition,cx,cz,0,riverContext));}
   const viable=all.filter(c=>!c.reason),accepted=new Set<string>();for(const candidate of [...viable].sort(rank)){if([...accepted].every(id=>{const other=viable.find(v=>v.id===id)!;return Math.hypot(other.x-candidate.x,other.z-candidate.z)>=spacing(other.definition,candidate.definition);}))accepted.add(candidate.id);}
   const owned=all.filter(c=>{const owner=worldToChunk(c.x,c.z);return owner.x===coordinate.x&&owner.z===coordinate.z;});

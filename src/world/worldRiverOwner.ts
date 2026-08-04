@@ -7,6 +7,7 @@ import {
   type RiverGenerationMode,
 } from "./worldRiverGeneration";
 import type { WorldBounds2D } from "./riverSpineGeometry";
+import { createRiverWidthProfile, type RiverWidthProfile } from "./worldRiverWidth";
 
 /** Session-owned, immutable river product. Construct this once beside the world seed. */
 export interface WorldRiverOwner {
@@ -15,6 +16,7 @@ export interface WorldRiverOwner {
   readonly macroSpine: MacroRiverGeneration["macroSpine"];
   readonly spine: MacroRiverGeneration["meanderedSpine"];
   readonly identity: string;
+  readonly widthProfile: RiverWidthProfile;
   context(bounds: WorldBounds2D): Readonly<{ owner: WorldRiverOwner; bounds: WorldBounds2D }>;
 }
 
@@ -36,9 +38,10 @@ export function getWorldRiverOwner(seedInput: number | string,
   const config = riverConfigForWorldSeed(seedInput, mode);
   const generation = getWorldRiverGeneration(config);
   let owner!: WorldRiverOwner;
+  const widthProfile = createRiverWidthProfile(seedInput, generation.meanderedSpine);
   owner = Object.freeze({ seed: normalizeSeed(seedInput), generation,
     macroSpine: generation.macroSpine, spine: generation.meanderedSpine,
-    identity: generation.cacheKey,
+    widthProfile, identity: `${generation.cacheKey}:${widthProfile.identity}`,
     context: (bounds: WorldBounds2D) => Object.freeze({ owner, bounds: Object.freeze({ ...bounds }) }),
   });
   owners.set(sessionKey, owner);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CHUNK_SIZE, worldToChunk } from "./chunkCoordinates";
-import { createWorldRiverCarvingContext, WORLD_RIVER_CARVING } from "./worldRiverCarving";
+import { createWorldRiverCarvingContext, getReferenceRiverWidthProfile, WORLD_RIVER_CARVING } from "./worldRiverCarving";
 import { sampleChannelTerrainHeightInContext } from "./terrainSampling";
 import { worldRiverSpine } from "./worldRiverSpine";
 import { cornerNearRiverSeamCrossing, riverSeamCrossing } from "./riverProceduralFixtures";
@@ -12,7 +12,7 @@ import {
 describe("world river water field", () => {
   for (const progress of [0.1, 0.35, 0.52, 0.8]) {
     it(`uses the symmetric authoritative footprint at ${progress}`, () => {
-      const frame = worldRiverSpine.sampleFrame(progress), half = WORLD_RIVER_CARVING.waterHalfWidth;
+      const frame = worldRiverSpine.sampleFrame(progress), half = getReferenceRiverWidthProfile().sampleAtProgress(progress).halfWidth;
       const at = (offset: number) => sampleWorldRiverWater(frame.position.x + frame.normal.x * offset, frame.position.z + frame.normal.z * offset);
       expect(at(0).inside).toBe(true);
       expect(at(half - 0.05).inside).toBe(true);
@@ -21,7 +21,7 @@ describe("world river water field", () => {
       expect(at(-half - 0.05).inside).toBe(false);
       expect(at(half + 0.25).signedDistanceToEdge).toBeCloseTo(0.25, 2);
       expect(at(0).surfaceElevation).toBe(WORLD_RIVER_CARVING.surfaceElevation);
-      expect(at(0).halfWidth * 2).toBe(4);
+      expect(at(0).halfWidth).toBeCloseTo(half,5);
       expect(at(0)).toEqual(at(0));
     });
   }
@@ -42,10 +42,8 @@ describe("stable pure water tessellation", () => {
       const normalY = (b.z - a.z) * (c.x - a.x) - (b.x - a.x) * (c.z - a.z);
       expect(normalY).toBeGreaterThan(1e-8);
     }
-    for (let index = 0; index + 3 < geometry.vertices.length; index += 6) {
-      const left = geometry.vertices[index]!, right = geometry.vertices[index + 2]!;
-      expect(Math.hypot(left.x - right.x, left.z - right.z)).toBeCloseTo(4, 6);
-    }
+    const byDistance=new Map<number,(typeof geometry.vertices)[number][]>();for(const vertex of geometry.vertices){const values=byDistance.get(vertex.u)??[];if(!values.some(value=>value.v===vertex.v))values.push(vertex);byDistance.set(vertex.u,values)}
+    for(const [distance,[left,right]] of byDistance)if(left&&right)expect(Math.hypot(left.x-right.x,left.z-right.z)).toBeCloseTo(getReferenceRiverWidthProfile().sampleAtDistance(distance).fullWidth,6);
   });
 
   it("clips neighboring chunks to identical boundaries without order dependence", () => {

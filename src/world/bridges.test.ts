@@ -22,8 +22,8 @@ describe("deterministic span POIs",()=>{
   let result:ReturnType<typeof generateBridges>|undefined;
   for(let seed=1;seed<40&&!result?.bridges.length;seed++)for(let z=-30;z<=30&&!result?.bridges.length;z++)result=generateBridges(seed,{x:0,z});
   const bridge=result!.bridges[0]!;
-  const bridgeSeed=Number.parseInt(bridge.id.split(":")[1]!,16),spine=getWorldRiverOwner(bridgeSeed).spine;
-  const carving=createWorldRiverCarvingContext(spine.bounds,spine);
+  const bridgeSeed=Number.parseInt(bridge.id.split(":")[1]!,16),owner=getWorldRiverOwner(bridgeSeed),spine=owner.spine;
+  const carving=createWorldRiverCarvingContext(spine.bounds,spine,owner.widthProfile);
   expect(generateBridges(Number.parseInt(bridge.id.split(":")[1]!,16),bridge.ownerChunk).bridges).toEqual([bridge]);
   expect(Math.abs(bridge.riverTangent.x*bridge.crossingDirection.x+bridge.riverTangent.z*bridge.crossingDirection.z)).toBeLessThan(1e-9);
   expect(Math.hypot(bridge.rightBankAnchor.x-bridge.leftBankAnchor.x,bridge.rightBankAnchor.z-bridge.leftBankAnchor.z)).toBeCloseTo(bridge.spanLength,8);

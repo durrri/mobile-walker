@@ -10,6 +10,7 @@ import { referenceWorldRiverSpine, type RiverSpine, type WorldBounds2D } from ".
 import { normalizeSeed } from "./random";
 import { getWorldRiverOwner } from "./worldRiverOwner";
 import { getCachedWorldRiverCarvingContext } from "./worldRiverContextCache";
+import type { RiverWidthProfile } from "./worldRiverWidth";
 
 export interface WorldRiverGameplayContext { readonly carving: WorldRiverCarvingContext }
 
@@ -32,8 +33,8 @@ export interface WorldRiverGameplaySample {
 }
 
 /** Builds a reusable indexed context for hot movement or bounded safety scans. */
-export function createWorldRiverGameplayContext(bounds: WorldBounds2D, spine: RiverSpine = referenceWorldRiverSpine): WorldRiverGameplayContext {
-  return Object.freeze({ carving: createWorldRiverCarvingContext(bounds, spine) });
+export function createWorldRiverGameplayContext(bounds: WorldBounds2D, spine: RiverSpine = referenceWorldRiverSpine,widthProfile?:RiverWidthProfile): WorldRiverGameplayContext {
+  return Object.freeze({ carving: createWorldRiverCarvingContext(bounds, spine,widthProfile) });
 }
 
 /** Pure gameplay view of the same indexed relationship and carved terrain used by rendering/generation. */

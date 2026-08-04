@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { CHUNK_SIZE } from "./chunkCoordinates";
 import { RIVER_R6_FIXTURES } from "./riverR6Fixtures";
 import { sampleChannelTerrainHeightInContext } from "./terrainSampling";
-import { createWorldRiverCarvingContext, WORLD_RIVER_CARVING } from "./worldRiverCarving";
+import { createWorldRiverCarvingContext, getReferenceRiverWidthProfile, WORLD_RIVER_CARVING } from "./worldRiverCarving";
 import { createWorldRiverEnvironmentContext, sampleWorldRiverEnvironment } from "./worldRiverEnvironment";
 import { createWorldRiverGameplayContext, sampleWorldRiverGameplay } from "./worldRiverGameplay";
 import { worldRiverSpine } from "./worldRiverSpine";
@@ -27,7 +27,7 @@ describe("R6 permanent authored fixtures", () => {
     const water = sampleWorldRiverWater(x, z,worldRiverSpine);
     const environment = sampleWorldRiverEnvironment(x, z,createWorldRiverEnvironmentContext(bounds,worldRiverSpine));
     const gameplay = sampleWorldRiverGameplay("r6", x, z,createWorldRiverGameplayContext(bounds,worldRiverSpine));
-    expect(water.halfWidth).toBe(WORLD_RIVER_CARVING.waterHalfWidth);
+    expect(water.halfWidth).toBeCloseTo(getReferenceRiverWidthProfile().sampleAtDistance(water.distanceAlongRiver).halfWidth,8);
     expect(water.inside).toBe(true);
     expect(environment.withinWater).toBe(true);
     expect(gameplay.insideWater).toBe(true);
@@ -42,8 +42,9 @@ describe("R6 permanent authored fixtures", () => {
       const sample = (offset: number) => ({ x: frame.position.x + frame.normal.x * offset, z: frame.position.z + frame.normal.z * offset });
       // Keep the probe clear of nearest-point numerical refinement error while
       // remaining immediately adjacent at world/gameplay scale.
-      const inside = sample(WORLD_RIVER_CARVING.waterHalfWidth - .25);
-      const outside = sample(WORLD_RIVER_CARVING.waterHalfWidth + .01);
+      const half=getReferenceRiverWidthProfile().sampleAtDistance(frame.distanceAlongRiver).halfWidth;
+      const inside = sample(half - .25);
+      const outside = sample(half + .01);
       const bounds={minX:inside.x-8,maxX:inside.x+8,minZ:inside.z-8,maxZ:inside.z+8},context=createWorldRiverGameplayContext(bounds,worldRiverSpine);
       expect(sampleWorldRiverWater(inside.x, inside.z,worldRiverSpine).inside).toBe(true);
       expect(sampleWorldRiverGameplay(7, inside.x, inside.z,context).insideWater).toBe(true);
