@@ -84,7 +84,13 @@ export class CameraPresentationSystem implements RenderSystem {
   constructor(
     private readonly camera: THREE.PerspectiveCamera,
     private readonly input?: Pick<InputController, "sampleCamera">,
-  ) {}
+    initialHeading = 0,
+  ) {
+    const heading = normalizeAngle(initialHeading);
+    this.movementYaw = heading;
+    this.followHeading = heading;
+    this.filteredMovement = { x: Math.sin(heading), z: -Math.cos(heading) };
+  }
 
   getDebugDetails(): { angleDegrees: number; zoomLevel: number; height: number } {
     const direction = this.camera.getWorldDirection(this.debugDirection);
