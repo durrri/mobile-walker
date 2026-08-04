@@ -20,7 +20,23 @@ export interface RiverGenerationConfig {
   readonly meanderAmplitudeRange: readonly [number, number];
   readonly curvatureGuard: number;
   readonly resamplingSpacing: number;
+  /** Stable identifier for an optional future terrain/biome suitability provider. */
+  readonly regionalSuitabilityId: string;
 }
+
+export type MeanderRegionProfile = "gentle" | "strong";
+export interface MeanderRegion {
+  readonly startDistance: number;
+  readonly endDistance: number;
+  readonly fadeInDistance: number;
+  readonly fadeOutDistance: number;
+  readonly strength: number;
+  readonly profile: MeanderRegionProfile;
+  readonly targetWavelength: number;
+  readonly targetBendRadius: number;
+  readonly correctionApplied: boolean;
+}
+export type RegionalSuitability = (macroDistance: number, macroLength: number) => number;
 
 export const PROCEDURAL_RIVER_GENERATION_VERSION = 8;
 export const DEFAULT_RIVER_GENERATION_CONFIG: Readonly<RiverGenerationConfig> = Object.freeze({
@@ -39,6 +55,7 @@ export const DEFAULT_RIVER_GENERATION_CONFIG: Readonly<RiverGenerationConfig> = 
   meanderAmplitudeRange: Object.freeze([3, 7] as const),
   curvatureGuard: 0.12,
   resamplingSpacing: 2,
+  regionalSuitabilityId: "uniform-v1",
 });
 
 export interface MacroRiverGeneration {
@@ -54,6 +71,7 @@ export interface MacroRiverGeneration {
   readonly meanderAmplitude: number;
   readonly meanderWavelength: number;
   readonly correctionApplied: boolean;
+  readonly meanderRegions: readonly MeanderRegion[];
   readonly usedFallback: boolean;
 }
 
@@ -92,30 +110,98 @@ function resample(spine: RiverSpine, spacing: number): readonly RiverControlPoin
 
 const smoothstep = (value: number): number => { const t = Math.min(1, Math.max(0, value)); return t * t * (3 - 2 * t); };
 
+/** Deterministic low-frequency R8 activity plan. Gaps are intentionally first-class quiet reaches. */
+export function generateMeanderRegions(
+  macroLength: number,
+  config: RiverGenerationConfig,
+  suitability: RegionalSuitability = () => 1,
+): readonly MeanderRegion[] {
+  const seed = normalizeSeed(config.worldSeed) ^ config.generationVersion;
+  const protectedLength = config.endpointProtectionDistance;
+  const available = Math.max(0, macroLength - protectedLength * 2);
+  const desiredCount = available > 150 ? 2 : available > 60 ? 1 : 0;
+  const regions: MeanderRegion[] = [];
+  for (let index = 0; index < desiredCount; index += 1) {
+    const slotStart = protectedLength + available * (index + .16) / desiredCount;
+    const slotEnd = protectedLength + available * (index + .72) / desiredCount;
+    const length = Math.min(slotEnd - slotStart, 42 + hashFloat(seed, index, 8201) * 24);
+    const startDistance = slotStart + hashFloat(seed, index, 8202) * Math.max(0, slotEnd - slotStart - length);
+    const endDistance = startDistance + length;
+    const centre = (startDistance + endDistance) * .5;
+    const allowed = Math.min(1, Math.max(0, suitability(centre, macroLength)));
+    if (allowed < .15) continue;
+    const profile: MeanderRegionProfile = hashFloat(seed, index, 8203) > .76 ? "strong" : "gentle";
+    const wavelength = config.meanderWavelengthRange[0] + hashFloat(seed, index, 8204)
+      * (config.meanderWavelengthRange[1] - config.meanderWavelengthRange[0]);
+    regions.push(Object.freeze({ startDistance, endDistance,
+      fadeInDistance: Math.min(14, length * .28), fadeOutDistance: Math.min(14, length * .28),
+      strength: allowed * (.55 + hashFloat(seed, index, 8205) * .45), profile,
+      targetWavelength: profile === "strong" ? Math.max(length * .9, wavelength) : wavelength,
+      targetBendRadius: profile === "strong" ? 8 : 18, correctionApplied: false }));
+  }
+  return Object.freeze(regions);
+}
+
+export function sampleRegionalMeanderStrength(distance: number, region: MeanderRegion): number {
+  if (distance <= region.startDistance || distance >= region.endDistance) return 0;
+  const fadeIn = smoothstep((distance - region.startDistance) / region.fadeInDistance);
+  const fadeOut = smoothstep((region.endDistance - distance) / region.fadeOutDistance);
+  return region.strength * Math.min(fadeIn, fadeOut);
+}
+
 /** R8 is an explicit arc-length normal displacement of the retained R7 product. */
 export function generateMeanderedControlPoints(
   macroSpine: RiverSpine,
   config: RiverGenerationConfig,
+  regions: readonly MeanderRegion[] = generateMeanderRegions(macroSpine.totalLength, config),
   amplitudeScale = 1,
 ): readonly RiverControlPoint[] {
   const seed = normalizeSeed(config.worldSeed) ^ config.generationVersion;
   const amplitude = config.meanderAmplitudeRange[0] + hashFloat(seed, 8101)
     * (config.meanderAmplitudeRange[1] - config.meanderAmplitudeRange[0]);
-  const wavelength = config.meanderWavelengthRange[0] + hashFloat(seed, 8102)
-    * (config.meanderWavelengthRange[1] - config.meanderWavelengthRange[0]);
   const phase = hashFloat(seed, 8103) * Math.PI * 2;
   const count = Math.ceil(macroSpine.totalLength / Math.max(4, config.resamplingSpacing * 4));
   return Object.freeze(Array.from({ length: count + 1 }, (_, index) => {
     const distance = macroSpine.totalLength * index / count;
     const frame = macroSpine.sampleFrame(macroSpine.progressAtDistance(distance));
-    const endpoint = Math.min(distance, macroSpine.totalLength - distance) / config.endpointProtectionDistance;
-    const envelope = smoothstep(endpoint);
-    const primary = Math.sin(Math.PI * 2 * distance / wavelength + phase);
-    const secondary = .22 * Math.sin(Math.PI * 4 * distance / wavelength + phase * .61);
-    const displacement = amplitude * amplitudeScale * envelope * (primary + secondary) / 1.22;
-    return Object.freeze({ x: frame.position.x + frame.normal.x * displacement,
-      z: frame.position.z + frame.normal.z * displacement });
+    const region = regions.find(item => distance > item.startDistance && distance < item.endDistance);
+    if (!region) return Object.freeze({ ...frame.position });
+    const regionalStrength = sampleRegionalMeanderStrength(distance, region);
+    const localDistance = distance - region.startDistance;
+    const localProgress = localDistance / (region.endDistance - region.startDistance);
+    const localPhase = Math.PI * 2 * localDistance / region.targetWavelength + phase;
+    const primary = Math.sin(localPhase);
+    const secondary = region.profile === "gentle" ? .16 * Math.sin(localPhase * 2 + phase * .31) : 0;
+    const strongWindow = Math.sin(Math.PI * localProgress) ** 2;
+    const displacement = amplitude * amplitudeScale * regionalStrength * (primary + secondary) / 1.16
+      * (region.profile === "strong" ? 2.15 : 1);
+    // Strong belts also reparameterize downstream travel locally. The zero-value,
+    // zero-slope window reconnects smoothly while its middle derivative may reverse.
+    const backtrack = region.profile === "strong"
+      ? -(region.endDistance - region.startDistance) * .48 * regionalStrength
+        * amplitudeScale * Math.sin(Math.PI * 2 * localProgress) * strongWindow : 0;
+    const shifted = macroSpine.sampleFrame(macroSpine.progressAtDistance(Math.min(macroSpine.totalLength,
+      Math.max(0, distance + backtrack))));
+    return Object.freeze({ x: shifted.position.x + shifted.normal.x * displacement,
+      z: shifted.position.z + shifted.normal.z * displacement });
   }));
+}
+
+function geometryIsValid(points: readonly RiverControlPoint[], config: RiverGenerationConfig): boolean {
+  const segmentDistance = (a: RiverControlPoint, b: RiverControlPoint, c: RiverControlPoint, d: RiverControlPoint): number => {
+    let best = Infinity;
+    for (let step = 0; step <= 6; step += 1) {
+      const t = step / 6, x = a.x + (b.x - a.x) * t, z = a.z + (b.z - a.z) * t;
+      const dx = d.x - c.x, dz = d.z - c.z;
+      const u = Math.min(1, Math.max(0, ((x - c.x) * dx + (z - c.z) * dz) / (dx * dx + dz * dz || 1)));
+      best = Math.min(best, Math.hypot(x - c.x - dx * u, z - c.z - dz * u));
+    }
+    return best;
+  };
+  for (let a = 0; a < points.length - 1; a += 1) for (let b = a + 3; b < points.length - 1; b += 1) {
+    if (segmentDistance(points[a]!, points[a + 1]!, points[b]!, points[b + 1]!) < config.selfSeparationDistance) return false;
+  }
+  return true;
 }
 
 export function getWorldRiverGeneration(config: RiverGenerationConfig = DEFAULT_RIVER_GENERATION_CONFIG): MacroRiverGeneration {
@@ -124,16 +210,22 @@ export function getWorldRiverGeneration(config: RiverGenerationConfig = DEFAULT_
   if (retained) return retained;
   const macroControlPoints = config.mode === "authored-r6" ? authoredR6RiverSpine.controlPoints : generateMacroControlPoints(config);
   const macroSpine = config.mode === "authored-r6" ? authoredR6RiverSpine : new RiverSpine(macroControlPoints);
+  const meanderRegions = generateMeanderRegions(macroSpine.totalLength, config);
   // Bounded correction: monotonically reduce the complete band-limited signal.
   // Conservative configured amplitude/corridor currently accepts the first pass.
   let scale = 1, correctionApplied = false;
   let meanderedControlPoints = config.mode === "procedural-meandered"
-    ? generateMeanderedControlPoints(macroSpine, config, scale) : macroControlPoints;
+    ? generateMeanderedControlPoints(macroSpine, config, meanderRegions, scale) : macroControlPoints;
   let meanderedSpine = config.mode === "procedural-meandered" ? new RiverSpine(meanderedControlPoints) : macroSpine;
   while ((meanderedSpine.bounds.minX < config.bounds.minX || meanderedSpine.bounds.maxX > config.bounds.maxX
     || meanderedSpine.bounds.minZ < config.bounds.minZ - .01 || meanderedSpine.bounds.maxZ > config.bounds.maxZ + .01) && scale > .25) {
     correctionApplied = true; scale *= .75;
-    meanderedControlPoints = generateMeanderedControlPoints(macroSpine, config, scale);
+    meanderedControlPoints = generateMeanderedControlPoints(macroSpine, config, meanderRegions, scale);
+    meanderedSpine = new RiverSpine(meanderedControlPoints);
+  }
+  while (!geometryIsValid(meanderedControlPoints, config) && scale > .25) {
+    correctionApplied = true; scale *= .75;
+    meanderedControlPoints = generateMeanderedControlPoints(macroSpine, config, meanderRegions, scale);
     meanderedSpine = new RiverSpine(meanderedControlPoints);
   }
   const seed = normalizeSeed(config.worldSeed) ^ config.generationVersion;
@@ -144,7 +236,8 @@ export function getWorldRiverGeneration(config: RiverGenerationConfig = DEFAULT_
   const result = Object.freeze({ cacheKey, config: Object.freeze(config), macroControlPoints,
     macroResampledPoints: resample(macroSpine, config.resamplingSpacing), macroSpine,
     meanderedControlPoints, meanderedResampledPoints: resample(meanderedSpine, config.resamplingSpacing), meanderedSpine,
-    sourceMacroCacheKey: cacheKey, meanderAmplitude, meanderWavelength, correctionApplied, usedFallback: false });
+    sourceMacroCacheKey: cacheKey, meanderAmplitude, meanderWavelength, correctionApplied,
+    meanderRegions: Object.freeze(meanderRegions.map(region => correctionApplied ? Object.freeze({ ...region, correctionApplied: true }) : region)), usedFallback: false });
   cache.set(cacheKey, result);
   return result;
 }

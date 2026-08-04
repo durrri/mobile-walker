@@ -7,6 +7,8 @@ export {
   authoredR6RiverSpine,
   generateMacroControlPoints,
   generateMeanderedControlPoints,
+  generateMeanderRegions,
+  sampleRegionalMeanderStrength,
   getWorldRiverGeneration,
   resetWorldRiverGenerationCaches,
   worldRiverGeneration,
@@ -16,4 +18,7 @@ export {
   type MacroRiverGeneration,
   type RiverGenerationConfig,
   type RiverGenerationMode,
+  type MeanderRegion,
+  type MeanderRegionProfile,
+  type RegionalSuitability,
 } from "./worldRiverGeneration";

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_RIVER_GENERATION_CONFIG, generateMacroControlPoints, getWorldRiverGeneration,
-  resetWorldRiverGenerationCaches } from "./worldRiverGeneration";
+  generateMeanderedControlPoints, sampleRegionalMeanderStrength, resetWorldRiverGenerationCaches,
+  type MeanderRegion } from "./worldRiverGeneration";
+import { RiverSpine } from "./riverSpineGeometry";
 
 describe("R7 procedural macro river", () => {
   it("is deterministic, immutable, bounded and seed-sensitive", () => {
@@ -55,5 +57,40 @@ describe("R7 procedural macro river", () => {
     const bytes = JSON.stringify(first.meanderedResampledPoints);
     resetWorldRiverGenerationCaches();
     expect(JSON.stringify(getWorldRiverGeneration().meanderedResampledPoints)).toBe(bytes);
+  });
+
+  it("clusters activity into smoothly faded belts separated by long quiet reaches", () => {
+    const generated = getWorldRiverGeneration();
+    const displacements = Array.from({ length: 201 }, (_, index) => {
+      const progress = index / 200, macro = generated.macroSpine.samplePosition(progress);
+      const final = generated.meanderedSpine.nearestPointToRiver(macro.x, macro.z);
+      return final.distanceToRiver;
+    });
+    expect(displacements.filter(value => value < .15).length / displacements.length).toBeGreaterThan(.35);
+    expect(displacements.some(value => value > 1)).toBe(true);
+    for (const region of generated.meanderRegions) {
+      expect(sampleRegionalMeanderStrength(region.startDistance, region)).toBe(0);
+      expect(sampleRegionalMeanderStrength(region.endDistance, region)).toBe(0);
+      expect(sampleRegionalMeanderStrength(region.startDistance + .01, region)).toBeLessThan(.001);
+      expect(region.endDistance).toBeLessThan(generated.macroSpine.totalLength - generated.config.endpointProtectionDistance / 2);
+    }
+  });
+
+  it("supports a local strong belt with heading reversal and smooth reconnection", () => {
+    const macro = new RiverSpine([{ x: 0, z: 100 }, { x: 0, z: -100 }]);
+    const region: MeanderRegion = Object.freeze({ startDistance: 55, endDistance: 145,
+      fadeInDistance: 12, fadeOutDistance: 12, strength: 1, profile: "strong",
+      targetWavelength: 81, targetBendRadius: 8, correctionApplied: false });
+    const points = generateMeanderedControlPoints(macro, DEFAULT_RIVER_GENERATION_CONFIG, [region]);
+    const final = new RiverSpine(points);
+    let reversed = false;
+    for (let index = 1; index < points.length; index += 1) reversed ||= points[index]!.z > points[index - 1]!.z;
+    expect(reversed).toBe(true);
+    for (const distance of [region.startDistance, region.endDistance]) {
+      const progress = macro.progressAtDistance(distance), expected = macro.samplePosition(progress);
+      const actual = final.nearestPointToRiver(expected.x, expected.z);
+      expect(actual.distanceToRiver).toBeLessThan(.35);
+      expect(Math.abs(actual.tangent.z)).toBeGreaterThan(.8);
+    }
   });
 });

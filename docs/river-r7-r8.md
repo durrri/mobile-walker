@@ -23,15 +23,27 @@ constructs one retained generation result and all consumers share its active spi
 
 ## R8 meander layer
 
-R8 samples only R7 arc length and offsets along each local macro normal. A seeded dominant sine and a
-22% harmonic form a smooth band-limited signal; smoothstep endpoint envelopes preserve entry/exit.
+R8 first creates a seed-stable, inspectable set of regional activity belts separated by genuinely quiet
+macro reaches. Each belt records its macro-distance interval, fade lengths, strength, gentle/strong
+profile, wavelength, minimum target bend radius, and correction status. An optional suitability callback
+and stable suitability ID provide a future biome hook without coupling the domain generator to biomes.
+
+Inside a gentle belt, a dominant sine and 16% harmonic form broad S-curves. Strong belts use a separate
+heading-controlled construction: a smooth local downstream reparameterization can briefly reverse
+heading while a larger lateral curve makes a deep bend, then both offsets return with zero-slope fades.
 The configured 48–80 unit wavelengths remain well above constant river width. A bounded global
-amplitude-reduction loop (75% per pass, never below 25%) protects the corridor deterministically.
+amplitude-reduction loop (75% per pass, never below 25%) protects the corridor and non-adjacent channel
+separation deterministically. Endpoint protection is independent of every regional fade.
 Macro and final buffers are stored directly; production carving, water, placement, bridges, POIs,
 navigation, and gameplay receive the final alias and never add local noise.
 
 Detailed river debug renders the subdued grey R7 route, bright cyan R8 route, and at most 41 purple
-displacement connectors. Layers toggle independently and a compact metadata readout avoids raw arrays.
+displacement connectors only in active belts. Orange cross-lines mark belt boundaries. Layers toggle
+independently and a compact metadata readout includes local strength/profile without exposing raw arrays.
+
+For generation version 8's reference seed, the 262.45-unit macro contains two gentle belts totaling
+111.13 units, no strong belt (strong belts are intentionally uncommon), and 151.32 quiet units. The
+resulting final spine is 265.00 units. Other seeds vary belt lengths, strengths, profiles, and placement.
 
 R6 is complete. R7 procedural macro path and R8 secondary meanders are complete, followed by R9
 variable width, R10 river-connected lakes, and R11 standalone-lake integration/final water rules.

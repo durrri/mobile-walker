@@ -12,6 +12,7 @@ export const RIVER_DEBUG_STYLE = {
   centreline: { color: 0x00f5ff, width: 0.24, offset: 0.18 },
   macroSpine: { color: 0x8396a5, width: 0.14, offset: 0.15 },
   displacement: { color: 0xb875ff, width: 0.07, offset: 0.2 },
+  regionBoundary: { color: 0xff6b35, width: 0.12, offset: 0.27 },
   controlPolygon: { color: 0xff9d00, width: 0.1, offset: 0.12 },
   tangent: { color: 0x45ff65, width: 0.18, offset: 0.32 },
   normal: { color: 0xff45e6, width: 0.18, offset: 0.34 },
@@ -60,6 +61,11 @@ export class RiverSpineDebugView {
       meanderedLength: this.spine.totalLength, localMacroProgress: macro.progress, localFinalProgress: final.progress,
       localMeanderDisplacement: Math.hypot(final.position.x - macro.position.x, final.position.z - macro.position.z),
       amplitudeRange: worldRiverGeneration.config.meanderAmplitudeRange.join("–"), wavelengthRange: worldRiverGeneration.config.meanderWavelengthRange.join("–"),
+      meanderRegionCount: worldRiverGeneration.meanderRegions.length,
+      activeRegionProfile: worldRiverGeneration.meanderRegions.find(region => macro.distanceAlongRiver >= region.startDistance
+        && macro.distanceAlongRiver <= region.endDistance)?.profile ?? "quiet",
+      activeRegionalStrength: worldRiverGeneration.meanderRegions.reduce((value, region) => Math.max(value,
+        macro.distanceAlongRiver <= region.startDistance || macro.distanceAlongRiver >= region.endDistance ? 0 : region.strength), 0),
       correctionApplied: worldRiverGeneration.correctionApplied });
   }
 
@@ -73,9 +79,23 @@ export class RiverSpineDebugView {
     const macroLine = this.thickSegments(this.segmentPairs(macroSmooth), RIVER_DEBUG_STYLE.macroSpine, "debug:river-macro-spine");
     macroLine.visible = this.visibility.macro; root.add(macroLine);
     const connectors: { x: number; z: number }[] = [];
-    for (let index = 0; index <= 40; index += 1) connectors.push(this.macroSpine.samplePosition(index / 40), this.spine.samplePosition(index / 40));
+    for (const region of worldRiverGeneration.meanderRegions) {
+      const step = Math.max(6, (region.endDistance - region.startDistance) / 8);
+      for (let distance = region.startDistance; distance <= region.endDistance; distance += step) {
+        const progress = this.macroSpine.progressAtDistance(distance);
+        connectors.push(this.macroSpine.samplePosition(progress), this.spine.nearestPointToRiver(
+          this.macroSpine.samplePosition(progress).x, this.macroSpine.samplePosition(progress).z).position);
+      }
+    }
     const connectorMesh = this.thickSegments(connectors, RIVER_DEBUG_STYLE.displacement, "debug:river-displacement-connectors");
     connectorMesh.visible = this.visibility.connectors; root.add(connectorMesh);
+    const boundaries: { x: number; z: number }[] = [];
+    for (const region of worldRiverGeneration.meanderRegions) for (const distance of [region.startDistance, region.endDistance]) {
+      const frame = this.macroSpine.sampleFrame(this.macroSpine.progressAtDistance(distance));
+      boundaries.push({ x: frame.position.x - frame.normal.x * 5, z: frame.position.z - frame.normal.z * 5 },
+        { x: frame.position.x + frame.normal.x * 5, z: frame.position.z + frame.normal.z * 5 });
+    }
+    root.add(this.thickSegments(boundaries, RIVER_DEBUG_STYLE.regionBoundary, "debug:river-meander-region-boundaries"));
     root.add(this.thickSegments(
       this.segmentPairs(this.spine.controlPoints),
       RIVER_DEBUG_STYLE.controlPolygon,
