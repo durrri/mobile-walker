@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { CHUNK_SIZE } from "../world/chunkCoordinates";
-import { worldRiverGeneration, worldRiverMacroSpine, worldRiverSpine, type MacroRiverGeneration, type RiverSpine } from "../world/worldRiverSpine";
+import { referenceWorldRiverGeneration, referenceWorldRiverMacroSpine, referenceWorldRiverSpine, type MacroRiverGeneration, type RiverSpine } from "../world/worldRiverSpine";
 import { WORLD_RIVER_CARVING, WORLD_RIVER_LIP_CREST_DISTANCE } from "../world/worldRiverCarving";
 import { WORLD_RIVER_WATER_SAMPLE_SPACING } from "../world/worldRiverWater";
 
@@ -42,10 +42,10 @@ export class RiverSpineDebugView {
 
   constructor(
     private readonly scene: THREE.Scene,
-    private readonly spine: RiverSpine = worldRiverSpine,
+    private readonly spine: RiverSpine = referenceWorldRiverSpine,
     private readonly sampleHeight: TerrainHeightSampler = () => 0,
-    private readonly macroSpine: RiverSpine = worldRiverMacroSpine,
-    private readonly generation: MacroRiverGeneration = worldRiverGeneration,
+    private readonly macroSpine: RiverSpine = referenceWorldRiverMacroSpine,
+    private readonly generation: MacroRiverGeneration = referenceWorldRiverGeneration,
   ) {}
 
   setLayerVisibility(value: Partial<typeof this.visibility>): void {

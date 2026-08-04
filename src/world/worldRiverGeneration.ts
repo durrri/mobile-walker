@@ -37,7 +37,7 @@ export interface MeanderRegion {
   readonly correctionApplied: boolean;
   readonly correctionReasons?: readonly RiverCorrectionReason[];
 }
-export type RiverCorrectionReason = "macro-segment-length" | "macro-curvature" | "outside-bounds" | "self-separation" | "final-curvature" | "fallback-straight";
+export type RiverCorrectionReason = "macro-segment-length" | "macro-curvature" | "outside-bounds" | "self-separation" | "final-curvature" | "non-finite-frame" | "fallback-straight";
 export type RegionalSuitability = (macroDistance: number, macroLength: number) => number;
 
 export const PROCEDURAL_RIVER_GENERATION_VERSION = 8;
@@ -109,6 +109,14 @@ export function generateMacroControlPoints(config: RiverGenerationConfig): reado
 
 function segmentLengths(points: readonly RiverControlPoint[]): number[] {
   return points.slice(1).map((point, index) => Math.hypot(point.x - points[index]!.x, point.z - points[index]!.z));
+}
+
+function straightBoundaryControlPoints(config: RiverGenerationConfig): readonly RiverControlPoint[] {
+  const span = config.bounds.maxZ - config.bounds.minZ;
+  const count = Math.max(2, Math.ceil(span / config.maxSegmentLength));
+  return Object.freeze(Array.from({ length: count + 1 }, (_, index) => Object.freeze({
+    x: 0, z: config.bounds.maxZ - span * index / count,
+  })));
 }
 
 /** Sampled planar curvature (turn radians per mean adjacent chord). */
@@ -226,6 +234,25 @@ function geometryIsValid(points: readonly RiverControlPoint[], config: RiverGene
   return true;
 }
 
+function finalAcceptanceFailures(spine: RiverSpine, points: readonly RiverControlPoint[], config: RiverGenerationConfig): RiverCorrectionReason[] {
+  const failures: RiverCorrectionReason[] = [];
+  const bounds = spine.bounds;
+  if (![bounds.minX, bounds.maxX, bounds.minZ, bounds.maxZ].every(Number.isFinite)
+    || bounds.minX < config.bounds.minX || bounds.maxX > config.bounds.maxX
+    || bounds.minZ < config.bounds.minZ - .01 || bounds.maxZ > config.bounds.maxZ + .01) failures.push("outside-bounds");
+  if (!geometryIsValid(points, config)) failures.push("self-separation");
+  if (measureMaximumCurvature(meanderedResampleForMeasurement(spine, config.resamplingSpacing)) > config.curvatureGuard)
+    failures.push("final-curvature");
+  for (let index = 0; index <= 100; index += 1) {
+    const frame = spine.sampleFrame(index / 100);
+    const values = [...Object.values(frame.position), ...Object.values(frame.tangent), ...Object.values(frame.normal)];
+    if (!values.every(Number.isFinite) || Math.hypot(frame.tangent.x, frame.tangent.z) < 1e-8) {
+      failures.push("non-finite-frame"); break;
+    }
+  }
+  return failures;
+}
+
 export function getWorldRiverGeneration(config: RiverGenerationConfig = DEFAULT_RIVER_GENERATION_CONFIG): MacroRiverGeneration {
   const cacheKey = stableConfigKey(config);
   const retained = cache.get(cacheKey);
@@ -243,11 +270,7 @@ export function getWorldRiverGeneration(config: RiverGenerationConfig = DEFAULT_
     // every macro guard when the configured waypoint polygon cannot.
     if (correctionReasons.length) {
       usedFallback = true; correctionReasons.push("fallback-straight");
-      const span = config.bounds.maxZ - config.bounds.minZ;
-      const count = Math.max(2, Math.ceil(span / config.maxSegmentLength));
-      macroControlPoints = Object.freeze(Array.from({ length: count + 1 }, (_, index) => Object.freeze({
-        x: 0, z: config.bounds.maxZ - span * index / count,
-      })));
+      macroControlPoints = straightBoundaryControlPoints(config);
     }
   }
   const macroSpine = config.mode === "authored-r6" ? authoredR6RiverSpine : new RiverSpine(macroControlPoints);
@@ -274,12 +297,17 @@ export function getWorldRiverGeneration(config: RiverGenerationConfig = DEFAULT_
     meanderedControlPoints = generateMeanderedControlPoints(macroSpine, config, meanderRegions, scale);
     meanderedSpine = new RiverSpine(meanderedControlPoints);
   }
-  if (measureMaximumCurvature(meanderedResampleForMeasurement(meanderedSpine, config.resamplingSpacing)) > config.curvatureGuard) {
-    usedFallback = true; correctionApplied = true;
-    if (!correctionReasons.includes("final-curvature")) correctionReasons.push("final-curvature");
-    correctionReasons.push("fallback-straight");
-    meanderedControlPoints = macroControlPoints;
-    meanderedSpine = macroSpine;
+  if (config.mode !== "authored-r6") {
+    const failures = finalAcceptanceFailures(meanderedSpine, meanderedControlPoints, config);
+    if (failures.length) {
+      usedFallback = true; correctionApplied = true;
+      for (const reason of failures) if (!correctionReasons.includes(reason)) correctionReasons.push(reason);
+      if (!correctionReasons.includes("fallback-straight")) correctionReasons.push("fallback-straight");
+      meanderedControlPoints = straightBoundaryControlPoints(config);
+      meanderedSpine = new RiverSpine(meanderedControlPoints);
+      const fallbackFailures = finalAcceptanceFailures(meanderedSpine, meanderedControlPoints, config);
+      if (fallbackFailures.length) throw new Error(`Deterministic river fallback failed: ${fallbackFailures.join(",")}`);
+    }
   }
   const measuredCurvature = measureMaximumCurvature(meanderedResampleForMeasurement(meanderedSpine, config.resamplingSpacing));
   const seed = normalizeSeed(config.worldSeed) ^ config.generationVersion;
@@ -307,8 +335,14 @@ export function resetWorldRiverGenerationCaches(): void { cache.clear(); }
 export function worldRiverGenerationCacheSize(): number { return cache.size; }
 
 /** R7 production ownership; R8 changes only the final alias. */
-export const worldRiverGeneration = getWorldRiverGeneration();
-export const worldRiverMacroSpine = worldRiverGeneration.macroSpine;
-export const worldRiverSpine = worldRiverGeneration.meanderedSpine;
-export const WORLD_RIVER_CONTROL_POINTS = worldRiverSpine.controlPoints;
+export const referenceWorldRiverGeneration = getWorldRiverGeneration();
+export const referenceWorldRiverMacroSpine = referenceWorldRiverGeneration.macroSpine;
+export const referenceWorldRiverSpine = referenceWorldRiverGeneration.meanderedSpine;
+/** @deprecated Reference-fixture compatibility only; production must use WorldRiverOwner. */
+export const worldRiverGeneration = referenceWorldRiverGeneration;
+/** @deprecated Reference-fixture compatibility only; production must use WorldRiverOwner. */
+export const worldRiverMacroSpine = referenceWorldRiverMacroSpine;
+/** @deprecated Reference-fixture compatibility only; production must use WorldRiverOwner. */
+export const worldRiverSpine = referenceWorldRiverSpine;
+export const WORLD_RIVER_CONTROL_POINTS = referenceWorldRiverSpine.controlPoints;
 export { authoredR6RiverSpine };

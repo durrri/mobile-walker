@@ -1,6 +1,7 @@
 /** Public river ownership facade: geometry primitives plus explicit generated products. */
 export * from "./riverSpineGeometry";
 export * from "./worldRiverOwner";
+export * from "./worldRiverContextCache";
 export {
   DEFAULT_RIVER_GENERATION_CONFIG,
   PROCEDURAL_RIVER_GENERATION_VERSION,
@@ -16,6 +17,9 @@ export {
   worldRiverGenerationCacheSize,
   worldRiverMacroSpine,
   worldRiverSpine,
+  referenceWorldRiverGeneration,
+  referenceWorldRiverMacroSpine,
+  referenceWorldRiverSpine,
   type MacroRiverGeneration,
   type RiverGenerationConfig,
   type RiverGenerationMode,

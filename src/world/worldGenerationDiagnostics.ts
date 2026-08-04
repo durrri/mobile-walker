@@ -5,6 +5,7 @@ import { clearWetlandPoolCache } from "./wetlands";
 import { clearWorldRiverWaterCaches } from "./worldRiverWater";
 import { resetWorldRiverGenerationCaches } from "./worldRiverGeneration";
 import { resetWorldRiverOwners } from "./worldRiverOwner";
+import { resetWorldRiverContextCache } from "./worldRiverContextCache";
 
 /**
  * Clears every module-level memo used by chunk or world-river generation.
@@ -17,6 +18,7 @@ export function resetWorldGenerationCachesForDiagnostics(): void {
   clearWetlandPoolCache();
   clearWorldRiverTerrainStripCache();
   clearWorldRiverWaterCaches();
+  resetWorldRiverContextCache();
 }
 
 /** Stronger reset used when byte-equivalent spine regeneration itself is under test. */

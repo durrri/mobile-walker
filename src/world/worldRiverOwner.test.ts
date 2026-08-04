@@ -48,5 +48,13 @@ describe("world/session river ownership", () => {
     expect(strict.correctionReasons).toContain("macro-curvature");
     const strictFinal = getWorldRiverGeneration({ ...riverConfigForWorldSeed(99), curvatureGuard: .001 });
     expect(strictFinal.correctionReasons).toContain("final-curvature");
+    expect(strictFinal.usedFallback).toBe(true);
+    expect(strictFinal.correctionReasons).toContain("fallback-straight");
+    for (let index = 0; index <= 100; index += 1) {
+      const frame = strictFinal.meanderedSpine.sampleFrame(index / 100);
+      expect([...Object.values(frame.position), ...Object.values(frame.tangent), ...Object.values(frame.normal)]
+        .every(Number.isFinite)).toBe(true);
+      expect(Math.hypot(frame.tangent.x, frame.tangent.z)).toBeGreaterThan(0);
+    }
   });
 });

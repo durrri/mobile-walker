@@ -1,5 +1,5 @@
 import {
-  worldRiverSpine,
+  referenceWorldRiverSpine,
   type RiverIndexedSegment,
   type RiverSpine,
   type WorldBounds2D,
@@ -88,7 +88,7 @@ const smoothstep = (value: number): number => {
 /** One indexed query per terrain region; an empty result is an explicit fast path. */
 export function createWorldRiverCarvingContext(
   bounds: WorldBounds2D,
-  spine: RiverSpine = worldRiverSpine,
+  spine: RiverSpine = referenceWorldRiverSpine,
 ): WorldRiverCarvingContext {
   const segments = spine.queryRiverSegments(bounds, WORLD_RIVER_MAX_CARVING_RADIUS);
   return Object.freeze({ spine, segments, hasRiver: segments.length > 0 });

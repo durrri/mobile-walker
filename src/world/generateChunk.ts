@@ -13,7 +13,7 @@ import {
 import { sampleWorldRiverCarving, WORLD_RIVER_CARVING, WORLD_RIVER_LIP_CREST_DISTANCE,
   WORLD_RIVER_MAX_CARVING_RADIUS } from "./worldRiverCarving";
 import { createWorldRiverEnvironmentContext } from "./worldRiverEnvironment";
-import { worldRiverSpine } from "./worldRiverSpine";
+import type { RiverSpine } from "./riverSpineGeometry";
 import { getWorldRiverOwner } from "./worldRiverOwner";
 import { generateVegetation, type GeneratedVegetation } from "./vegetation";
 import { generatePois, isVegetationExcluded, type GeneratedPoi, type PoiDebugCandidate } from "./poi";
@@ -41,12 +41,12 @@ export interface IrregularTerrainVertex {
 
 /** Global arc-length lattice; it never restarts at a chunk boundary. */
 export const WORLD_RIVER_TERRAIN_STRIP_SAMPLE_SPACING = 0.5;
-const terrainStripFrames = new Map<string, readonly ReturnType<typeof worldRiverSpine.sampleFrame>[]>();
+const terrainStripFrames = new Map<string, readonly ReturnType<RiverSpine["sampleFrame"]>[]>();
 
 /** Resets the immutable strip-lattice memo for independent cold diagnostics. */
 export function clearWorldRiverTerrainStripCache(): void { terrainStripFrames.clear(); }
 
-function worldRiverTerrainStripFrames(spine: typeof worldRiverSpine, identity: string): readonly ReturnType<typeof worldRiverSpine.sampleFrame>[] {
+function worldRiverTerrainStripFrames(spine: RiverSpine, identity: string): readonly ReturnType<RiverSpine["sampleFrame"]>[] {
   const retained = terrainStripFrames.get(identity); if (retained) return retained;
   const count = Math.ceil(spine.totalLength / WORLD_RIVER_TERRAIN_STRIP_SAMPLE_SPACING);
   const frames = Object.freeze(Array.from({ length: count + 1 }, (_, index) => {

@@ -3,14 +3,13 @@ import { sampleBiome, type BiomeId, type BiomeWeights } from "./biomes";
 import { hashFloat, normalizeSeed } from "./random";
 import {
   applyWorldRiverCarving,
-  createWorldRiverCarvingContext,
   sampleWorldRiverCarving,
   WORLD_RIVER_CARVING,
   WORLD_RIVER_MAX_CARVING_RADIUS,
   type WorldRiverCarvingContext,
 } from "./worldRiverCarving";
 import { getWorldRiverOwner } from "./worldRiverOwner";
-import type { RiverSpine } from "./riverSpineGeometry";
+import { getCachedWorldRiverCarvingContext } from "./worldRiverContextCache";
 
 export type TerrainSurface = "land" | "river" | "lake";
 /** Default chunk resolution; dry chunks retain the original generation cost. */
@@ -24,12 +23,8 @@ export interface TerrainSample {
 }
 
 const LATTICE_SPACING = CHUNK_SIZE / TERRAIN_SEGMENTS;
-const globalRiverContexts = new WeakMap<RiverSpine, Map<string,WorldRiverCarvingContext>>();
 function riverContextForSeed(seed: number | string, x=0,z=0): WorldRiverCarvingContext {
-  const spine=getWorldRiverOwner(seed).spine,map=globalRiverContexts.get(spine)??new Map<string,WorldRiverCarvingContext>();globalRiverContexts.set(spine,map);
-  const cx=Math.floor(x/CHUNK_SIZE),cz=Math.floor(z/CHUNK_SIZE),key=`${cx},${cz}`,retained=map.get(key);if(retained)return retained;
-  const context=createWorldRiverCarvingContext({minX:cx*CHUNK_SIZE,maxX:(cx+1)*CHUNK_SIZE,minZ:cz*CHUNK_SIZE,maxZ:(cz+1)*CHUNK_SIZE},spine);
-  map.set(key,context);return context;
+  return getCachedWorldRiverCarvingContext(getWorldRiverOwner(seed), x, z);
 }
 /**
  * Vertical distance from the water surface to the walkable river bed.

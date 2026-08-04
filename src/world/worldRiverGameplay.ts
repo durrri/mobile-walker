@@ -6,9 +6,10 @@ import {
   type WorldRiverCarvingContext,
 } from "./worldRiverCarving";
 import { sampleWorldRiverEnvironment, type WorldRiverPlacementZone } from "./worldRiverEnvironment";
-import { worldRiverSpine, type RiverSpine, type WorldBounds2D } from "./worldRiverSpine";
+import { referenceWorldRiverSpine, type RiverSpine, type WorldBounds2D } from "./worldRiverSpine";
 import { normalizeSeed } from "./random";
 import { getWorldRiverOwner } from "./worldRiverOwner";
+import { getCachedWorldRiverCarvingContext } from "./worldRiverContextCache";
 
 export interface WorldRiverGameplayContext { readonly carving: WorldRiverCarvingContext }
 
@@ -31,13 +32,13 @@ export interface WorldRiverGameplaySample {
 }
 
 /** Builds a reusable indexed context for hot movement or bounded safety scans. */
-export function createWorldRiverGameplayContext(bounds: WorldBounds2D, spine: RiverSpine = worldRiverSpine): WorldRiverGameplayContext {
+export function createWorldRiverGameplayContext(bounds: WorldBounds2D, spine: RiverSpine = referenceWorldRiverSpine): WorldRiverGameplayContext {
   return Object.freeze({ carving: createWorldRiverCarvingContext(bounds, spine) });
 }
 
 /** Pure gameplay view of the same indexed relationship and carved terrain used by rendering/generation. */
 export function sampleWorldRiverGameplay(seed: number | string, x: number, z: number, context?: WorldRiverGameplayContext): WorldRiverGameplaySample {
-  context ??= createWorldRiverGameplayContext({ minX: x, maxX: x, minZ: z, maxZ: z }, getWorldRiverOwner(seed).spine);
+  context ??= Object.freeze({ carving: getCachedWorldRiverCarvingContext(getWorldRiverOwner(seed), x, z) });
   const carving = sampleWorldRiverCarving(x, z, context?.carving);
   const environment = sampleWorldRiverEnvironment(x, z, context && { carving: context.carving, hasRiver: context.carving.hasRiver });
   const terrainElevation = context && carving?.insideCarvingFalloff
