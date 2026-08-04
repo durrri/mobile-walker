@@ -143,6 +143,13 @@ describe("loaded neighborhood boundary", () => {
     player.transform.x = 1;
     chunks.prepareRender(world, 0, 0);
 
+    // The first reverse boundary performs the retained-data cache hit and
+    // queues/resumes its activation job. Terrain creation may consume the
+    // frame's activation budget before hydrology marks the group renderable,
+    // so drive the next explicit render boundary rather than waiting on time
+    // or microtasks. Safe retirement keeps chunk 1 resident until chunk 0 is active.
+    expect(generator).toHaveBeenCalledTimes(2);
+    chunks.prepareRender(world, 0, 0);
     expect(generator).toHaveBeenCalledTimes(2);
     expect(scene.children[0]?.name).toBe("chunk:0,0");
     chunks.dispose();

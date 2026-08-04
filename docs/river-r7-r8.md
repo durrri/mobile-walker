@@ -50,12 +50,12 @@ resulting final spine is 265.00 units. Other seeds vary belt lengths, strengths,
 
 ## Final performance validation
 
-The cache-cleared R6-comparable benchmark after procedural fixture migration reports cold median/p95
-milliseconds of dry 89.07/95.78, diagonal 370.73/455.95, canyon 345.70/395.38, bridge 365.05/402.50,
-and POI-adjacent 387.69/464.83. The former 969 ms POI case is eliminated. Largest median synchronous
-stages are respectively 54.20, 216.00, 170.95, 213.83, and 231.68 ms; the remaining POI-adjacent cost is
+The final cache-cleared R6-comparable benchmark reports cold median/p95 milliseconds of dry
+94.53/108.92, diagonal 369.92/576.07, canyon 339.57/400.78, bridge 358.95/477.33, and POI-adjacent
+427.81/454.83. The former 969 ms POI case is eliminated. Largest median synchronous stages are
+respectively 58.37, 204.63, 156.56, 200.71, and 252.59 ms; the remaining POI-adjacent cost is
 isolated to constrained terrain triangulation rather than repeated spine generation. Cached retained-data
-lookups remain at or below 0.001 ms median, gameplay queries 0.057 ms median, and safe searches 5.424 ms.
+lookups remain at or below 0.001 ms median, gameplay queries 0.058 ms median, and safe searches 5.551 ms.
 
 R6 is complete. R7 procedural macro path and R8 secondary meanders are complete, followed by R9
 variable width, R10 river-connected lakes, and R11 standalone-lake integration/final water rules.
