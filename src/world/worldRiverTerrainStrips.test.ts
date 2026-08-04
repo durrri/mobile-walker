@@ -10,8 +10,8 @@ import { dryChunkOutsideRiverInfluence, riverChunkAtProgress, riverSeamCrossing,
 const close = (a: number, b: number): boolean => Math.abs(a - b) < 1e-8;
 
 describe("world-river terrain landmark strips", () => {
-  const riverChunk = riverChunkAtProgress(.5);
   it("contains authoritative water, lip, inner-bank, and falloff vertices", () => {
+    const riverChunk = riverChunkAtProgress(.5, "strip-landmarks");
     const chunk = generateChunk("strip-landmarks", riverChunk);
     expect(chunk.irregularTerrain, `expected refined river fixture ${JSON.stringify(riverChunk)}`).toBeDefined();
     const vertices = chunk.irregularTerrain!.vertices;
@@ -27,6 +27,7 @@ describe("world-river terrain landmark strips", () => {
   });
 
   it("triangulates 0.05-wu shore spans without skipping the lip", () => {
+    const riverChunk = riverChunkAtProgress(.5, "strip-shore-bands");
     const chunk = generateChunk("strip-shore-bands", riverChunk);
     expect(chunk.irregularTerrain).toBeDefined();
     const { vertices, indices } = chunk.irregularTerrain!;
@@ -52,6 +53,7 @@ describe("world-river terrain landmark strips", () => {
   });
 
   it("keeps representative rendered triangle interiors on the movement field", () => {
+    const riverChunk = riverChunkAtProgress(.5, "strip-interiors");
     const chunk = generateChunk("strip-interiors", riverChunk);
     expect(chunk.irregularTerrain).toBeDefined();
     const { vertices, indices } = chunk.irregularTerrain!;
@@ -71,7 +73,7 @@ describe("world-river terrain landmark strips", () => {
   });
 
   it("shares exact global-lattice strip vertices at chunk seams", () => {
-    const seam = riverSeamCrossing("x");
+    const seam = riverSeamCrossing("x", 0, "strip-seams");
     const left = generateChunk("strip-seams", seam.a);
     const right = generateChunk("strip-seams", seam.b);
     const boundary = seam.edge;
@@ -84,7 +86,7 @@ describe("world-river terrain landmark strips", () => {
   });
 
   it("has upward unique strong-bend triangles and leaves dry chunks coarse", () => {
-    const bendChunk = riverChunkAtProgress(strongestCurvatureProgress());
+    const bendChunk = riverChunkAtProgress(strongestCurvatureProgress("strip-bend"), "strip-bend");
     const chunk = generateChunk("strip-bend", bendChunk);
     expect(chunk.irregularTerrain).toBeDefined();
     const { vertices, indices } = chunk.irregularTerrain!;
@@ -112,6 +114,6 @@ describe("world-river terrain landmark strips", () => {
       expect(edge.count, JSON.stringify({ a: vertices[edge.a], b: vertices[edge.b] })).toBe(2);
     }
     expect(WORLD_RIVER_TERRAIN_STRIP_SAMPLE_SPACING).toBe(0.5);
-    expect(generateChunk("strip-dry", dryChunkOutsideRiverInfluence()).irregularTerrain).toBeUndefined();
+    expect(generateChunk("strip-dry", dryChunkOutsideRiverInfluence("strip-dry")).irregularTerrain).toBeUndefined();
   });
 });

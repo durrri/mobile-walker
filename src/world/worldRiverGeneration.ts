@@ -35,7 +35,9 @@ export interface MeanderRegion {
   readonly targetWavelength: number;
   readonly targetBendRadius: number;
   readonly correctionApplied: boolean;
+  readonly correctionReasons?: readonly RiverCorrectionReason[];
 }
+export type RiverCorrectionReason = "macro-segment-length" | "macro-curvature" | "outside-bounds" | "self-separation" | "final-curvature" | "fallback-straight";
 export type RegionalSuitability = (macroDistance: number, macroLength: number) => number;
 
 export const PROCEDURAL_RIVER_GENERATION_VERSION = 8;
@@ -73,6 +75,8 @@ export interface MacroRiverGeneration {
   readonly correctionApplied: boolean;
   readonly meanderRegions: readonly MeanderRegion[];
   readonly usedFallback: boolean;
+  readonly correctionReasons: readonly RiverCorrectionReason[];
+  readonly measuredMinimumBendRadius: number;
 }
 
 const cache = new Map<string, MacroRiverGeneration>();
@@ -101,6 +105,23 @@ export function generateMacroControlPoints(config: RiverGenerationConfig): reado
     for (let index = 2; index < count - 1; index += 1) values[index] = before[index - 1]! * .25 + before[index]! * .5 + before[index + 1]! * .25;
   }
   return Object.freeze(values.map((x, index) => Object.freeze({ x, z: config.bounds.maxZ - span * index / count })));
+}
+
+function segmentLengths(points: readonly RiverControlPoint[]): number[] {
+  return points.slice(1).map((point, index) => Math.hypot(point.x - points[index]!.x, point.z - points[index]!.z));
+}
+
+/** Sampled planar curvature (turn radians per mean adjacent chord). */
+export function measureMaximumCurvature(points: readonly RiverControlPoint[]): number {
+  let maximum = 0;
+  for (let index = 1; index < points.length - 1; index += 1) {
+    const a = points[index - 1]!, b = points[index]!, c = points[index + 1]!;
+    const ab = Math.hypot(b.x - a.x, b.z - a.z), bc = Math.hypot(c.x - b.x, c.z - b.z);
+    if (ab < 1e-9 || bc < 1e-9) return Infinity;
+    const dot = ((b.x - a.x) * (c.x - b.x) + (b.z - a.z) * (c.z - b.z)) / (ab * bc);
+    maximum = Math.max(maximum, Math.acos(Math.max(-1, Math.min(1, dot))) / ((ab + bc) * .5));
+  }
+  return maximum;
 }
 
 function resample(spine: RiverSpine, spacing: number): readonly RiverControlPoint[] {
@@ -137,7 +158,8 @@ export function generateMeanderRegions(
       fadeInDistance: Math.min(14, length * .28), fadeOutDistance: Math.min(14, length * .28),
       strength: allowed * (.55 + hashFloat(seed, index, 8205) * .45), profile,
       targetWavelength: profile === "strong" ? Math.max(length * .9, wavelength) : wavelength,
-      targetBendRadius: profile === "strong" ? 4 : 18, correctionApplied: false }));
+      targetBendRadius: profile === "strong" ? 4 : 18, correctionApplied: false,
+      correctionReasons: Object.freeze([]) }));
   }
   return Object.freeze(regions);
 }
@@ -208,7 +230,26 @@ export function getWorldRiverGeneration(config: RiverGenerationConfig = DEFAULT_
   const cacheKey = stableConfigKey(config);
   const retained = cache.get(cacheKey);
   if (retained) return retained;
-  const macroControlPoints = config.mode === "authored-r6" ? authoredR6RiverSpine.controlPoints : generateMacroControlPoints(config);
+  const correctionReasons: RiverCorrectionReason[] = [];
+  let usedFallback = false;
+  let macroControlPoints = config.mode === "authored-r6" ? authoredR6RiverSpine.controlPoints : generateMacroControlPoints(config);
+  if (config.mode !== "authored-r6") {
+    const lengths = segmentLengths(macroControlPoints);
+    if (lengths.some(length => length < config.minSegmentLength || length > config.maxSegmentLength)) correctionReasons.push("macro-segment-length");
+    const candidateSpine = new RiverSpine(macroControlPoints);
+    if (measureMaximumCurvature(resample(candidateSpine, Math.min(1, config.resamplingSpacing))) > config.macroCurvatureLimit)
+      correctionReasons.push("macro-curvature");
+    // Deterministic bounded fallback: the boundary-to-boundary centre line satisfies
+    // every macro guard when the configured waypoint polygon cannot.
+    if (correctionReasons.length) {
+      usedFallback = true; correctionReasons.push("fallback-straight");
+      const span = config.bounds.maxZ - config.bounds.minZ;
+      const count = Math.max(2, Math.ceil(span / config.maxSegmentLength));
+      macroControlPoints = Object.freeze(Array.from({ length: count + 1 }, (_, index) => Object.freeze({
+        x: 0, z: config.bounds.maxZ - span * index / count,
+      })));
+    }
+  }
   const macroSpine = config.mode === "authored-r6" ? authoredR6RiverSpine : new RiverSpine(macroControlPoints);
   const meanderRegions = generateMeanderRegions(macroSpine.totalLength, config);
   // Bounded correction: monotonically reduce the complete band-limited signal.
@@ -218,16 +259,29 @@ export function getWorldRiverGeneration(config: RiverGenerationConfig = DEFAULT_
     ? generateMeanderedControlPoints(macroSpine, config, meanderRegions, scale) : macroControlPoints;
   let meanderedSpine = config.mode === "procedural-meandered" ? new RiverSpine(meanderedControlPoints) : macroSpine;
   while ((meanderedSpine.bounds.minX < config.bounds.minX || meanderedSpine.bounds.maxX > config.bounds.maxX
-    || meanderedSpine.bounds.minZ < config.bounds.minZ - .01 || meanderedSpine.bounds.maxZ > config.bounds.maxZ + .01) && scale > .25) {
-    correctionApplied = true; scale *= .75;
+    || meanderedSpine.bounds.minZ < config.bounds.minZ - .01 || meanderedSpine.bounds.maxZ > config.bounds.maxZ + .01) && scale > .02) {
+    correctionApplied = true; if (!correctionReasons.includes("outside-bounds")) correctionReasons.push("outside-bounds"); scale *= .75;
     meanderedControlPoints = generateMeanderedControlPoints(macroSpine, config, meanderRegions, scale);
     meanderedSpine = new RiverSpine(meanderedControlPoints);
   }
-  while (!geometryIsValid(meanderedControlPoints, config) && scale > .25) {
-    correctionApplied = true; scale *= .75;
+  while (!geometryIsValid(meanderedControlPoints, config) && scale > .02) {
+    correctionApplied = true; if (!correctionReasons.includes("self-separation")) correctionReasons.push("self-separation"); scale *= .75;
     meanderedControlPoints = generateMeanderedControlPoints(macroSpine, config, meanderRegions, scale);
     meanderedSpine = new RiverSpine(meanderedControlPoints);
   }
+  while (measureMaximumCurvature(meanderedResampleForMeasurement(meanderedSpine, config.resamplingSpacing)) > config.curvatureGuard && scale > .02) {
+    correctionApplied = true; if (!correctionReasons.includes("final-curvature")) correctionReasons.push("final-curvature"); scale *= .75;
+    meanderedControlPoints = generateMeanderedControlPoints(macroSpine, config, meanderRegions, scale);
+    meanderedSpine = new RiverSpine(meanderedControlPoints);
+  }
+  if (measureMaximumCurvature(meanderedResampleForMeasurement(meanderedSpine, config.resamplingSpacing)) > config.curvatureGuard) {
+    usedFallback = true; correctionApplied = true;
+    if (!correctionReasons.includes("final-curvature")) correctionReasons.push("final-curvature");
+    correctionReasons.push("fallback-straight");
+    meanderedControlPoints = macroControlPoints;
+    meanderedSpine = macroSpine;
+  }
+  const measuredCurvature = measureMaximumCurvature(meanderedResampleForMeasurement(meanderedSpine, config.resamplingSpacing));
   const seed = normalizeSeed(config.worldSeed) ^ config.generationVersion;
   const meanderAmplitude = (config.meanderAmplitudeRange[0] + hashFloat(seed, 8101)
     * (config.meanderAmplitudeRange[1] - config.meanderAmplitudeRange[0])) * scale;
@@ -237,9 +291,15 @@ export function getWorldRiverGeneration(config: RiverGenerationConfig = DEFAULT_
     macroResampledPoints: resample(macroSpine, config.resamplingSpacing), macroSpine,
     meanderedControlPoints, meanderedResampledPoints: resample(meanderedSpine, config.resamplingSpacing), meanderedSpine,
     sourceMacroCacheKey: cacheKey, meanderAmplitude, meanderWavelength, correctionApplied,
-    meanderRegions: Object.freeze(meanderRegions.map(region => correctionApplied ? Object.freeze({ ...region, correctionApplied: true }) : region)), usedFallback: false });
+    meanderRegions: Object.freeze(meanderRegions.map(region => correctionApplied ? Object.freeze({ ...region, correctionApplied: true,
+      correctionReasons: Object.freeze([...correctionReasons]) }) : region)), usedFallback,
+    correctionReasons: Object.freeze([...correctionReasons]), measuredMinimumBendRadius: measuredCurvature > 0 ? 1 / measuredCurvature : Infinity });
   cache.set(cacheKey, result);
   return result;
+}
+
+function meanderedResampleForMeasurement(spine: RiverSpine, spacing: number): readonly RiverControlPoint[] {
+  return resample(spine, Math.min(spacing, 1));
 }
 
 /** Diagnostic/test reset. Production uses immutable, fully geometry-keyed entries. */

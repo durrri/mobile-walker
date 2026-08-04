@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { CHUNK_SIZE } from "../world/chunkCoordinates";
-import { worldRiverGeneration, worldRiverMacroSpine, worldRiverSpine, type RiverSpine } from "../world/worldRiverSpine";
+import { worldRiverGeneration, worldRiverMacroSpine, worldRiverSpine, type MacroRiverGeneration, type RiverSpine } from "../world/worldRiverSpine";
 import { WORLD_RIVER_CARVING, WORLD_RIVER_LIP_CREST_DISTANCE } from "../world/worldRiverCarving";
 import { WORLD_RIVER_WATER_SAMPLE_SPACING } from "../world/worldRiverWater";
 
@@ -45,6 +45,7 @@ export class RiverSpineDebugView {
     private readonly spine: RiverSpine = worldRiverSpine,
     private readonly sampleHeight: TerrainHeightSampler = () => 0,
     private readonly macroSpine: RiverSpine = worldRiverMacroSpine,
+    private readonly generation: MacroRiverGeneration = worldRiverGeneration,
   ) {}
 
   setLayerVisibility(value: Partial<typeof this.visibility>): void {
@@ -56,17 +57,17 @@ export class RiverSpineDebugView {
 
   generationReadout(playerX = 0, playerZ = 0): Readonly<Record<string, string | number | boolean>> {
     const macro = this.macroSpine.nearestPointToRiver(playerX, playerZ), final = this.spine.nearestPointToRiver(playerX, playerZ);
-    return Object.freeze({ seed: String(worldRiverGeneration.config.worldSeed), generationVersion: worldRiverGeneration.config.generationVersion,
-      macroControlPointCount: worldRiverGeneration.macroControlPoints.length, macroLength: this.macroSpine.totalLength,
+    return Object.freeze({ seed: String(this.generation.config.worldSeed), generationVersion: this.generation.config.generationVersion,
+      macroControlPointCount: this.generation.macroControlPoints.length, macroLength: this.macroSpine.totalLength,
       meanderedLength: this.spine.totalLength, localMacroProgress: macro.progress, localFinalProgress: final.progress,
       localMeanderDisplacement: Math.hypot(final.position.x - macro.position.x, final.position.z - macro.position.z),
-      amplitudeRange: worldRiverGeneration.config.meanderAmplitudeRange.join("–"), wavelengthRange: worldRiverGeneration.config.meanderWavelengthRange.join("–"),
-      meanderRegionCount: worldRiverGeneration.meanderRegions.length,
-      activeRegionProfile: worldRiverGeneration.meanderRegions.find(region => macro.distanceAlongRiver >= region.startDistance
+      amplitudeRange: this.generation.config.meanderAmplitudeRange.join("–"), wavelengthRange: this.generation.config.meanderWavelengthRange.join("–"),
+      meanderRegionCount: this.generation.meanderRegions.length,
+      activeRegionProfile: this.generation.meanderRegions.find(region => macro.distanceAlongRiver >= region.startDistance
         && macro.distanceAlongRiver <= region.endDistance)?.profile ?? "quiet",
-      activeRegionalStrength: worldRiverGeneration.meanderRegions.reduce((value, region) => Math.max(value,
+      activeRegionalStrength: this.generation.meanderRegions.reduce((value, region) => Math.max(value,
         macro.distanceAlongRiver <= region.startDistance || macro.distanceAlongRiver >= region.endDistance ? 0 : region.strength), 0),
-      correctionApplied: worldRiverGeneration.correctionApplied });
+      correctionApplied: this.generation.correctionApplied });
   }
 
   setMode(mode: RiverSpineDebugMode): void {
@@ -79,7 +80,7 @@ export class RiverSpineDebugView {
     const macroLine = this.thickSegments(this.segmentPairs(macroSmooth), RIVER_DEBUG_STYLE.macroSpine, "debug:river-macro-spine");
     macroLine.visible = this.visibility.macro; root.add(macroLine);
     const connectors: { x: number; z: number }[] = [];
-    for (const region of worldRiverGeneration.meanderRegions) {
+    for (const region of this.generation.meanderRegions) {
       const step = Math.max(6, (region.endDistance - region.startDistance) / 8);
       for (let distance = region.startDistance; distance <= region.endDistance; distance += step) {
         const progress = this.macroSpine.progressAtDistance(distance);
@@ -90,7 +91,7 @@ export class RiverSpineDebugView {
     const connectorMesh = this.thickSegments(connectors, RIVER_DEBUG_STYLE.displacement, "debug:river-displacement-connectors");
     connectorMesh.visible = this.visibility.connectors; root.add(connectorMesh);
     const boundaries: { x: number; z: number }[] = [];
-    for (const region of worldRiverGeneration.meanderRegions) for (const distance of [region.startDistance, region.endDistance]) {
+    for (const region of this.generation.meanderRegions) for (const distance of [region.startDistance, region.endDistance]) {
       const frame = this.macroSpine.sampleFrame(this.macroSpine.progressAtDistance(distance));
       boundaries.push({ x: frame.position.x - frame.normal.x * 5, z: frame.position.z - frame.normal.z * 5 },
         { x: frame.position.x + frame.normal.x * 5, z: frame.position.z + frame.normal.z * 5 });

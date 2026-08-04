@@ -8,13 +8,13 @@ import { generateTrees, type TreePlacement } from "./forest";
 import { normalizeSeed } from "./random";
 import {
   sampleChannelTerrainHeightInContext,
-  sampleTerrainHeight,
   TERRAIN_SEGMENTS,
 } from "./terrainSampling";
 import { sampleWorldRiverCarving, WORLD_RIVER_CARVING, WORLD_RIVER_LIP_CREST_DISTANCE,
   WORLD_RIVER_MAX_CARVING_RADIUS } from "./worldRiverCarving";
 import { createWorldRiverEnvironmentContext } from "./worldRiverEnvironment";
 import { worldRiverSpine } from "./worldRiverSpine";
+import { getWorldRiverOwner } from "./worldRiverOwner";
 import { generateVegetation, type GeneratedVegetation } from "./vegetation";
 import { generatePois, isVegetationExcluded, type GeneratedPoi, type PoiDebugCandidate } from "./poi";
 import { generateWetlandPools, type WetlandPoolPlacement } from "./wetlands";
@@ -41,23 +41,24 @@ export interface IrregularTerrainVertex {
 
 /** Global arc-length lattice; it never restarts at a chunk boundary. */
 export const WORLD_RIVER_TERRAIN_STRIP_SAMPLE_SPACING = 0.5;
-let terrainStripFrames: readonly ReturnType<typeof worldRiverSpine.sampleFrame>[] | undefined;
+const terrainStripFrames = new Map<string, readonly ReturnType<typeof worldRiverSpine.sampleFrame>[]>();
 
 /** Resets the immutable strip-lattice memo for independent cold diagnostics. */
-export function clearWorldRiverTerrainStripCache(): void { terrainStripFrames = undefined; }
+export function clearWorldRiverTerrainStripCache(): void { terrainStripFrames.clear(); }
 
-function worldRiverTerrainStripFrames(): readonly ReturnType<typeof worldRiverSpine.sampleFrame>[] {
-  if (terrainStripFrames) return terrainStripFrames;
-  const count = Math.ceil(worldRiverSpine.totalLength / WORLD_RIVER_TERRAIN_STRIP_SAMPLE_SPACING);
-  terrainStripFrames = Object.freeze(Array.from({ length: count + 1 }, (_, index) => {
-    const distance = Math.min(index * WORLD_RIVER_TERRAIN_STRIP_SAMPLE_SPACING, worldRiverSpine.totalLength);
-    return worldRiverSpine.sampleFrame(worldRiverSpine.progressAtDistance(distance));
+function worldRiverTerrainStripFrames(spine: typeof worldRiverSpine, identity: string): readonly ReturnType<typeof worldRiverSpine.sampleFrame>[] {
+  const retained = terrainStripFrames.get(identity); if (retained) return retained;
+  const count = Math.ceil(spine.totalLength / WORLD_RIVER_TERRAIN_STRIP_SAMPLE_SPACING);
+  const frames = Object.freeze(Array.from({ length: count + 1 }, (_, index) => {
+    const distance = Math.min(index * WORLD_RIVER_TERRAIN_STRIP_SAMPLE_SPACING, spine.totalLength);
+    return spine.sampleFrame(spine.progressAtDistance(distance));
   }));
-  return terrainStripFrames;
+  terrainStripFrames.set(identity, frames); return frames;
 }
 
 export interface GeneratedChunkData {
   readonly seed: number;
+  readonly riverGenerationIdentity: string;
   readonly id: ChunkId;
   readonly coordinate: ChunkCoordinate;
   readonly size: number;
@@ -106,6 +107,7 @@ export function generateChunk(
 ): GeneratedChunkData {
   const generationStarted = diagnostics ? performance.now() : 0;
   const seed = normalizeSeed(seedInput);
+  const riverOwner = getWorldRiverOwner(seedInput);
   const terrainSegments = TERRAIN_SEGMENTS;
   const verticesPerSide = terrainSegments + 1;
   const terrainHeights: number[] = [];
@@ -115,7 +117,7 @@ export function generateChunk(
   const minZ = coordinate.z * CHUNK_SIZE;
   const riverEnvironmentContext = createWorldRiverEnvironmentContext({
     minX, maxX: minX + CHUNK_SIZE, minZ, maxZ: minZ + CHUNK_SIZE,
-  });
+  }, riverOwner.spine);
   const riverCarvingContext = riverEnvironmentContext.carving;
   const sampleAuthoritativeHeight = (worldX: number, worldZ: number): number =>
     sampleChannelTerrainHeightInContext(seed, worldX, worldZ, riverCarvingContext);
@@ -141,14 +143,14 @@ export function generateChunk(
   const poiNeighborhood = [] as GeneratedPoi[];
   let ownedCandidates: readonly PoiDebugCandidate[] = [];
   for (let dz = -1; dz <= 1; dz += 1) for (let dx = -1; dx <= 1; dx += 1) {
-    const generated = generatePois(seed, { x: coordinate.x + dx, z: coordinate.z + dz });
+    const generated = generatePois(seed, { x: coordinate.x + dx, z: coordinate.z + dz }, riverOwner.spine, riverOwner.identity);
     poiNeighborhood.push(...generated.pois);
     if (dx === 0 && dz === 0) ownedCandidates = generated.candidates;
   }
   const pois = poiNeighborhood.filter(poi => poi.ownerChunk.x === coordinate.x && poi.ownerChunk.z === coordinate.z);
   const bridgeNeighborhood:GeneratedBridge[]=[];
   let ownedBridgeCandidates:readonly BridgeCrossingCandidate[]=[];
-  for(let dz=-1;dz<=1;dz++)for(let dx=-1;dx<=1;dx++){const generated=generateBridges(seed,{x:coordinate.x+dx,z:coordinate.z+dz},poiNeighborhood);bridgeNeighborhood.push(...generated.bridges);if(dx===0&&dz===0)ownedBridgeCandidates=generated.candidates;}
+  for(let dz=-1;dz<=1;dz++)for(let dx=-1;dx<=1;dx++){const generated=generateBridges(seed,{x:coordinate.x+dx,z:coordinate.z+dz},poiNeighborhood,riverOwner.spine,riverOwner.identity);bridgeNeighborhood.push(...generated.bridges);if(dx===0&&dz===0)ownedBridgeCandidates=generated.candidates;}
   const bridges=bridgeNeighborhood.filter(bridge=>bridge.ownerChunk.x===coordinate.x&&bridge.ownerChunk.z===coordinate.z);
   // Structural parity is checked once as records enter the generated repository,
   // never during rendering or a movement query.
@@ -184,7 +186,7 @@ export function generateChunk(
       }
       // This is deliberately the public movement sampler, not a presentation
       // interpolation: strip vertices define the rendered walkable surface.
-      const height = sampleTerrainHeight(seed, worldX, worldZ);
+      const height = sampleAuthoritativeHeight(worldX, worldZ);
       pointIndex.set(key, vertices.length);
       vertices.push({ x: worldX, z: worldZ, height,
         biomeWeights: sampleBiome(seed, worldX, worldZ).weights,
@@ -227,7 +229,7 @@ export function generateChunk(
       WORLD_RIVER_LIP_CREST_DISTANCE, (WORLD_RIVER_LIP_CREST_DISTANCE + innerEnd) / 2,
       innerEnd, WORLD_RIVER_MAX_CARVING_RADIUS];
     const offsets = [...positiveOffsets.slice(1).map(value => -value).reverse(), ...positiveOffsets];
-    const globalFrames = worldRiverTerrainStripFrames();
+    const globalFrames = worldRiverTerrainStripFrames(riverOwner.spine, riverOwner.identity);
     const frameCount = globalFrames.length - 1;
     const guides = new Map<number, { x: number; z: number }[]>();
     for (const offset of offsets) {
@@ -318,7 +320,7 @@ export function generateChunk(
     }
     constraints.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
     vertices = points.map(([x, z]) => originalByPosition.get(`${x!.toFixed(9)},${z!.toFixed(9)}`) ?? (() => {
-      const height = sampleTerrainHeight(seed, x!, z!);
+      const height = sampleAuthoritativeHeight(x!, z!);
       return { x: x!, z: z!, height, biomeWeights: sampleBiome(seed, x!, z!).weights,
         occlusion: 0 };
     })());
@@ -359,6 +361,7 @@ export function generateChunk(
   const objectsFinished = diagnostics ? performance.now() : 0;
   const result: GeneratedChunkData = {
     seed,
+    riverGenerationIdentity: riverOwner.identity,
     id: chunkId(coordinate),
     coordinate: { ...coordinate },
     size: CHUNK_SIZE,

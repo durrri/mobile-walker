@@ -8,7 +8,8 @@ import {
   sampleNaturalTerrainHeight,
   TERRAIN_SEGMENTS,
 } from "./terrainSampling";
-import { sampleWorldRiverCarving } from "./worldRiverCarving";
+import { createWorldRiverCarvingContext, sampleWorldRiverCarving } from "./worldRiverCarving";
+import { getWorldRiverOwner } from "./worldRiverOwner";
 import { normalizeSeed } from "./random";
 import { dryChunkOutsideRiverInfluence, riverChunkAtProgress, riverReachOutsideLegacyColumn } from "./riverProceduralFixtures";
 
@@ -53,19 +54,21 @@ describe("deterministic chunk generation", () => {
   it("carves the same-position natural terrain and matches the generated grid", () => {
     const seed = "channel";
     const normalizedSeed = normalizeSeed(seed);
-    const coordinate = riverChunkAtProgress(.5);
+    const coordinate = riverChunkAtProgress(.5, seed);
+    const owner = getWorldRiverOwner(seed);
+    const carving = createWorldRiverCarvingContext(owner.spine.bounds, owner.spine);
     const step = CHUNK_SIZE / TERRAIN_SEGMENTS;
     const point = Array.from({ length: (TERRAIN_SEGMENTS + 1) ** 2 }, (_, index) => ({
       x: coordinate.x * CHUNK_SIZE + (index % (TERRAIN_SEGMENTS + 1)) * step,
       z: coordinate.z * CHUNK_SIZE + Math.floor(index / (TERRAIN_SEGMENTS + 1)) * step,
-    })).find(candidate => sampleWorldRiverCarving(candidate.x, candidate.z)?.insideChannel
+    })).find(candidate => sampleWorldRiverCarving(candidate.x, candidate.z, carving)?.insideChannel
       && sampleNaturalTerrainHeight(normalizedSeed, candidate.x, candidate.z)
-        > sampleWorldRiverCarving(candidate.x, candidate.z)!.targetBedHeight);
+        > sampleWorldRiverCarving(candidate.x, candidate.z, carving)!.targetBedHeight);
     expect(point, `expected carved grid point in ${JSON.stringify(coordinate)}`).toBeDefined();
     if (!point) throw new Error(`expected carved grid point in ${JSON.stringify(coordinate)}`);
     const natural = sampleNaturalTerrainHeight(normalizedSeed, point.x, point.z);
     const carved = sampleChannelTerrainHeight(normalizedSeed, point.x, point.z);
-    const target = sampleWorldRiverCarving(point.x, point.z)!.targetBedHeight;
+    const target = sampleWorldRiverCarving(point.x, point.z, carving)!.targetBedHeight;
     expect(natural).toBeGreaterThan(target);
     expect(carved).toBeLessThan(natural);
 
@@ -87,8 +90,8 @@ describe("deterministic chunk generation", () => {
 
 
   it("keeps coarse height data while refining only chunks touched by the world river", () => {
-    const dryChunk = generateChunk("local-river-detail", dryChunkOutsideRiverInfluence());
-    const riverChunk = generateChunk("local-river-detail", riverChunkAtProgress(.5));
+    const dryChunk = generateChunk("local-river-detail", dryChunkOutsideRiverInfluence("local-river-detail"));
+    const riverChunk = generateChunk("local-river-detail", riverChunkAtProgress(.5, "local-river-detail"));
 
     expect(dryChunk.terrainVerticesPerSide).toBe(TERRAIN_SEGMENTS + 1);
     expect(riverChunk.terrainVerticesPerSide).toBe(TERRAIN_SEGMENTS + 1);
@@ -111,10 +114,12 @@ describe("deterministic chunk generation", () => {
   });
 
   it("keeps locally refined rendered vertices on the random-access movement field", () => {
-    const coordinate = riverChunkAtProgress(.5), chunk = generateChunk("refined-movement-agreement", coordinate);
+    const coordinate = riverChunkAtProgress(.5, "refined-movement-agreement"), chunk = generateChunk("refined-movement-agreement", coordinate);
     expect(chunk.irregularTerrain, `expected refined river chunk ${JSON.stringify(coordinate)}`).toBeDefined();
+    const spine = getWorldRiverOwner("refined-movement-agreement").spine;
+    const context = createWorldRiverCarvingContext(spine.bounds, spine);
     const refined = chunk.irregularTerrain!.vertices.filter(vertex =>
-      sampleWorldRiverCarving(vertex.x, vertex.z)?.insideCarvingFalloff);
+      sampleWorldRiverCarving(vertex.x, vertex.z, context)?.insideCarvingFalloff);
     expect(refined.length).toBeGreaterThan(20);
     for (let index = 7; index < refined.length; index += 17) {
       const vertex = refined[index]!;

@@ -3,6 +3,8 @@ import { clearWorldRiverTerrainStripCache } from "./generateChunk";
 import { clearPoiGenerationCaches } from "./poi";
 import { clearWetlandPoolCache } from "./wetlands";
 import { clearWorldRiverWaterCaches } from "./worldRiverWater";
+import { resetWorldRiverGenerationCaches } from "./worldRiverGeneration";
+import { resetWorldRiverOwners } from "./worldRiverOwner";
 
 /**
  * Clears every module-level memo used by chunk or world-river generation.
@@ -15,4 +17,11 @@ export function resetWorldGenerationCachesForDiagnostics(): void {
   clearWetlandPoolCache();
   clearWorldRiverTerrainStripCache();
   clearWorldRiverWaterCaches();
+}
+
+/** Stronger reset used when byte-equivalent spine regeneration itself is under test. */
+export function resetAllWorldGenerationCachesForDiagnostics(): void {
+  resetWorldGenerationCachesForDiagnostics();
+  resetWorldRiverOwners();
+  resetWorldRiverGenerationCaches();
 }

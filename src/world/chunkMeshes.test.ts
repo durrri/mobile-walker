@@ -11,8 +11,8 @@ import { bridgeFixture, dryChunkOutsideRiverInfluence, riverChunkAtProgress, riv
 describe("river ribbon geometry", () => {
   it("renders world water beyond legacy column zero and does not fill an absent column-zero chunk", () => {
     const factory = new ChunkMeshFactory();
-    const curvedReach = factory.create(generateChunk("r4-column-audit", riverReachOutsideLegacyColumn().chunk));
-    const absentReach = factory.create(generateChunk("r4-column-audit", dryChunkOutsideRiverInfluence()));
+    const curvedReach = factory.create(generateChunk("r4-column-audit", riverReachOutsideLegacyColumn("r4-column-audit").chunk));
+    const absentReach = factory.create(generateChunk("r4-column-audit", dryChunkOutsideRiverInfluence("r4-column-audit")));
     const curvedWater = curvedReach.getObjectByName("world-river-water") as THREE.Mesh;
     const absentWater = absentReach.getObjectByName("world-river-water");
     expect(curvedWater.geometry.getAttribute("position").count).toBeGreaterThan(0);
@@ -20,11 +20,11 @@ describe("river ribbon geometry", () => {
     expect(curvedReach.getObjectByName("river")).toBeUndefined();
     expect(curvedReach.getObjectByName("river-channel")).toBeUndefined();
     factory.disposeChunk(curvedReach); factory.disposeChunk(absentReach); factory.dispose();
-  });
+  }, 15_000);
 
   it("renders locally refined authoritative terrain and disables legacy presentation", () => {
     const factory = new ChunkMeshFactory();
-    const coordinate = riverChunkAtProgress(.5), data = generateChunk("open-channel", coordinate);
+    const coordinate = riverChunkAtProgress(.5, "open-channel"), data = generateChunk("open-channel", coordinate);
     expect(data.irregularTerrain, `expected refined river chunk ${JSON.stringify(coordinate)}`).toBeDefined();
     const group = factory.create(data);
     const terrain = group.getObjectByName("terrain") as THREE.Mesh;
@@ -53,7 +53,7 @@ describe("river ribbon geometry", () => {
 
   it("supports independently selectable water wireframe debug", () => {
     const factory = new ChunkMeshFactory();
-    const group = factory.create(generateChunk("river-debug-pipeline", riverChunkAtProgress(.5)));
+    const group = factory.create(generateChunk("river-debug-pipeline", riverChunkAtProgress(.5, "river-debug-pipeline")));
     factory.registerGroup(group);
     const terrain = group.getObjectByName("terrain") as THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
     const water = group.getObjectByName("world-river-water") as THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;

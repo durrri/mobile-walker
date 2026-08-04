@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { createEcsWorld } from "../ecs/createEcsWorld";
 import { sampleTerrain } from "../world/terrainSampling";
-import { worldRiverSpine } from "../world/worldRiverSpine";
+import { getWorldRiverOwner } from "../world/worldRiverOwner";
 import { InputSnapshotSystem, rotateInputByCameraYaw, TerrainSamplingSystem } from "./systems";
 
 describe("camera-relative input", () => {
@@ -38,7 +38,7 @@ describe("TerrainSamplingSystem", () => {
   it("allows a terrain follower to move through a river", () => {
     const seed = "walkable-river";
     const world = createEcsWorld();
-    const riverPoint = worldRiverSpine.samplePosition(0.5);
+    const riverPoint = getWorldRiverOwner(seed).spine.samplePosition(0.5);
 
     const entity = world.add({
       transform: { x: riverPoint.x, y: -10, z: riverPoint.z, yaw: 0 },

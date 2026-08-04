@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { CHUNK_SIZE, worldToChunk } from "./chunkCoordinates";
-import { WORLD_RIVER_CARVING } from "./worldRiverCarving";
-import { sampleChannelTerrainHeight } from "./terrainSampling";
+import { createWorldRiverCarvingContext, WORLD_RIVER_CARVING } from "./worldRiverCarving";
+import { sampleChannelTerrainHeightInContext } from "./terrainSampling";
 import { worldRiverSpine } from "./worldRiverSpine";
 import { cornerNearRiverSeamCrossing, riverSeamCrossing } from "./riverProceduralFixtures";
 import {
@@ -145,6 +145,7 @@ describe("strongest bend geometry", () => {
   });
 
   it("keeps authoritative terrain below the water ribbon around the strongest bend", () => {
+    const carving = createWorldRiverCarvingContext(worldRiverSpine.bounds, worldRiverSpine);
     const geometry = tessellateWorldRiverWater();
     const start = worldRiverSpine.distanceAtProgress(0.32);
     const end = worldRiverSpine.distanceAtProgress(0.55);
@@ -155,7 +156,7 @@ describe("strongest bend geometry", () => {
       if (distance < start || distance > end) continue;
       const x = triangle.reduce((sum, vertex) => sum + vertex.x, 0) / 3;
       const z = triangle.reduce((sum, vertex) => sum + vertex.z, 0) / 3;
-      expect(sampleChannelTerrainHeight(42, x, z)).toBeLessThan(WORLD_RIVER_CARVING.surfaceElevation);
+      expect(sampleChannelTerrainHeightInContext(42, x, z, carving)).toBeLessThan(WORLD_RIVER_CARVING.surfaceElevation);
       checked++;
     }
     expect(checked).toBeGreaterThan(50);

@@ -8,6 +8,7 @@ import {
 import { sampleWorldRiverEnvironment, type WorldRiverPlacementZone } from "./worldRiverEnvironment";
 import { worldRiverSpine, type RiverSpine, type WorldBounds2D } from "./worldRiverSpine";
 import { normalizeSeed } from "./random";
+import { getWorldRiverOwner } from "./worldRiverOwner";
 
 export interface WorldRiverGameplayContext { readonly carving: WorldRiverCarvingContext }
 
@@ -36,6 +37,7 @@ export function createWorldRiverGameplayContext(bounds: WorldBounds2D, spine: Ri
 
 /** Pure gameplay view of the same indexed relationship and carved terrain used by rendering/generation. */
 export function sampleWorldRiverGameplay(seed: number | string, x: number, z: number, context?: WorldRiverGameplayContext): WorldRiverGameplaySample {
+  context ??= createWorldRiverGameplayContext({ minX: x, maxX: x, minZ: z, maxZ: z }, getWorldRiverOwner(seed).spine);
   const carving = sampleWorldRiverCarving(x, z, context?.carving);
   const environment = sampleWorldRiverEnvironment(x, z, context && { carving: context.carving, hasRiver: context.carving.hasRiver });
   const terrainElevation = context && carving?.insideCarvingFalloff

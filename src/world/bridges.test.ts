@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { BRIDGE_ARCHETYPES, generateBridges, queryWorldRiverBridgeCandidates, scoreBridgeArchetypes, spanSuitability, type BridgeArchetype, type BridgeCrossingCandidate } from "./bridges";
-import { sampleWorldRiverCarving } from "./worldRiverCarving";
+import { createWorldRiverCarvingContext, sampleWorldRiverCarving } from "./worldRiverCarving";
+import { getWorldRiverOwner } from "./worldRiverOwner";
 import { pointInFootprint } from "./poi";
 
 function context(biome:BridgeCrossingCandidate["biome"]):BridgeCrossingCandidate {
@@ -21,11 +22,13 @@ describe("deterministic span POIs",()=>{
   let result:ReturnType<typeof generateBridges>|undefined;
   for(let seed=1;seed<40&&!result?.bridges.length;seed++)for(let z=-30;z<=30&&!result?.bridges.length;z++)result=generateBridges(seed,{x:0,z});
   const bridge=result!.bridges[0]!;
+  const bridgeSeed=Number.parseInt(bridge.id.split(":")[1]!,16),spine=getWorldRiverOwner(bridgeSeed).spine;
+  const carving=createWorldRiverCarvingContext(spine.bounds,spine);
   expect(generateBridges(Number.parseInt(bridge.id.split(":")[1]!,16),bridge.ownerChunk).bridges).toEqual([bridge]);
   expect(Math.abs(bridge.riverTangent.x*bridge.crossingDirection.x+bridge.riverTangent.z*bridge.crossingDirection.z)).toBeLessThan(1e-9);
   expect(Math.hypot(bridge.rightBankAnchor.x-bridge.leftBankAnchor.x,bridge.rightBankAnchor.z-bridge.leftBankAnchor.z)).toBeCloseTo(bridge.spanLength,8);
-  expect(sampleWorldRiverCarving(bridge.leftBankAnchor.x,bridge.leftBankAnchor.z)!.insideChannel).toBe(false);
-  expect(sampleWorldRiverCarving(bridge.rightBankAnchor.x,bridge.rightBankAnchor.z)!.insideChannel).toBe(false);
+  expect(sampleWorldRiverCarving(bridge.leftBankAnchor.x,bridge.leftBankAnchor.z,carving)!.insideChannel).toBe(false);
+  expect(sampleWorldRiverCarving(bridge.rightBankAnchor.x,bridge.rightBankAnchor.z,carving)!.insideChannel).toBe(false);
   for(const approach of [bridge.approachPoints.left,bridge.approachPoints.right])expect(bridge.zones.some(z=>z.purpose==="vegetation-exclusion"&&pointInFootprint(approach.x,approach.z,z.footprint))).toBe(true);
   expect(generateBridges(Number.parseInt(bridge.id.split(":")[1]!,16),{x:1,z:bridge.ownerChunk.z}).bridges).toHaveLength(0);
  });
