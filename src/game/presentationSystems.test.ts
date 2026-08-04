@@ -20,6 +20,16 @@ function fixture(aspect = 16 / 9) {
 }
 
 describe("CameraPresentationSystem", () => {
+  it("starts from a restored player heading", () => {
+    const camera = new THREE.PerspectiveCamera(60, 16 / 9);
+    const heading = Math.PI / 3;
+    const system = new CameraPresentationSystem(camera, undefined, heading);
+
+    expect(system.getEffectiveYaw()).toBeCloseTo(heading);
+    system.setCameraOrientationMode("follow-movement");
+    expect(system.getMovementReferenceYaw()).toBeCloseTo(heading);
+  });
+
   it("starts at the configured default angle and zoom and smooths subsequent changes", () => {
     const { camera, world, system, setInput } = fixture();
     system.prepareRender(world, 0, 0);

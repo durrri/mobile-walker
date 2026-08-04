@@ -29,9 +29,10 @@ export function getBrowserStorage(): StorageAdapter {
 }
 
 export interface PersistedGameState {
-  readonly version: 1;
+  readonly version: 2;
   readonly worldSeed: string;
   readonly player: TransformComponent;
+  readonly playerHeading: number;
   readonly collectedIds: readonly string[];
 }
 
@@ -43,15 +44,19 @@ function parseGameState(value: unknown, worldSeed: string): PersistedGameState |
   if (!value || typeof value !== "object") return undefined;
   const candidate = value as Partial<PersistedGameState>;
   const player = candidate.player as Partial<TransformComponent> | undefined;
-  if (candidate.version !== 1 || candidate.worldSeed !== worldSeed || !player
+  const version = (candidate as { version?: unknown }).version;
+  const heading = version === 1 ? player?.yaw : candidate.playerHeading;
+  if ((version !== 1 && version !== 2) || candidate.worldSeed !== worldSeed || !player
     || !isFiniteNumber(player.x) || !isFiniteNumber(player.y)
     || !isFiniteNumber(player.z) || !isFiniteNumber(player.yaw)
+    || !isFiniteNumber(heading)
     || !Array.isArray(candidate.collectedIds)
     || candidate.collectedIds.some((id) => typeof id !== "string")) return undefined;
   return {
-    version: 1,
+    version: 2,
     worldSeed,
     player: { x: player.x, y: player.y, z: player.z, yaw: player.yaw },
+    playerHeading: heading,
     collectedIds: [...new Set(candidate.collectedIds)],
   };
 }
@@ -66,14 +71,15 @@ export function loadGameState(storage: StorageAdapter, worldSeed: string): Persi
   }
 }
 
-function snapshotGameState(world: EcsWorld, worldSeed: string): PersistedGameState | undefined {
+function snapshotGameState(world: EcsWorld, worldSeed: string, playerHeading: number): PersistedGameState | undefined {
   const player = world.entities.find((entity) => entity.playerControl && entity.transform)?.transform;
   const collection = world.entities.find((entity) => entity.collectionState)?.collectionState;
   if (!player || !collection) return undefined;
   return {
-    version: 1,
+    version: 2,
     worldSeed,
     player: { x: player.x, y: player.y, z: player.z, yaw: player.yaw },
+    playerHeading,
     collectedIds: [...collection.collectedIds].sort(),
   };
 }
@@ -88,6 +94,7 @@ export class PersistenceSystem implements FixedSystem {
     private readonly storage: StorageAdapter,
     private readonly worldSeed: string,
     private readonly intervalSeconds = 1,
+    private readonly getPlayerHeading: () => number = () => 0,
   ) {}
 
   fixedUpdate(world: EcsWorld, deltaSeconds: number): void {
@@ -100,7 +107,9 @@ export class PersistenceSystem implements FixedSystem {
 
   flush(): void {
     if (!this.world) return;
-    const state = snapshotGameState(this.world, this.worldSeed);
+    const playerHeading = this.getPlayerHeading();
+    if (!isFiniteNumber(playerHeading)) return;
+    const state = snapshotGameState(this.world, this.worldSeed, playerHeading);
     if (!state) return;
     const serialized = JSON.stringify(state);
     if (serialized === this.lastSerialized) return;

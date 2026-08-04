@@ -91,10 +91,10 @@ export function createGameplay(
   world.add({ collectionState: createCollectionState(savedState?.collectedIds) });
   // Fixed order: snapshot event state, then integrate.
   const input = new InputController(inputElement, dragIndicator);
-  const camera = new CameraPresentationSystem(renderer.camera, input);
+  const camera = new CameraPresentationSystem(renderer.camera, input, savedState?.playerHeading);
   systems.addFixedSystem(new InputSnapshotSystem(input, () => camera.getMovementReferenceYaw()));
   systems.addFixedSystem(new PlayerMovementSystem(worldSeed));
-  const persistence = new PersistenceSystem(storage, worldSeed);
+  const persistence = new PersistenceSystem(storage, worldSeed, 1, () => camera.getEffectiveYaw());
   // Generate data before constructing meshes; then interpolate visuals and derive the camera pose.
   // The camera remains south of the player and looks north (negative world Z),
   // so spend the additional streaming row where it expands the visible view.

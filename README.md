@@ -40,7 +40,7 @@ through GitHub Actions.
   chunk streamer/mesh factory.
 - `src/game/` composes the demo entities and presentation systems.
 
-Player position and collected waypoints are restored from browser `localStorage`
+Player position, heading, and collected waypoints are restored from browser `localStorage`
 when the same generated world is opened again. A versioned, world-seed-scoped
 snapshot is saved once per second while playing and immediately when the page is
 hidden or unloaded. Invalid or unavailable storage is ignored so it cannot block

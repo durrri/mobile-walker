@@ -27,15 +27,28 @@ describe("game persistence", () => {
     });
     world.add({ collectionState: { collectedIds: new Set(["b", "a"]), discovered: 2 } });
 
-    const persistence = new PersistenceSystem(storage, "seed");
+    const persistence = new PersistenceSystem(storage, "seed", 1, () => -0.75);
     persistence.fixedUpdate(world, 1);
 
     expect(loadGameState(storage, "seed")).toEqual({
-      version: 1,
+      version: 2,
       worldSeed: "seed",
       player: { x: 12, y: 3, z: -8, yaw: 1.5 },
+      playerHeading: -0.75,
       collectedIds: ["a", "b"],
     });
+  });
+
+  it("migrates player yaw as the heading for version 1 saves", () => {
+    const storage = new MemoryStorage();
+    storage.values.set(GAME_STATE_STORAGE_KEY, JSON.stringify({
+      version: 1,
+      worldSeed: "seed",
+      player: { x: 4, y: 2, z: 7, yaw: 1.25 },
+      collectedIds: [],
+    }));
+
+    expect(loadGameState(storage, "seed")?.playerHeading).toBe(1.25);
   });
 
   it("ignores corrupt, incompatible, and other-world state", () => {
