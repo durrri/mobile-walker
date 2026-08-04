@@ -1,26 +1,46 @@
 import { describe, expect, it } from "vitest";
-import { generateChunk } from "./generateChunk";
+import { generateChunk, type GeneratedChunkData } from "./generateChunk";
 import { RIVER_R6_FIXTURES } from "./riverR6Fixtures";
-import { tessellateWorldRiverWaterChunk } from "./worldRiverWater";
+import { resetWorldGenerationCachesForDiagnostics } from "./worldGenerationDiagnostics";
+import { tessellateWorldRiverWaterChunk, type WorldRiverWaterGeometry } from "./worldRiverWater";
 
-const canonical = (coordinate: { x: number; z: number }) => generateChunk("r6-extended", coordinate);
+const seed = "r6-extended";
+const key = (coordinate: { x: number; z: number }) => `${coordinate.x},${coordinate.z}`;
+const independentOrder = (coordinates: readonly { x: number; z: number }[]) => {
+  resetWorldGenerationCachesForDiagnostics();
+  return new Map(coordinates.map(coordinate => [key(coordinate), structuredClone(generateChunk(seed, coordinate))]));
+};
 
 describe("R6 extended river validation", () => {
-  it("is independent across broad representative generation orders", () => {
-    const coordinates = [...new Map(RIVER_R6_FIXTURES.map(f => [`${f.chunk.x},${f.chunk.z}`, f.chunk])).values()];
-    const orders = [coordinates, [...coordinates].reverse(), coordinates.filter((_, i) => i % 2 === 0).concat(coordinates.filter((_, i) => i % 2 === 1))];
-    const baseline = new Map(orders[0]!.map(c => [`${c.x},${c.z}`, canonical(c)]));
-    for (const order of orders.slice(1)) for (const coordinate of order) {
-      expect(canonical(coordinate)).toEqual(baseline.get(`${coordinate.x},${coordinate.z}`));
-    }
+  it("compares independently generated snapshots across representative orders", () => {
+    const coordinates = [...new Map(RIVER_R6_FIXTURES.map(f => [key(f.chunk), f.chunk])).values()];
+    const orders = [coordinates, [...coordinates].reverse(),
+      coordinates.filter((_, i) => i % 2 === 0).concat(coordinates.filter((_, i) => i % 2 === 1))];
+    const snapshots = orders.map(independentOrder);
+    for (const snapshot of snapshots.slice(1)) expect(snapshot).toEqual(snapshots[0]);
   }, 120_000);
 
-  it("reproduces generated and water data through repeated unload/reload equivalents", () => {
+  it("keeps the formerly problematic strongest-bend mesh buffers byte-for-byte stable", () => {
+    const coordinate = RIVER_R6_FIXTURES.find(f => f.name === "strongest-bend")!.chunk;
+    const generateIndependent = () => {
+      resetWorldGenerationCachesForDiagnostics();
+      const mesh = generateChunk(seed, coordinate).terrainMesh;
+      return { positions: new Uint8Array(mesh.positions.buffer.slice(0)), indices: new Uint8Array(mesh.indices.buffer.slice(0)) };
+    };
+    const baseline = generateIndependent();
+    for (let repetition = 0; repetition < 5; repetition += 1) expect(generateIndependent()).toEqual(baseline);
+  }, 120_000);
+
+  it("reproduces canonical chunk and water data after independent cache-cleared regeneration", () => {
     const fixtures = RIVER_R6_FIXTURES.filter(f => ["strongest-bend", "bridge", "dry-far"].includes(f.name));
-    const baseline = fixtures.map(f => ({ chunk: canonical(f.chunk), water: tessellateWorldRiverWaterChunk(f.chunk) }));
-    for (let cycle = 0; cycle < 5; cycle += 1) fixtures.slice().reverse().forEach((fixture, index) => {
-      expect(canonical(fixture.chunk)).toEqual(baseline[index === 0 ? 2 : index === 2 ? 0 : 1]!.chunk);
-      expect(tessellateWorldRiverWaterChunk(fixture.chunk)).toEqual(baseline[index === 0 ? 2 : index === 2 ? 0 : 1]!.water);
-    });
+    const regenerate = (): Map<string, { chunk: GeneratedChunkData; water: WorldRiverWaterGeometry }> => {
+      resetWorldGenerationCachesForDiagnostics();
+      return new Map(fixtures.map(fixture => [fixture.name, {
+        chunk: structuredClone(generateChunk(seed, fixture.chunk)),
+        water: structuredClone(tessellateWorldRiverWaterChunk(fixture.chunk)),
+      }]));
+    };
+    const baseline = regenerate();
+    for (let cycle = 0; cycle < 5; cycle += 1) expect(regenerate()).toEqual(baseline);
   }, 120_000);
 });

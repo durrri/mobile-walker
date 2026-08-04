@@ -145,6 +145,8 @@ function rank(a:Evaluated,b:Evaluated):number{return b.score-a.score||a.id.local
 function spacing(a:PoiDefinition,b:PoiDefinition):number{return Math.max(a.spacingByType?.[b.id]??a.minimumSpacing,b.spacingByType?.[a.id]??b.minimumSpacing);}
 export function getPoiCandidateSearchMargins():Readonly<Record<string,number>>{return Object.fromEntries([...definitions.values()].map(d=>[d.id,d.id==="highland-watchtower"?Math.ceil((d.spacingByType?.[d.id]??d.minimumSpacing)/CELL_SIZE)+1:ORDINARY_SEARCH_MARGIN]));}
 export function getPoiCacheSizes():Readonly<{generation:number;candidates:number;prominence:number}>{return{generation:generationCache.size,candidates:candidateCache.size,prominence:prominenceCache.size};}
+/** Supported deterministic-test/diagnostic reset; production never needs it. */
+export function clearPoiGenerationCaches():void{generationCache.clear();candidateCache.clear();prominenceCache.clear();}
 
 export function generatePois(seedInput:number|string,coordinate:ChunkCoordinate):Readonly<{pois:readonly GeneratedPoi[];candidates:readonly PoiDebugCandidate[]}>{
   const seed=normalizeSeed(seedInput),key=`${seed}:${definitions.size}:${coordinate.x}:${coordinate.z}`,cached=generationCache.get(key);if(cached)return cached;

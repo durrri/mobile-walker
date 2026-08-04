@@ -49,6 +49,8 @@ export const BRIDGE_APPROACH_DISTANCE = 6;
 export const BRIDGE_MAX_CURVATURE_RADIANS = .32;
 export const BRIDGE_MAX_LANDING_DIFFERENCE = 1.35;
 const bridgeGenerationCache = new Map<string, Readonly<{bridges:readonly GeneratedBridge[];candidates:readonly BridgeCrossingCandidate[]}>>();
+/** Supported deterministic-test/diagnostic reset; production never needs it. */
+export function clearBridgeGenerationCache():void{bridgeGenerationCache.clear();}
 
 function latticePhase(seed:number):number{return hashFloat(seed,0,0,1791)*BRIDGE_CANDIDATE_SPACING}
 function candidatePriority(seed:number,index:number):number{return hashFloat(seed,index,1801)}
