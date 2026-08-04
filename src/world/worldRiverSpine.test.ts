@@ -25,22 +25,22 @@ describe("world-owned river spine", () => {
     expect(Object.values(worldRiverSpine.sampleTangent(1)).every(Number.isFinite)).toBe(true);
   });
 
-  it("returns deterministic orthonormal frames including an east-west reach", () => {
-    let horizontal=false;
+  it("returns deterministic orthonormal frames including a diagonal reach", () => {
+    let diagonal=false;
     for(let index=0;index<=100;index+=1){const frame=worldRiverSpine.sampleFrame(index/100);
       expect(Math.hypot(frame.tangent.x,frame.tangent.z)).toBeCloseTo(1,6);
       expect(Math.hypot(frame.normal.x,frame.normal.z)).toBeCloseTo(1,6);
       expect(frame.tangent.x*frame.normal.x+frame.tangent.z*frame.normal.z).toBeCloseTo(0,8);
       expect(frame.normal).toEqual({x:-frame.tangent.z,z:frame.tangent.x});
       expect(Object.values(frame.tangent).every(Number.isFinite)).toBe(true);
-      horizontal ||= Math.abs(frame.tangent.z)<.2;
+      diagonal ||= Math.abs(frame.tangent.x)>.2;
     }
-    expect(horizontal).toBe(true);
+    expect(diagonal).toBe(true);
   });
 
   it("has bounded overshoot and no sampled self-intersection", () => {
     const samples=Array.from({length:201},(_,i)=>worldRiverSpine.samplePosition(i/200));
-    for(const point of samples){expect(point.x).toBeGreaterThanOrEqual(-60);expect(point.x).toBeLessThanOrEqual(72);expect(point.z).toBeGreaterThanOrEqual(-120);expect(point.z).toBeLessThanOrEqual(104);}
+    for(const point of samples){expect(point.x).toBeGreaterThanOrEqual(-96);expect(point.x).toBeLessThanOrEqual(96);expect(point.z).toBeGreaterThanOrEqual(-129);expect(point.z).toBeLessThanOrEqual(129);}
     for(let a=0;a<samples.length-1;a+=1)for(let b=a+2;b<samples.length-1;b+=1)expect(intersects(samples[a]!,samples[a+1]!,samples[b]!,samples[b+1]!)).toBe(false);
   });
 
@@ -70,10 +70,12 @@ describe("world-owned river spine", () => {
 
   it("spatially queries ordered world intervals with margin and adjacent bounds", () => {
     expect(worldRiverSpine.queryRiverSegments({minX:500,maxX:516,minZ:500,maxZ:516})).toEqual([]);
-    const crossed=worldRiverSpine.queryRiverSegments({minX:15,maxX:32,minZ:40,maxZ:56});expect(crossed.length).toBeGreaterThan(0);
+    const fixture=worldRiverSpine.samplePosition(.25);
+    const crossed=worldRiverSpine.queryRiverSegments({minX:fixture.x-8,maxX:fixture.x+8,minZ:fixture.z-8,maxZ:fixture.z+8});expect(crossed.length).toBeGreaterThan(0);
     expect(crossed.map(s=>s.index)).toEqual([...crossed].map(s=>s.index).sort((a,b)=>a-b));
-    const without=worldRiverSpine.queryRiverSegments({minX:65,maxX:67,minZ:34,maxZ:38});
-    const withMargin=worldRiverSpine.queryRiverSegments({minX:65,maxX:67,minZ:34,maxZ:38},5);expect(withMargin.length).toBeGreaterThan(without.length);
+    const outside={minX:fixture.x+10,maxX:fixture.x+12,minZ:fixture.z-2,maxZ:fixture.z+2};
+    const without=worldRiverSpine.queryRiverSegments(outside);
+    const withMargin=worldRiverSpine.queryRiverSegments(outside,12);expect(withMargin.length).toBeGreaterThan(without.length);
     const boundary=worldRiverSpine.samplePosition(.25), chunkX=Math.floor(boundary.x/CHUNK_SIZE), chunkZ=Math.floor(boundary.z/CHUNK_SIZE);
     const bounds=(x:number)=>({minX:x*CHUNK_SIZE,maxX:(x+1)*CHUNK_SIZE,minZ:chunkZ*CHUNK_SIZE,maxZ:(chunkZ+1)*CHUNK_SIZE});
     const first=worldRiverSpine.queryRiverSegments(bounds(chunkX),1), second=worldRiverSpine.queryRiverSegments(bounds(chunkX+1),1);
@@ -88,7 +90,7 @@ describe("world-owned river spine", () => {
     expect("ownerChunk" in worldRiverSpine.indexedSegments[0]!).toBe(false);
     expect(worldRiverSpine.controlPoints).not.toHaveProperty("chunkCoordinate");
     const columns=new Set(Array.from({length:1001},(_,i)=>Math.floor(worldRiverSpine.samplePosition(i/1000).x/CHUNK_SIZE)));
-    expect(columns.size).toBeGreaterThanOrEqual(4);
+    expect(columns.size).toBeGreaterThanOrEqual(2);
     const queries=[{minX:-32,maxX:-16,minZ:-32,maxZ:-16},{minX:16,maxX:32,minZ:32,maxZ:48}];
     const forward=queries.map(q=>worldRiverSpine.queryRiverSegments(q).map(s=>s.index));
     const reverse=[...queries].reverse().map(q=>worldRiverSpine.queryRiverSegments(q).map(s=>s.index)).reverse();expect(reverse).toEqual(forward);

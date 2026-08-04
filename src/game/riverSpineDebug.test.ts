@@ -98,4 +98,19 @@ describe("RiverSpineDebugView", () => {
     expect(disposeMaterial).toHaveBeenCalledOnce();
     expect(scene.getObjectByName("debug:world-river-spine")).toBeUndefined();
   });
+
+  it("shows independently toggleable dual spines and decimated R8 connectors", () => {
+    const scene = new THREE.Scene(), view = new RiverSpineDebugView(scene);
+    view.setMode("detailed");
+    const macro = scene.getObjectByName("debug:river-macro-spine")!;
+    const final = scene.getObjectByName("debug:river-centreline")!;
+    const connectors = scene.getObjectByName("debug:river-displacement-connectors") as THREE.Mesh<THREE.BufferGeometry>;
+    expect(macro).toBeDefined(); expect(final).toBeDefined();
+    expect(connectors.geometry.getAttribute("position").count).toBeLessThan(400);
+    view.setLayerVisibility({ macro: false });
+    expect(macro.visible).toBe(false); expect(final.visible).toBe(true); expect(connectors.visible).toBe(true);
+    const labels = view.generationReadout();
+    expect(labels.generationVersion).toBe(8); expect(labels.macroControlPointCount).toBeGreaterThan(2);
+    view.dispose();
+  });
 });
