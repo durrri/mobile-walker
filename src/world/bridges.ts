@@ -4,10 +4,11 @@ import { footprintsOverlap, generatePois, type GeneratedPoi, type PoiFootprint, 
 import { hashFloat, normalizeSeed } from "./random";
 import type { StructureBoxCollider, StructureCollisionDefinition, StructureSegmentCollider, StructureSurfaceRecord } from "./structureTypes";
 import { sampleTerrainHeight } from "./terrainSampling";
-import { WORLD_RIVER_CARVING, WORLD_RIVER_LIP_CREST_DISTANCE } from "./worldRiverCarving";
+import { WORLD_RIVER_CARVING } from "./worldRiverCarving";
 import type { WorldBounds2D } from "./worldRiverSpine";
 import { getWorldRiverOwner } from "./worldRiverOwner";
 import type { RiverSpine } from "./riverSpineGeometry";
+import { sampleRiverWidth } from "./worldRiverWidth";
 
 export type BridgeArchetype = "pedestrian-footbridge" | "heavy-timber-bridge" | "stone-bridge";
 export type BridgeVariant = "bare-plank" | "rope-railed" | "low-timber-railed" | "simple-beam" | "trestle" | "reinforced-timber" | "shallow-stone-span" | "single-arch" | "hump-backed-stone";
@@ -65,7 +66,8 @@ function rawCandidate(seed:number,index:number,spine:RiverSpine):BridgeCrossingC
  // RiverFrame.normal is the deterministic left direction. The bridge's positive
  // longitudinal direction follows it, so every consumer shares left/right.
  const tangent=frame.tangent,direction=frame.normal;
- const bankExtent=WORLD_RIVER_LIP_CREST_DISTANCE+(WORLD_RIVER_CARVING.bankWidth-WORLD_RIVER_CARVING.shoreTransitionWidth)+BRIDGE_LANDING_MARGIN;
+ const localHalfWidth=sampleRiverWidth(spine,riverDistance).halfWidth;
+ const bankExtent=localHalfWidth+WORLD_RIVER_CARVING.bankWidth+BRIDGE_LANDING_MARGIN;
  const spanLength=bankExtent*2;
  const point=(side:number,distance:number):BridgePoint=>{const x=frame.position.x+direction.x*distance*side,z=frame.position.z+direction.z*distance*side;return{x,y:sampleTerrainHeight(seed,x,z),z}};
  const left=point(1,bankExtent),right=point(-1,bankExtent),leftApproach=point(1,bankExtent+BRIDGE_APPROACH_DISTANCE),rightApproach=point(-1,bankExtent+BRIDGE_APPROACH_DISTANCE);
@@ -77,7 +79,7 @@ function rawCandidate(seed:number,index:number,spine:RiverSpine):BridgeCrossingC
  // guarantees clearance above the single authoritative water datum.
  const proposedDeckElevation=Math.max(left.y,right.y,WORLD_RIVER_CARVING.surfaceElevation+.35)+.18;
  const ownerChunk=worldToChunk(frame.position.x,frame.position.z),extent=bankExtent+BRIDGE_APPROACH_DISTANCE;
- return{id:`bridge:${seed.toString(16)}:d${index}`,latticeIndex:index,riverDistance,riverProgress,ownerChunk,centre:{...frame.position},riverTangent:{...tangent},crossingDirection:{...direction},waterHalfWidth:WORLD_RIVER_CARVING.waterHalfWidth,bankExtent,leftBankAnchor:left,rightBankAnchor:right,landingHeights:{left:left.y,right:right.y},proposedDeckElevation,approachPoints:{left:leftApproach,right:rightApproach},spanLength,bounds:{minX:frame.position.x-Math.abs(direction.x)*extent-3,maxX:frame.position.x+Math.abs(direction.x)*extent+3,minZ:frame.position.z-Math.abs(direction.z)*extent-3,maxZ:frame.position.z+Math.abs(direction.z)*extent+3},curvatureRadians,approachSlope,bankStability,biome:sampleBiome(seed,frame.position.x,frame.position.z).dominant,accepted:false};
+ return{id:`bridge:${seed.toString(16)}:d${index}`,latticeIndex:index,riverDistance,riverProgress,ownerChunk,centre:{...frame.position},riverTangent:{...tangent},crossingDirection:{...direction},waterHalfWidth:localHalfWidth,bankExtent,leftBankAnchor:left,rightBankAnchor:right,landingHeights:{left:left.y,right:right.y},proposedDeckElevation,approachPoints:{left:leftApproach,right:rightApproach},spanLength,bounds:{minX:frame.position.x-Math.abs(direction.x)*extent-3,maxX:frame.position.x+Math.abs(direction.x)*extent+3,minZ:frame.position.z-Math.abs(direction.z)*extent-3,maxZ:frame.position.z+Math.abs(direction.z)*extent+3},curvatureRadians,approachSlope,bankStability,biome:sampleBiome(seed,frame.position.x,frame.position.z).dominant,accepted:false};
 }
 
 /** Bounded spatial discovery; lattice indices are obtained from indexed river segments. */

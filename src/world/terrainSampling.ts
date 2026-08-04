@@ -4,11 +4,11 @@ import { hashFloat, normalizeSeed } from "./random";
 import {
   applyWorldRiverCarving,
   sampleWorldRiverCarving,
-  WORLD_RIVER_CARVING,
   WORLD_RIVER_MAX_CARVING_RADIUS,
   type WorldRiverCarvingContext,
 } from "./worldRiverCarving";
 import { getWorldRiverOwner } from "./worldRiverOwner";
+import { sampleRiverWidth } from "./worldRiverWidth";
 import { getCachedWorldRiverCarvingContext } from "./worldRiverContextCache";
 
 export type TerrainSurface = "land" | "river" | "lake";
@@ -203,7 +203,7 @@ export function sampleTerrain(seed: number | string, worldX: number, worldZ: num
   const spine = getWorldRiverOwner(seed).spine;
   return {
     height: sampleTerrainHeight(seed, worldX, worldZ),
-    surface: (spine.nearestPointToRiver(worldX, worldZ).distanceToRiver ?? Infinity) <= WORLD_RIVER_CARVING.waterHalfWidth
+    surface: (()=>{const nearest=spine.nearestPointToRiver(worldX,worldZ);return nearest.distanceToRiver <= sampleRiverWidth(spine,nearest.distanceAlongRiver).halfWidth})()
       ? "river" : isLakeAt(seed, worldX, worldZ) ? "lake" : "land",
     biome: biome.dominant,
     biomeWeights: biome.weights,

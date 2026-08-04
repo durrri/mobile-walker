@@ -15,6 +15,7 @@ import { sampleWorldRiverCarving, WORLD_RIVER_CARVING, WORLD_RIVER_LIP_CREST_DIS
 import { createWorldRiverEnvironmentContext } from "./worldRiverEnvironment";
 import type { RiverSpine } from "./riverSpineGeometry";
 import { getWorldRiverOwner } from "./worldRiverOwner";
+import { sampleRiverWidth } from "./worldRiverWidth";
 import { generateVegetation, type GeneratedVegetation } from "./vegetation";
 import { generatePois, isVegetationExcluded, type GeneratedPoi, type PoiDebugCandidate } from "./poi";
 import { generateWetlandPools, type WetlandPoolPlacement } from "./wetlands";
@@ -236,10 +237,14 @@ export function generateChunk(
       const guide: { x: number; z: number }[] = [];
       for (let frameIndex = 0; frameIndex <= frameCount; frameIndex++) {
         const frame = globalFrames[frameIndex]!;
-        const point = { x: frame.position.x + frame.normal.x * offset,
-          z: frame.position.z + frame.normal.z * offset };
+        const localHalf = sampleRiverWidth(riverOwner.spine,
+          Math.min(frameIndex * WORLD_RIVER_TERRAIN_STRIP_SAMPLE_SPACING, riverOwner.spine.totalLength)).halfWidth;
+        const magnitude = Math.abs(offset) < 1e-9 ? 0 : localHalf + Math.max(0, Math.abs(offset) - waterHalfWidth);
+        const localOffset = Math.sign(offset) * magnitude;
+        const point = { x: frame.position.x + frame.normal.x * localOffset,
+          z: frame.position.z + frame.normal.z * localOffset };
         guide.push(point);
-        addVertex(point.x, point.z, offset);
+        addVertex(point.x, point.z, localOffset);
       }
       guides.set(offset, guide);
     }

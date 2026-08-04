@@ -4,6 +4,7 @@ import {
   type RiverSpine,
   type WorldBounds2D,
 } from "./worldRiverSpine";
+import { RIVER_WIDTH_CONFIG, sampleRiverWidth } from "./worldRiverWidth";
 
 /** One shared footprint consumed by water tessellation, terrain, queries, and debug guides. */
 export const WORLD_RIVER_WATER_HALF_WIDTH = 2;
@@ -30,7 +31,7 @@ export const WORLD_RIVER_CARVING = Object.freeze({
 });
 
 export const WORLD_RIVER_MAX_CARVING_RADIUS =
-  WORLD_RIVER_CARVING.waterHalfWidth + WORLD_RIVER_CARVING.bankWidth + WORLD_RIVER_CARVING.falloffWidth;
+  RIVER_WIDTH_CONFIG.maximumWidth / 2 + WORLD_RIVER_CARVING.bankWidth + WORLD_RIVER_CARVING.falloffWidth;
 
 export const WORLD_RIVER_LIP_CREST_DISTANCE =
   WORLD_RIVER_CARVING.waterHalfWidth + WORLD_RIVER_CARVING.shoreTransitionWidth;
@@ -148,9 +149,10 @@ export function sampleWorldRiverCarving(
   const nearestX = frame.position.x, nearestZ = frame.position.z;
   const signedSide = (worldX - nearestX) * normalX + (worldZ - nearestZ) * normalZ;
   const distanceToCentreline = Math.hypot(worldX - nearestX, worldZ - nearestZ);
-  const { waterHalfWidth, bankWidth, falloffWidth, surfaceElevation, nominalBedDepth, floorCurvature,
+  const { bankWidth, falloffWidth, surfaceElevation, nominalBedDepth, floorCurvature,
     shoreClearance, shoreTransitionWidth, lipHeight, innerBankRise } =
     WORLD_RIVER_CARVING;
+  const waterHalfWidth = sampleRiverWidth(context.spine, progress * context.spine.totalLength).halfWidth;
   const halfWidth = waterHalfWidth;
   const lipCrestDistance = waterHalfWidth + shoreTransitionWidth;
   const innerBankWidth = bankWidth - shoreTransitionWidth;

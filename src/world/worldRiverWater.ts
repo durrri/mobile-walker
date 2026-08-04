@@ -1,6 +1,7 @@
 import { CHUNK_SIZE, type ChunkCoordinate } from "./chunkCoordinates";
 import { WORLD_RIVER_CARVING } from "./worldRiverCarving";
 import { referenceWorldRiverSpine, type RiverSpine, type WorldBounds2D } from "./worldRiverSpine";
+import { sampleRiverWidth } from "./worldRiverWidth";
 
 /** Global arc-length lattice used by every chunk. It never restarts at a seam. */
 export const WORLD_RIVER_WATER_SAMPLE_SPACING = 1;
@@ -19,14 +20,15 @@ export interface WorldRiverWaterSample {
 
 export function sampleWorldRiverWater(x: number, z: number, spine: RiverSpine = referenceWorldRiverSpine): WorldRiverWaterSample {
   const nearest = spine.nearestPointToRiver(x, z);
-  const signedDistanceToEdge = nearest.distanceToRiver - WORLD_RIVER_CARVING.waterHalfWidth;
+  const halfWidth = sampleRiverWidth(spine, nearest.distanceAlongRiver).halfWidth;
+  const signedDistanceToEdge = nearest.distanceToRiver - halfWidth;
   return {
     inside: signedDistanceToEdge <= 0,
     signedDistanceToEdge,
     distanceToCentreline: nearest.distanceToRiver,
     signedSide: nearest.signedSide,
     surfaceElevation: WORLD_RIVER_CARVING.surfaceElevation,
-    halfWidth: WORLD_RIVER_CARVING.waterHalfWidth,
+    halfWidth,
     progress: nearest.progress,
     distanceAlongRiver: nearest.distanceAlongRiver,
   };
@@ -97,7 +99,7 @@ function waterLattice(spine: RiverSpine): WaterLattice {
   for (let index = 0; index <= count; index += 1) {
     const distance = Math.min(index * spacing, spine.totalLength);
     const frame = spine.sampleFrame(spine.progressAtDistance(distance));
-    const half = WORLD_RIVER_CARVING.waterHalfWidth, y = WORLD_RIVER_CARVING.surfaceElevation;
+    const half = sampleRiverWidth(spine, distance).halfWidth, y = WORLD_RIVER_CARVING.surfaceElevation;
     frames.push({ distance,
       left: { x: frame.position.x + frame.normal.x * half, y, z: frame.position.z + frame.normal.z * half, u: distance, v: 0 },
       right: { x: frame.position.x - frame.normal.x * half, y, z: frame.position.z - frame.normal.z * half, u: distance, v: 1 },
