@@ -7,6 +7,7 @@ import { ChunkActivationJob } from "./ChunkActivationJob";
 import { generateChunk, type GeneratedChunkData } from "./generateChunk";
 import type { SunlightDirection } from "../rendering/sunlightDirection";
 import { GeneratedChunkRepository } from "./GeneratedChunkRepository";
+import { canonicalTerrainChunkId, queryChunkTerrainSurface, type ActiveTerrainSurfaceDiagnostics, type ActiveTerrainSurfaceHit } from "./activeTerrainSurface";
 
 type ChunkGenerator = (seed: number | string, coordinate: ChunkCoordinate) => GeneratedChunkData | Promise<GeneratedChunkData>;
 export interface ChunkStreamingOptions {
@@ -83,6 +84,26 @@ export class ChunkStreamingSystem implements RenderSystem {
   setShadowsEnabled(enabled: boolean): void { this.meshes.setShadowsEnabled(enabled); }
   setNeighborhoodOffsets(offsets: Partial<ChunkNeighborhoodOffsets>): void { this.offsets = resolveNeighborhoodOffsets(this.radius, offsets); }
   getDiagnostics(): Readonly<ChunkStreamingDiagnostics> { return this.diagnostics; }
+  /** Runtime physical terrain query. Only visually active chunks are considered; no procedural fallback is used. */
+  queryActiveTerrainSurface(worldX: number, worldZ: number): ActiveTerrainSurfaceHit | undefined {
+    const id = canonicalTerrainChunkId(worldX, worldZ);
+    const primary = this.activeData.get(id);
+    const hit = primary ? queryChunkTerrainSurface(primary, worldX, worldZ) : undefined;
+    if (hit) return hit;
+    // Epsilon seam verification only: use deterministic id ordering so activation/generation order cannot change ties.
+    const alternates = [...this.activeData.entries()]
+      .filter(([otherId, data]) => otherId !== id && worldX >= data.coordinate.x * data.size - 1e-7 && worldX <= data.coordinate.x * data.size + data.size + 1e-7 && worldZ >= data.coordinate.z * data.size - 1e-7 && worldZ <= data.coordinate.z * data.size + data.size + 1e-7)
+      .sort(([a], [b]) => a.localeCompare(b));
+    for (const [, data] of alternates) { const alternate = queryChunkTerrainSurface(data, worldX, worldZ); if (alternate) return alternate; }
+    return undefined;
+  }
+  /** Development-only explanatory comparison; callers opt in and provide the procedural sampler lazily. */
+  queryActiveTerrainSurfaceDiagnostics(worldX: number, worldZ: number, procedural?: (x: number, z: number) => number): ActiveTerrainSurfaceDiagnostics | undefined {
+    const hit = this.queryActiveTerrainSurface(worldX, worldZ);
+    if (!hit) return undefined;
+    const proceduralHeight = procedural?.(worldX, worldZ);
+    return proceduralHeight === undefined ? hit : { ...hit, proceduralHeight, proceduralDifference: proceduralHeight - hit.height };
+  }
 
   prepareRender(world: Parameters<RenderSystem["prepareRender"]>[0], _interpolation?: number, _deltaSeconds?: number): void {
     const player = world.entities.find(entity => entity.playerControl && entity.transform); if (!player?.transform || this.disposed) return;

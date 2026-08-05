@@ -108,7 +108,7 @@ export function createGameplay(
   });
   systems.addFixedSystem(new TreeCollisionSystem(worldSeed, chunks.repository));
   systems.addFixedSystem(new StructureCollisionSystem(chunks.repository));
-  systems.addFixedSystem(new TerrainSamplingSystem(worldSeed));
+  systems.addFixedSystem(new TerrainSamplingSystem(worldSeed, chunks));
   systems.addFixedSystem(new ProximityDetectionSystem());
   systems.addFixedSystem(new CollectionSystem());
   systems.addFixedSystem(persistence);
