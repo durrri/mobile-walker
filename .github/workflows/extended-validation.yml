@@ -47,3 +47,4 @@ jobs:
           name: extended-validation-output
           path: extended-validation.log
           if-no-files-found: warn
+          retention-days: 7

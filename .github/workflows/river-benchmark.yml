@@ -98,3 +98,4 @@ jobs:
           name: river-benchmark-output
           path: benchmark-*.log
           if-no-files-found: warn
+          retention-days: 7

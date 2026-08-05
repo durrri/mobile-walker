@@ -45,3 +45,4 @@ jobs:
           name: vitest-coverage
           path: coverage
           if-no-files-found: warn
+          retention-days: 7

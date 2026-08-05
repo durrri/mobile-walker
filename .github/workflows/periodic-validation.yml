@@ -1,0 +1,108 @@
+name: Periodic broad validation
+
+on:
+  schedule:
+    - cron: '17 8 * * 1,3,5'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  broad:
+    name: Broad validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check default-branch activity
+        id: activity
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" != "schedule" ]]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            echo "manual run requested; executing complete periodic validation" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          default_branch="${{ github.event.repository.default_branch }}"
+          git fetch --no-tags origin "${default_branch}:refs/remotes/origin/${default_branch}"
+          latest_commit_time="$(git log -1 --format=%ct "origin/${default_branch}")"
+          now="$(date -u +%s)"
+          age_seconds=$((now - latest_commit_time))
+          if (( age_seconds > 604800 )); then
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "## Periodic broad validation skipped"
+              echo
+              echo "The default branch has had no commits in the previous 7 days, so the expensive scheduled validation suite was skipped."
+              echo
+              echo "Latest default-branch commit time: $(date -u -d "@${latest_commit_time}" +'%Y-%m-%dT%H:%M:%SZ')."
+              echo "New commits automatically make future scheduled runs useful again."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            echo "default branch activity detected in the previous 7 days; executing complete periodic validation" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Set up Node.js
+        if: steps.activity.outputs.should_run == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.activity.outputs.should_run == 'true'
+        run: npm ci
+
+      - name: Run default tests
+        if: steps.activity.outputs.should_run == 'true'
+        run: |
+          set -euo pipefail
+          npm test 2>&1 | tee periodic-default-tests.log
+
+      - name: Run extended river tests
+        if: steps.activity.outputs.should_run == 'true'
+        run: |
+          set -euo pipefail
+          npm run test:extended 2>&1 | tee periodic-extended-tests.log
+
+      - name: Run repeated targeted tests
+        if: steps.activity.outputs.should_run == 'true'
+        run: |
+          set -euo pipefail
+          for repetition in $(seq 1 10); do
+            echo "## Repetition ${repetition}/10" | tee -a periodic-repeatable-tests.log
+            npm run test:repeatable 2>&1 | tee -a periodic-repeatable-tests.log
+          done
+
+      - name: Run river benchmark
+        if: steps.activity.outputs.should_run == 'true'
+        run: |
+          set -euo pipefail
+          npm run benchmark:river 2>&1 | tee periodic-river-benchmark.log
+
+      - name: Write job summary
+        if: always() && steps.activity.outputs.should_run == 'true'
+        run: |
+          {
+            echo "## Periodic broad validation"
+            echo
+            echo "Runs default tests, extended river tests, 10 repeated deterministic/lifecycle checks, and an informational river benchmark when run manually or when scheduled activity is detected."
+            echo
+            echo "Long traversal, larger seed sweeps, and additional topology suites are future validation additions; this workflow does not include placeholder tests for missing coverage."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload periodic logs
+        if: always() && steps.activity.outputs.should_run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: periodic-validation-logs
+          path: periodic-*.log
+          if-no-files-found: warn
+          retention-days: 7
