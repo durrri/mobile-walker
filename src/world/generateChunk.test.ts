@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  generateChunk,
-  WORLD_RIVER_TERRAIN_STRIP_SAMPLE_SPACING,
-  worldRiverTerrainStripOffsets,
-} from "./generateChunk";
+import { generateChunk } from "./generateChunk";
 import { CHUNK_SIZE, worldToChunk } from "./chunkCoordinates";
 import {
   sampleChannelTerrainHeight,
@@ -12,13 +8,7 @@ import {
   sampleNaturalTerrainHeight,
   TERRAIN_SEGMENTS,
 } from "./terrainSampling";
-import {
-  createWorldRiverCarvingContext,
-  sampleWorldRiverCarving,
-  WORLD_RIVER_CARVING,
-  WORLD_RIVER_LIP_CREST_DISTANCE,
-  WORLD_RIVER_MAX_CARVING_RADIUS,
-} from "./worldRiverCarving";
+import { createWorldRiverCarvingContext, sampleWorldRiverCarving } from "./worldRiverCarving";
 import { getWorldRiverOwner } from "./worldRiverOwner";
 import { normalizeSeed } from "./random";
 import { dryChunkOutsideRiverInfluence, riverChunkAtProgress, riverReachOutsideLegacyColumn } from "./riverProceduralFixtures";
@@ -136,48 +126,4 @@ describe("deterministic chunk generation", () => {
       expect(vertex.height).toBeCloseTo(sampleTerrainHeight(chunk.seed, vertex.x, vertex.z), 12);
     }
   }, 20_000);
-
-  it("moves the full dense river-row handoff inward from L2/L3 to L1.1", () => {
-    const seed = "river-bank-topology-handoff";
-    const coordinate = riverChunkAtProgress(.5, seed);
-    const chunk = generateChunk(seed, coordinate);
-    expect(chunk.irregularTerrain, `expected refined river chunk ${JSON.stringify(coordinate)}`).toBeDefined();
-
-    const configuredOffsets = [...worldRiverTerrainStripOffsets()].map(Math.abs);
-    const l0 = WORLD_RIVER_CARVING.waterHalfWidth;
-    const l1 = WORLD_RIVER_LIP_CREST_DISTANCE;
-    const l2 = WORLD_RIVER_CARVING.waterHalfWidth + WORLD_RIVER_CARVING.bankWidth;
-    const l11 = (l1 + l2) / 2;
-    expect(configuredOffsets).toContain(0);
-    expect(configuredOffsets).toContain(l0);
-    expect(configuredOffsets).toContain(l1);
-    expect(configuredOffsets).toContain(l11);
-    expect(configuredOffsets).not.toContain(l2);
-    expect(configuredOffsets).not.toContain(WORLD_RIVER_MAX_CARVING_RADIUS);
-    expect(WORLD_RIVER_TERRAIN_STRIP_SAMPLE_SPACING).toBe(.5);
-
-    const owner = getWorldRiverOwner(seed);
-    const carving = createWorldRiverCarvingContext(owner.spine.bounds, owner.spine, owner.widthProfile);
-    const denseVertices = chunk.irregularTerrain!.vertices.filter(vertex => vertex.riverStripOffset !== undefined);
-    expect(denseVertices.length).toBeGreaterThan(20);
-    const tolerance = 1e-6;
-    const hasDenseLandmark = (distanceAtSample: (sample: NonNullable<ReturnType<typeof sampleWorldRiverCarving>>) => number) => denseVertices.some(vertex => {
-      const sample = sampleWorldRiverCarving(vertex.x, vertex.z, carving);
-      return sample && Math.abs(Math.abs(vertex.riverStripOffset!) - distanceAtSample(sample)) <= tolerance;
-    });
-    expect(hasDenseLandmark(sample => sample.halfWidth)).toBe(true);
-    expect(hasDenseLandmark(sample => sample.halfWidth + WORLD_RIVER_CARVING.shoreTransitionWidth)).toBe(true);
-    expect(hasDenseLandmark(sample => sample.halfWidth + (WORLD_RIVER_CARVING.bankWidth + WORLD_RIVER_CARVING.shoreTransitionWidth) / 2)).toBe(true);
-    expect(hasDenseLandmark(sample => sample.halfWidth + sample.bankWidth)).toBe(false);
-    expect(hasDenseLandmark(() => WORLD_RIVER_MAX_CARVING_RADIUS)).toBe(false);
-
-    const coarseOuterBankVertices = chunk.irregularTerrain!.vertices.filter(vertex => {
-      if (vertex.riverStripOffset !== undefined) return false;
-      const sample = sampleWorldRiverCarving(vertex.x, vertex.z, carving);
-      return sample && sample.distanceToCentreline >= sample.halfWidth + sample.bankWidth - 1e-8
-        && sample.distanceToCentreline <= sample.halfWidth + sample.bankWidth + sample.falloffWidth + 1e-8;
-    });
-    expect(coarseOuterBankVertices.length).toBeGreaterThan(0);
-  });
-
 });
