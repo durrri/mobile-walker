@@ -58,11 +58,11 @@ describe("R6 extended river validation", () => {
 
   it("validates R9 width profiles across many seeds, gradients, hairpins, and interpolated dry separation", () => {
     let observedStrongBendOrClamp=false;
-    for(const worldSeed of ["r9-ext-a","r9-ext-b","r9-ext-c","r9-ext-d","r9-ext-e","r9-ext-f",13,21,34,55]){
+    for(const worldSeed of ["measure-river-scale","r9-ext-a","r9-ext-b","r9-ext-c","r9-ext-d","r9-ext-e","r9-ext-f",13,21,34,55]){
       resetWorldRiverOwners();
       const owner=getWorldRiverOwner(worldSeed),profile=owner.widthProfile;
       expect(profile.identity).toContain("width-v9");
-      observedStrongBendOrClamp ||= profile.samples.some(sample=>sample.bendMultiplier>1.01)||profile.samples.some(sample=>sample.safetyClamped);
+      observedStrongBendOrClamp ||= owner.generation.meanderRegions.some(region=>region.profile==="strong")||profile.samples.some(sample=>sample.bendMultiplier>1.01)||profile.samples.some(sample=>sample.safetyClamped);
       for(let i=1;i<profile.samples.length;i++){
         const a=profile.samples[i-1]!,b=profile.samples[i]!;
         expect(Math.abs(b.fullWidth-a.fullWidth)/(b.distance-a.distance)).toBeLessThanOrEqual(RIVER_WIDTH_CONFIG.maximumGradient+1e-10);
@@ -76,7 +76,7 @@ describe("R6 extended river validation", () => {
         expect(dense[a]!.halfWidth+dense[b]!.halfWidth+RIVER_WIDTH_CONFIG.minimumDrySeparation).toBeLessThanOrEqual(separation+1e-8);
       }
     }
-    expect(observedStrongBendOrClamp || true).toBe(true);
+    expect(observedStrongBendOrClamp).toBe(true);
   },120_000);
 
   it("keeps R9 seam, topology, and generation-order snapshots stable through cache permutations", () => {
@@ -97,6 +97,6 @@ describe("R6 extended river validation", () => {
       edgeUse.set(edgeKey,(edgeUse.get(edgeKey)??0)+1);
     }
     const onBoundary=(vertex:typeof vertices[number])=>Math.abs(vertex.x-bend.x*CHUNK_SIZE)<1e-8||Math.abs(vertex.x-(bend.x+1)*CHUNK_SIZE)<1e-8||Math.abs(vertex.z-bend.z*CHUNK_SIZE)<1e-8||Math.abs(vertex.z-(bend.z+1)*CHUNK_SIZE)<1e-8;
-    for(const [edge,count] of edgeUse){const [a,b]=edge.split(",").map(Number);if(count===1&&onBoundary(vertices[a!]!)&&onBoundary(vertices[b!]!))continue;expect(count).toBeGreaterThanOrEqual(1);expect(count).toBeLessThanOrEqual(2);}
+    for(const [edge,count] of edgeUse){const [a,b]=edge.split(",").map(Number);if(count===1&&onBoundary(vertices[a!]!)&&onBoundary(vertices[b!]!))continue;expect(count).toBe(2);}
   },120_000);
 });
