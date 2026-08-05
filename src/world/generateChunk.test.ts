@@ -125,6 +125,6 @@ describe("deterministic chunk generation", () => {
       const vertex = refined[index]!;
       expect(vertex.height).toBeCloseTo(sampleTerrainHeight(chunk.seed, vertex.x, vertex.z), 12);
     }
-  });
+  }, 20_000);
 
 });

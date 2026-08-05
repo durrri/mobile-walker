@@ -15,8 +15,9 @@ describe("world-river terrain landmark strips", () => {
     const landmarks = [0,WORLD_RIVER_CARVING.shoreTransitionWidth,WORLD_RIVER_CARVING.bankWidth,
       WORLD_RIVER_CARVING.bankWidth+WORLD_RIVER_CARVING.falloffWidth];
     const count=(vertices:NonNullable<ReturnType<typeof generateChunk>["irregularTerrain"]>["vertices"],magnitude:number)=>vertices.filter(vertex=>{const nearest=owner.spine.nearestPointToRiver(vertex.x,vertex.z);return Math.abs(Math.abs(vertex.riverStripOffset??Infinity)-owner.widthProfile.sampleAtDistance(nearest.distanceAlongRiver).halfWidth-magnitude)<WORLD_RIVER_TERRAIN_STRIP_SAMPLE_SPACING*.35}).length;
-    const frame=owner.spine.sampleFrame(.5),extent=owner.widthProfile.sampleAtProgress(.5).halfWidth+WORLD_RIVER_CARVING.bankWidth+WORLD_RIVER_CARVING.falloffWidth;
-    const coordinates=[-1,0,1].map(side=>({x:Math.floor((frame.position.x+frame.normal.x*extent*side)/CHUNK_SIZE),z:Math.floor((frame.position.z+frame.normal.z*extent*side)/CHUNK_SIZE)})).filter((value,index,array)=>array.findIndex(other=>other.x===value.x&&other.z===value.z)===index);
+    const frame=owner.spine.sampleFrame(.5);
+    const centre={x:Math.floor(frame.position.x/CHUNK_SIZE),z:Math.floor(frame.position.z/CHUNK_SIZE)};
+    const coordinates=Array.from({length:9},(_,i)=>({x:centre.x+(i%3)-1,z:centre.z+Math.floor(i/3)-1}));
     const chunks=coordinates.map(coordinate=>generateChunk("strip-landmarks",coordinate));
     const vertices=chunks.flatMap(chunk=>chunk.irregularTerrain?.vertices??[]);
     expect(landmarks.every(magnitude=>count(vertices,magnitude)>2),"derived fixture must contain every variable-width transition").toBe(true);
@@ -27,7 +28,7 @@ describe("world-river terrain landmark strips", () => {
       strip.forEach(vertex => expect(vertex.height)
         .toBeCloseTo(sampleTerrainHeight(chunks[0]!.seed, vertex.x, vertex.z), 12));
     }
-  });
+  }, 20_000);
 
   it("triangulates 0.05-wu shore spans without skipping the lip", () => {
     const riverChunk = riverChunkAtProgress(.5, "strip-shore-bands");

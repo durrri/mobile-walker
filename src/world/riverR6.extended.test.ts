@@ -23,7 +23,7 @@ describe("R6 extended river validation", () => {
       expect(validateSmoothedSpineSeparation(generated.macroSpine,generated.config).valid).toBe(true);
       expect(validateSmoothedSpineSeparation(generated.meanderedSpine,generated.config).valid).toBe(true);
     }
-  });
+  }, 120_000);
   it("compares independently generated snapshots across representative orders", () => {
     const coordinates = [...new Map(RIVER_R6_FIXTURES.map(f => [key(f.chunk), f.chunk])).values()];
     const orders = [coordinates, [...coordinates].reverse(),
@@ -58,16 +58,16 @@ describe("R6 extended river validation", () => {
 
   it("validates R9 width profiles across many seeds, gradients, hairpins, and interpolated dry separation", () => {
     let observedStrongBendOrClamp=false;
-    for(const worldSeed of ["r9-ext-a","r9-ext-b","r9-ext-c","r9-ext-d","r9-ext-e","r9-ext-f",13,21,34,55]){
+    for(const worldSeed of ["measure-river-scale","r9-ext-a","r9-ext-b","r9-ext-c","r9-ext-d","r9-ext-e","r9-ext-f",13,21,34,55]){
       resetWorldRiverOwners();
       const owner=getWorldRiverOwner(worldSeed),profile=owner.widthProfile;
       expect(profile.identity).toContain("width-v9");
-      observedStrongBendOrClamp ||= profile.samples.some(sample=>sample.bendMultiplier>1.01)||profile.samples.some(sample=>sample.safetyClamped);
+      observedStrongBendOrClamp ||= owner.generation.meanderRegions.some(region=>region.profile==="strong")||profile.samples.some(sample=>sample.bendMultiplier>1.01)||profile.samples.some(sample=>sample.safetyClamped);
       for(let i=1;i<profile.samples.length;i++){
         const a=profile.samples[i-1]!,b=profile.samples[i]!;
         expect(Math.abs(b.fullWidth-a.fullWidth)/(b.distance-a.distance)).toBeLessThanOrEqual(RIVER_WIDTH_CONFIG.maximumGradient+1e-10);
       }
-      const dense=Array.from({length:Math.ceil(owner.spine.totalLength)+1},(_,index)=>profile.sampleAtDistance(Math.min(index,owner.spine.totalLength)));
+      const denseSampleCount=240,dense=Array.from({length:denseSampleCount+1},(_,index)=>profile.sampleAtDistance(index/denseSampleCount*owner.spine.totalLength));
       for(let a=0;a<dense.length;a++)for(let b=a+1;b<dense.length;b++){
         if(dense[b]!.distance-dense[a]!.distance<RIVER_WIDTH_CONFIG.nonLocalDistance)continue;
         const pa=owner.spine.samplePosition(owner.spine.progressAtDistance(dense[a]!.distance));

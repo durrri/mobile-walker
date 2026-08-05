@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Object3D } from "three";
 import { generateVegetation } from "./vegetation";
 import { isLakeAt, sampleTerrainHeight } from "./terrainSampling";
-import { queryWorldRiverRelationship } from "./worldRiverRelationship";
+import { createWorldRiverRelationshipContext, queryWorldRiverRelationship } from "./worldRiverRelationship";
 import {
   footprintIntersectsRiver,
   footprintsOverlap,
@@ -16,6 +16,7 @@ import {
   type PoiFootprint,
 } from "./poi";
 import { poiFixture } from "./riverProceduralFixtures";
+import { getWorldRiverOwner } from "./worldRiverOwner";
 
 describe("deterministic POI generation", () => {
   it("registers cabins and watchtowers as data-driven POI definitions", () => {
@@ -96,8 +97,10 @@ describe("POI footprints and exclusions", () => {
   });
 
   it("recognizes river intersections from global samplers", () => {
-    expect(footprintIntersectsRiver(123, { kind: "circle", x: 12, z: -8, radius: 3 })).toBe(true);
-    expect(footprintIntersectsRiver(123, { kind: "circle", x: 80, z: 8, radius: 1 })).toBe(false);
+    const owner = getWorldRiverOwner(123), onRiver = owner.spine.samplePosition(.5);
+    const context = createWorldRiverRelationshipContext({ minX: onRiver.x - 8, maxX: onRiver.x + 8, minZ: onRiver.z - 8, maxZ: onRiver.z + 8 }, undefined, owner.spine, owner.widthProfile);
+    expect(footprintIntersectsRiver(123, { kind: "circle", x: onRiver.x, z: onRiver.z, radius: 3 }, context)).toBe(true);
+    expect(footprintIntersectsRiver(123, { kind: "circle", x: 1000, z: 1000, radius: 1 })).toBe(false);
   });
 
   it("excludes vegetation in solid footprints and clearings", () => {

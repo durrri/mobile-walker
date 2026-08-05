@@ -8,6 +8,12 @@ import { sampleRiverWidth, type RiverWidthProfile } from "../world/worldRiverWid
 export type RiverSpineDebugMode = "off" | "spine" | "ribbon" | "detailed";
 export type TerrainHeightSampler = (worldX: number, worldZ: number) => number;
 export const RIVER_SPINE_DEBUG_SURFACE_OFFSET = 0.08;
+const RIVER_DEBUG_PATH_SAMPLES = 400;
+const RIVER_DEBUG_RIBBON_SAMPLES = 512;
+const RIVER_DEBUG_WATER_SAMPLE_CAP = 160;
+const RIVER_DEBUG_FRAME_SAMPLE_CAP = 128;
+const RIVER_DEBUG_INDEX_BOUNDS_CAP = 160;
+const RIVER_DEBUG_CONNECTORS_PER_REGION = 6;
 
 export const RIVER_DEBUG_STYLE = {
   centreline: { color: 0x00f5ff, width: 0.24, offset: 0.18 },
@@ -83,12 +89,12 @@ export class RiverSpineDebugView {
 
     const root = new THREE.Group();
     root.name = "debug:world-river-spine";
-    const macroSmooth = Array.from({ length: 401 }, (_, index) => this.macroSpine.samplePosition(index / 400));
+    const macroSmooth = Array.from({ length: RIVER_DEBUG_PATH_SAMPLES + 1 }, (_, index) => this.macroSpine.samplePosition(index / RIVER_DEBUG_PATH_SAMPLES));
     const macroLine = this.thickSegments(this.segmentPairs(macroSmooth), RIVER_DEBUG_STYLE.macroSpine, "debug:river-macro-spine");
     macroLine.visible = this.visibility.macro; root.add(macroLine);
     const connectors: { x: number; z: number }[] = [];
     for (const region of this.generation.meanderRegions) {
-      const step = Math.max(6, (region.endDistance - region.startDistance) / 8);
+      const step = Math.max(6, (region.endDistance - region.startDistance) / (RIVER_DEBUG_CONNECTORS_PER_REGION - 1));
       for (let distance = region.startDistance; distance <= region.endDistance; distance += step) {
         const progress = this.macroSpine.progressAtDistance(distance);
         connectors.push(this.macroSpine.samplePosition(progress), this.spine.nearestPointToRiver(
@@ -111,7 +117,7 @@ export class RiverSpineDebugView {
     ));
     root.add(this.points(this.spine.controlPoints, 0xff3b30, 1.05, 0.22, "debug:river-control-points"));
 
-    const smooth = Array.from({ length: 401 }, (_, index) => this.spine.samplePosition(index / 400));
+    const smooth = Array.from({ length: RIVER_DEBUG_PATH_SAMPLES + 1 }, (_, index) => this.spine.samplePosition(index / RIVER_DEBUG_PATH_SAMPLES));
     const finalLine = this.thickSegments(
       this.segmentPairs(smooth),
       RIVER_DEBUG_STYLE.centreline,
@@ -126,10 +132,11 @@ export class RiverSpineDebugView {
 
     if (mode === "detailed") {
       const offsetGuide = (additionalOffset: number): { x: number; z: number }[] => Array.from(
-        { length: 401 },
+        { length: RIVER_DEBUG_PATH_SAMPLES + 1 },
         (_, index) => {
-          const frame = this.spine.sampleFrame(index / 400);
-          const half=sampleRiverWidth(this.widthProfile,index/400*this.spine.totalLength,this.spine).halfWidth;
+          const progress = index / RIVER_DEBUG_PATH_SAMPLES;
+          const frame = this.spine.sampleFrame(progress);
+          const half=sampleRiverWidth(this.widthProfile,progress*this.spine.totalLength,this.spine).halfWidth;
           const side=additionalOffset<0||Object.is(additionalOffset,-0)?-1:1;
           const offset=side*(half+Math.abs(additionalOffset));
           return { x: frame.position.x + frame.normal.x * offset, z: frame.position.z + frame.normal.z * offset };
@@ -158,15 +165,17 @@ export class RiverSpineDebugView {
       root.add(this.thickSegments(targets,RIVER_DEBUG_STYLE.lipEdge,"debug:river-width-target-cross-sections"));
       const clamped=diagnostics.filter(sample=>sample.safetyClamped).map(sample=>this.spine.sampleAtDistance(sample.distance));
       root.add(this.points(clamped,0xff1744,.35,.38,"debug:river-width-safety-clamps"));
+      const waterMarkCount = Math.min(RIVER_DEBUG_WATER_SAMPLE_CAP, Math.floor(this.spine.totalLength / WORLD_RIVER_WATER_SAMPLE_SPACING) + 1);
       const marks = Array.from(
-        { length: Math.floor(this.spine.totalLength / WORLD_RIVER_WATER_SAMPLE_SPACING) + 1 },
-        (_, index) => this.spine.sampleAtDistance(index * WORLD_RIVER_WATER_SAMPLE_SPACING),
+        { length: waterMarkCount },
+        (_, index) => this.spine.sampleAtDistance(waterMarkCount === 1 ? 0 : index / (waterMarkCount - 1) * this.spine.totalLength),
       );
       root.add(this.points(marks, 0xffffff, 0.18, 0.3, "debug:river-water-samples"));
 
       const tangents: { x: number; z: number }[] = [];
       const normals: { x: number; z: number }[] = [];
-      for (let distance = 0; distance <= this.spine.totalLength; distance += 24) {
+      const frameStep = this.spine.totalLength / Math.max(1, RIVER_DEBUG_FRAME_SAMPLE_CAP - 1);
+      for (let distance = 0; distance <= this.spine.totalLength + 1e-6; distance += frameStep) {
         const frame = this.spine.sampleFrame(this.spine.progressAtDistance(distance));
         const p = frame.position;
         tangents.push(p, { x: p.x + frame.tangent.x * 5, z: p.z + frame.tangent.z * 5 });
@@ -176,7 +185,8 @@ export class RiverSpineDebugView {
       root.add(this.thickSegments(normals, RIVER_DEBUG_STYLE.normal, "debug:river-normals"));
 
       const boxes: { x: number; z: number }[] = [];
-      for (const { bounds } of this.spine.indexedSegments.filter((segment) => segment.index % 8 === 0)) {
+      const boundsStep = Math.max(1, Math.ceil(this.spine.indexedSegments.length / RIVER_DEBUG_INDEX_BOUNDS_CAP));
+      for (const { bounds } of this.spine.indexedSegments.filter((segment) => segment.index % boundsStep === 0)) {
         const a = { x: bounds.minX, z: bounds.minZ };
         const b = { x: bounds.maxX, z: bounds.minZ };
         const c = { x: bounds.maxX, z: bounds.maxZ };
@@ -265,7 +275,7 @@ export class RiverSpineDebugView {
   private ribbon(opacity: number): THREE.Mesh {
     const vertices: number[] = [];
     const indices: number[] = [];
-    const samples = 512;
+    const samples = RIVER_DEBUG_RIBBON_SAMPLES;
     for (let index = 0; index <= samples; index += 1) {
       const frame = this.spine.sampleFrame(index / samples);
       const half = sampleRiverWidth(this.widthProfile,index/samples*this.spine.totalLength,this.spine).halfWidth;

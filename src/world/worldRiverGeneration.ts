@@ -40,14 +40,14 @@ export interface MeanderRegion {
 export type RiverCorrectionReason = "macro-segment-length" | "macro-curvature" | "outside-bounds" | "self-separation" | "final-curvature" | "non-finite-frame" | "fallback-straight";
 export type RegionalSuitability = (macroDistance: number, macroLength: number) => number;
 
-export const PROCEDURAL_RIVER_GENERATION_VERSION = 9;
-/** R9 changes the channel envelope, not the already accepted R7/R8 centreline. */
+export const PROCEDURAL_RIVER_GENERATION_VERSION = 10;
+/** R10 extends the standard deterministic river corridor and scales the retained R8 activity plan. */
 const RIVER_SPINE_ALGORITHM_VERSION = 8;
 export const DEFAULT_RIVER_GENERATION_CONFIG: Readonly<RiverGenerationConfig> = Object.freeze({
   generationVersion: PROCEDURAL_RIVER_GENERATION_VERSION,
   worldSeed: 0x52495645,
   mode: "procedural-meandered",
-  bounds: Object.freeze({ minX: -96, maxX: 96, minZ: -128, maxZ: 128 }),
+  bounds: Object.freeze({ minX: -160, maxX: 160, minZ: -3000, maxZ: 0 }),
   macroWaypointSpacing: 32,
   lateralMacroVariation: 42,
   macroCurvatureLimit: 0.075,
@@ -150,18 +150,19 @@ export function generateMeanderRegions(
   const seed = normalizeSeed(config.worldSeed) ^ RIVER_SPINE_ALGORITHM_VERSION;
   const protectedLength = config.endpointProtectionDistance;
   const available = Math.max(0, macroLength - protectedLength * 2);
-  const desiredCount = available > 150 ? 2 : available > 60 ? 1 : 0;
+  const desiredCount = available > 60 ? Math.max(1, Math.min(14, Math.round(available / 245))) : 0;
   const regions: MeanderRegion[] = [];
   for (let index = 0; index < desiredCount; index += 1) {
-    const slotStart = protectedLength + available * (index + .16) / desiredCount;
-    const slotEnd = protectedLength + available * (index + .72) / desiredCount;
-    const length = Math.min(slotEnd - slotStart, 42 + hashFloat(seed, index, 8201) * 24);
+    const slotStart = protectedLength + available * (index + .12) / desiredCount;
+    const slotEnd = protectedLength + available * (index + .58) / desiredCount;
+    const slotSpan = slotEnd - slotStart;
+    const length = Math.min(slotSpan * .72, 44 + hashFloat(seed, index, 8201) * 38);
     const startDistance = slotStart + hashFloat(seed, index, 8202) * Math.max(0, slotEnd - slotStart - length);
     const endDistance = startDistance + length;
     const centre = (startDistance + endDistance) * .5;
     const allowed = Math.min(1, Math.max(0, suitability(centre, macroLength)));
     if (allowed < .15) continue;
-    const profile: MeanderRegionProfile = hashFloat(seed, index, 8203) > .76 ? "strong" : "gentle";
+    const profile: MeanderRegionProfile = hashFloat(seed, index, 8203) > .90 ? "strong" : "gentle";
     const wavelength = config.meanderWavelengthRange[0] + hashFloat(seed, index, 8204)
       * (config.meanderWavelengthRange[1] - config.meanderWavelengthRange[0]);
     regions.push(Object.freeze({ startDistance, endDistance,

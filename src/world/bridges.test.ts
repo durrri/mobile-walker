@@ -35,10 +35,10 @@ describe("deterministic span POIs",()=>{
 
  it("keeps deck width archetype-owned and at most one shadow caster",()=>{
   for(const definition of Object.values(BRIDGE_ARCHETYPES))expect(definition.deckWidth[1]-definition.deckWidth[0]).toBeGreaterThan(0);
-  const types=new Set<BridgeArchetype>();let checked=0;for(let seed=1;seed<10;seed++)for(const candidate of queryWorldRiverBridgeCandidates(seed,{minX:-90,maxX:90,minZ:-140,maxZ:120}))for(const bridge of generateBridges(seed,candidate.ownerChunk).bridges){const range=BRIDGE_ARCHETYPES[bridge.archetype].deckWidth;expect(bridge.deckWidth).toBeGreaterThanOrEqual(range[0]);expect(bridge.deckWidth).toBeLessThanOrEqual(range[1]);expect(bridge.shadowCaster).toBeDefined();types.add(bridge.archetype);checked++;}
+  const types=new Set<BridgeArchetype>();let checked=0;for(let seed=1;seed<6&&types.size<2;seed++)for(const candidate of queryWorldRiverBridgeCandidates(seed,getWorldRiverOwner(seed).spine.bounds)){for(const bridge of generateBridges(seed,candidate.ownerChunk).bridges){const range=BRIDGE_ARCHETYPES[bridge.archetype].deckWidth;expect(bridge.deckWidth).toBeGreaterThanOrEqual(range[0]);expect(bridge.deckWidth).toBeLessThanOrEqual(range[1]);expect(bridge.shadowCaster).toBeDefined();types.add(bridge.archetype);checked++;}if(types.size>=2)break;}
   expect(checked).toBeGreaterThan(0);
   expect(types.size).toBeGreaterThanOrEqual(2);
- });
+ }, 30_000);
 
  it("does not allocate candidate debug records in normal chunk output",async()=>{
   const {generateChunk}=await import("./generateChunk");

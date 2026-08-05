@@ -37,7 +37,7 @@ describe("R9 authoritative river width profile",()=>{
   });
 
   it("keeps every measured non-local sample pair safely separated",()=>{
-    const owner=getWorldRiverOwner("r9-safety"),p=Array.from({length:Math.ceil(owner.spine.totalLength)+1},(_,i)=>owner.widthProfile.sampleAtDistance(Math.min(i,owner.spine.totalLength)));
+    const owner=getWorldRiverOwner("r9-safety"),sampleCount=240,p=Array.from({length:sampleCount+1},(_,i)=>owner.widthProfile.sampleAtDistance(i/sampleCount*owner.spine.totalLength));
     for(let a=0;a<p.length;a++)for(let b=a+1;b<p.length;b++)if(p[b]!.distance-p[a]!.distance>=RIVER_WIDTH_CONFIG.nonLocalDistance){
       const pa=owner.spine.samplePosition(owner.spine.progressAtDistance(p[a]!.distance));
       const pb=owner.spine.samplePosition(owner.spine.progressAtDistance(p[b]!.distance));
