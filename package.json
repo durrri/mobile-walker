@@ -10,7 +10,10 @@
     "preview": "vite preview",
     "test": "vitest run --exclude '**/*.extended.test.ts' --exclude '**/*.performance.test.ts'",
     "test:extended": "vitest run src/world/riverR6.extended.test.ts",
-    "benchmark:river": "vitest run src/world/riverR6.performance.test.ts --reporter=verbose"
+    "benchmark:river": "vitest run src/world/riverR6.performance.test.ts --reporter=verbose",
+    "test:repeatable": "vitest run src/world/ChunkStreamingSystem.test.ts src/world/GeneratedChunkRepository.test.ts src/world/worldRiverContextCache.test.ts src/world/worldRiverCarvingSeams.test.ts src/world/worldRiverOwner.test.ts src/world/worldRiverGeneration.test.ts src/world/riverR6Certification.test.ts",
+    "coverage": "vitest run --coverage",
+    "report:build-size": "node scripts/report-build-size.mjs"
   },
   "dependencies": {
     "buffer": "^6.0.3",
@@ -22,6 +25,7 @@
   "devDependencies": {
     "@types/node": "^26.1.2",
     "@types/three": "^0.178.1",
+    "@vitest/coverage-v8": "^4.1.10",
     "typescript": "^5.8.3",
     "vite": "^7.0.0",
     "vitest": "^4.1.10"

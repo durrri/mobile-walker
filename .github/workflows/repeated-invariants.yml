@@ -1,0 +1,64 @@
+name: Repeated invariants
+
+on:
+  workflow_dispatch:
+    inputs:
+      repetitions:
+        description: Number of repetitions, capped at 50
+        required: false
+        default: '10'
+
+permissions:
+  contents: read
+
+jobs:
+  repeatable:
+    name: Repeat deterministic lifecycle tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run repeatable suite
+        env:
+          REPETITIONS: ${{ inputs.repetitions || '10' }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$REPETITIONS" =~ ^[0-9]+$ ]]; then
+            echo "repetitions must be an integer" >&2
+            exit 1
+          fi
+          if (( REPETITIONS < 1 || REPETITIONS > 50 )); then
+            echo "repetitions must be between 1 and 50" >&2
+            exit 1
+          fi
+          for repetition in $(seq 1 "$REPETITIONS"); do
+            echo "## Repetition ${repetition}/${REPETITIONS}"
+            if ! npm run test:repeatable; then
+              echo "Repeated invariant suite failed on repetition ${repetition}/${REPETITIONS}" >&2
+              exit 1
+            fi
+          done
+          echo "Completed ${REPETITIONS} repetitions."
+
+      - name: Write job summary
+        if: always()
+        run: |
+          {
+            echo "## Repeated invariant validation"
+            echo
+            echo "Command: \`npm run test:repeatable\`"
+            echo "Requested repetitions: \`${{ inputs.repetitions || '10' }}\` (maximum 50)."
+            echo
+            echo "The job fails immediately on the first failing repetition and logs the failed repetition number."
+          } >> "$GITHUB_STEP_SUMMARY"
