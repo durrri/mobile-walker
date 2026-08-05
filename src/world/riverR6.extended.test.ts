@@ -96,7 +96,18 @@ describe("R6 extended river validation", () => {
       const a=indices[index+edge]!,b=indices[index+(edge+1)%3]!,edgeKey=a<b?`${a},${b}`:`${b},${a}`;
       edgeUse.set(edgeKey,(edgeUse.get(edgeKey)??0)+1);
     }
-    const onBoundary=(vertex:typeof vertices[number])=>Math.abs(vertex.x-bend.x*CHUNK_SIZE)<1e-8||Math.abs(vertex.x-(bend.x+1)*CHUNK_SIZE)<1e-8||Math.abs(vertex.z-bend.z*CHUNK_SIZE)<1e-8||Math.abs(vertex.z-(bend.z+1)*CHUNK_SIZE)<1e-8;
-    for(const [edge,count] of edgeUse){const [a,b]=edge.split(",").map(Number);if(count===1&&onBoundary(vertices[a!]!)&&onBoundary(vertices[b!]!))continue;expect(count).toBe(2);}
+    const boundarySides=(vertex:typeof vertices[number])=>[
+      Math.abs(vertex.x-bend.x*CHUNK_SIZE)<1e-8 ? "minX" : "",
+      Math.abs(vertex.x-(bend.x+1)*CHUNK_SIZE)<1e-8 ? "maxX" : "",
+      Math.abs(vertex.z-bend.z*CHUNK_SIZE)<1e-8 ? "minZ" : "",
+      Math.abs(vertex.z-(bend.z+1)*CHUNK_SIZE)<1e-8 ? "maxZ" : "",
+    ].filter(Boolean);
+    const onSameBoundary=(a:typeof vertices[number],b:typeof vertices[number])=>boundarySides(a).some(side=>boundarySides(b).includes(side));
+    for(const [edge,count] of edgeUse){const [a,b]=edge.split(",").map(Number);if(count===1&&onSameBoundary(vertices[a!]!,vertices[b!]!))continue;if(count!==2){
+      const triangles:number[]=[];for(let index=0;index<indices.length;index+=3){const tri=[indices[index]!,indices[index+1]!,indices[index+2]!];for(let e=0;e<3;e++){const u=tri[e]!,v=tri[(e+1)%3]!;if((u===a&&v===b)||(u===b&&v===a))triangles.push(index/3);}}
+      const va=vertices[a!]!,vb=vertices[b!]!;
+      const equivalents=vertices.map((vertex,index)=>({vertex,index})).filter(({vertex})=>(Math.abs(vertex.x-va.x)<1e-8&&Math.abs(vertex.z-va.z)<1e-8)||(Math.abs(vertex.x-vb.x)<1e-8&&Math.abs(vertex.z-vb.z)<1e-8)).map(({vertex,index})=>({index,x:vertex.x,z:vertex.z,offset:vertex.riverStripOffset}));
+      expect(count,JSON.stringify({chunk:bend,edge:[a,b],count,a:va,b:vb,boundarySides:[boundarySides(va),boundarySides(vb)],riverStripOffsets:[va.riverStripOffset,vb.riverStripOffset],triangles,equivalents,stage:"cleaned PSLG result"},null,2)).toBe(2);
+    }}
   },120_000);
 });

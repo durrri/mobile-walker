@@ -12,7 +12,7 @@
     "test:extended": "vitest run src/world/riverR6.extended.test.ts",
     "benchmark:river": "vitest run src/world/riverR6.performance.test.ts --reporter=verbose",
     "test:repeatable": "vitest run src/world/ChunkStreamingSystem.test.ts src/world/GeneratedChunkRepository.test.ts src/world/worldRiverContextCache.test.ts src/world/worldRiverCarvingSeams.test.ts src/world/worldRiverOwner.test.ts src/world/worldRiverGeneration.test.ts src/world/riverR6Certification.test.ts",
-    "coverage": "vitest run --coverage",
+    "coverage": "vitest run --coverage --testTimeout 30000 --exclude '**/*.extended.test.ts' --exclude '**/*.performance.test.ts'",
     "report:build-size": "node scripts/report-build-size.mjs"
   },
   "dependencies": {

@@ -75,7 +75,7 @@ Run **Coverage** manually to produce a Vitest coverage report:
 npm run coverage
 ```
 
-Coverage is `workflow_dispatch` only and informational. The workflow uses Node 22, `npm ci`, npm caching, `contents: read` permissions, and a clear timeout. It does not enforce a merge-blocking coverage percentage. The generated `coverage/` directory is uploaded with 7-day retention. The repository uses the explicit `@vitest/coverage-v8` dev dependency for standard Vitest coverage support.
+Coverage is `workflow_dispatch` only and informational. It measures the default test-suite ownership only: `npm run coverage` excludes `**/*.extended.test.ts` and `**/*.performance.test.ts`, so Coverage does not replace the dedicated **Extended validation** river topology/seam workflow or the **River benchmark** performance workflow. The workflow uses Node 22, `npm ci`, npm caching, `contents: read` permissions, and a clear timeout. It does not enforce a merge-blocking coverage percentage. The generated `coverage/` directory is uploaded with 7-day retention. The repository uses the explicit `@vitest/coverage-v8` dev dependency for standard Vitest coverage support.
 
 ## Dependency and security automation
 
