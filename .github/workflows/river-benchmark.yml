@@ -63,6 +63,15 @@ jobs:
           set -euo pipefail
           npm ci
           npm run benchmark:river 2>&1 | tee ../benchmark-base.log
+          if [[ -f src/world/worldRiverTerrainStrips.performance.test.ts ]]; then
+            npx vitest run src/world/worldRiverTerrainStrips.performance.test.ts --reporter=verbose --testTimeout 120000 2>&1 | tee ../terrain-strip-base.log
+          else
+            {
+              echo "Terrain-strip diagnostics are not available on base commit ${{ steps.refs.outputs.base_sha }}."
+              echo "This is expected when the compare ref predates src/world/worldRiverTerrainStrips.performance.test.ts."
+              echo "Head diagnostics still run and are written to terrain-strip-head.log."
+            } | tee ../terrain-strip-base-unavailable.log
+          fi
 
       - name: Benchmark head
         working-directory: head
@@ -70,6 +79,7 @@ jobs:
           set -euo pipefail
           npm ci
           npm run benchmark:river 2>&1 | tee ../benchmark-head.log
+          npx vitest run src/world/worldRiverTerrainStrips.performance.test.ts --reporter=verbose --testTimeout 120000 2>&1 | tee ../terrain-strip-head.log
 
       - name: Write benchmark summary
         if: always()
@@ -83,10 +93,16 @@ jobs:
             echo "| --- | --- | --- |"
             if [[ -n "${{ steps.refs.outputs.base_sha }}" ]]; then
               echo "| Base | \`${{ steps.refs.outputs.base_sha }}\` | \`benchmark-base.log\` |"
+              if [[ -f terrain-strip-base.log ]]; then
+                echo "| Base terrain-strip diagnostic | \`${{ steps.refs.outputs.base_sha }}\` | \`terrain-strip-base.log\` |"
+              else
+                echo "| Base terrain-strip diagnostic | \`${{ steps.refs.outputs.base_sha }}\` | \`terrain-strip-base-unavailable.log\` |"
+              fi
             else
               echo "| Base | _not requested_ | _n/a_ |"
             fi
             echo "| Head | \`${{ steps.refs.outputs.head_sha }}\` | \`benchmark-head.log\` |"
+            echo "| Head terrain-strip diagnostic | \`${{ steps.refs.outputs.head_sha }}\` | \`terrain-strip-head.log\` |"
             echo
             echo "No hard performance threshold is enforced yet. Inspect artifacts for raw Vitest benchmark output."
           } >> "$GITHUB_STEP_SUMMARY"
@@ -96,6 +112,8 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: river-benchmark-output
-          path: benchmark-*.log
+          path: |
+            benchmark-*.log
+            terrain-strip-*.log
           if-no-files-found: warn
           retention-days: 7
