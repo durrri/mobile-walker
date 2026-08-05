@@ -20,7 +20,7 @@
     "cdt2d": "^1.0.0",
     "clean-pslg": "^1.1.2",
     "miniplex": "^2.0.0",
-    "three": "^0.178.0"
+    "three": "^0.185.1"
   },
   "devDependencies": {
     "@types/node": "^26.1.2",
