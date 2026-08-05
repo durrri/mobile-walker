@@ -92,11 +92,11 @@ describe("world-river terrain landmark strips", () => {
     ] as const;
     const barycentricSamples = [[1 / 3, 1 / 3, 1 / 3], [.6, .2, .2], [.2, .6, .2], [.2, .2, .6]] as const;
     // The handoff deliberately exposes the existing 2-wu coarse lattice in
-    // L2-to-L3. A 1.75-wu vertical envelope is bounded by the steepest
-    // generated fixture observed for this test while allowing the
-    // continuous authoritative field and planar triangles to diverge over the
-    // newly coarser outer-bank span.
-    const tolerance = 1.75;
+    // L2-to-L3. Keep disagreement below the approximate 1.5-wu player height
+    // so a rendered bank facet cannot visibly put the grounded/collision field
+    // on the far side of the avatar. This is intentionally below the previous
+    // observed-output tolerance and should catch material regressions.
+    const tolerance = 1.5;
     for (const fixture of fixtures) {
       const chunk = generateChunk(fixture.seed, fixture.coordinate);
       expect(chunk.irregularTerrain, `${fixture.name} fixture must cross refined river terrain`).toBeDefined();

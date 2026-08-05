@@ -233,7 +233,9 @@ export function generateChunk(
         // Inside the corridor the constrained cross-section lattice replaces
         // the generic grid, preventing either overlapping surfaces or T-junctions.
         const onChunkBoundary=cellX===0||cellZ===0||cellX===terrainSegments-1||cellZ===terrainSegments-1;
-        if (onChunkBoundary||!river || river.distanceToCentreline >= river.halfWidth + river.bankWidth - 1e-8) {
+        const l11Distance = river
+          ? river.halfWidth + (WORLD_RIVER_CARVING.shoreTransitionWidth + river.bankWidth) / 2 : Infinity;
+        if (onChunkBoundary||!river || river.distanceToCentreline >= l11Distance - 1e-8) {
           addVertex(worldX, worldZ);
         }
       }
