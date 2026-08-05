@@ -11,7 +11,7 @@ import {
   TERRAIN_SEGMENTS,
 } from "./terrainSampling";
 import { sampleWorldRiverCarving, WORLD_RIVER_CARVING, WORLD_RIVER_LIP_CREST_DISTANCE,
-  WORLD_RIVER_MAX_CARVING_RADIUS } from "./worldRiverCarving";
+} from "./worldRiverCarving";
 import { createWorldRiverEnvironmentContext } from "./worldRiverEnvironment";
 import type { RiverSpine } from "./riverSpineGeometry";
 import { getWorldRiverOwner } from "./worldRiverOwner";
@@ -50,6 +50,19 @@ const pslgCoordinateKey = (x: number, z: number): string => {
 
 /** Resets the immutable strip-lattice memo for independent cold diagnostics. */
 export function clearWorldRiverTerrainStripCache(): void { terrainStripFrames.clear(); }
+
+export function worldRiverTerrainStripOffsets(): readonly number[] {
+  const { waterHalfWidth, bankWidth } = WORLD_RIVER_CARVING;
+  const submergedStart = waterHalfWidth * 0.55;
+  const innerEnd = waterHalfWidth + bankWidth;
+  const innerBankMidpoint = (WORLD_RIVER_LIP_CREST_DISTANCE + innerEnd) / 2;
+  const quarterPoints = (start: number, end: number): number[] =>
+    Array.from({ length: 4 }, (_, index) => start + (end - start) * index / 4);
+  const positiveOffsets = [0, submergedStart, (submergedStart + waterHalfWidth) / 2,
+    ...quarterPoints(waterHalfWidth, WORLD_RIVER_LIP_CREST_DISTANCE),
+    WORLD_RIVER_LIP_CREST_DISTANCE, innerBankMidpoint];
+  return [...positiveOffsets.slice(1).map(value => -value).reverse(), ...positiveOffsets];
+}
 
 function worldRiverTerrainStripFrames(spine: RiverSpine, identity: string): readonly ReturnType<RiverSpine["sampleFrame"]>[] {
   const retained = terrainStripFrames.get(identity); if (retained) return retained;
@@ -174,8 +187,11 @@ export function generateChunk(
     meshIndices.push(topLeft, topLeft + verticesPerSide, topLeft + 1, topLeft + 1, topLeft + verticesPerSide, topLeft + verticesPerSide + 1);
   }
   if (riverCarvingContext.hasRiver) {
-    // R4.5 retains the ordinary coarse grid around a narrow, constrained set
-    // of river-aligned strips, so refinement cost follows the corridor only.
+    // Dense river rows own the channel, L0/L1 shore and narrow inner bank
+    // through L1.1. The existing constrained Delaunay handoff now happens
+    // across L1.1-to-L2, after which the ordinary globally anchored coarse
+    // lattice owns L2/L3/L4 terrain. Heights remain exclusively authoritative
+    // terrain/carving samples at every emitted vertex.
     let vertices: IrregularTerrainVertex[] = [];
     const pointIndex = new Map<string, number>();
     const addVertex = (worldX: number, worldZ: number, riverStripOffset?: number): number | undefined => {
@@ -217,24 +233,18 @@ export function generateChunk(
         // Inside the corridor the constrained cross-section lattice replaces
         // the generic grid, preventing either overlapping surfaces or T-junctions.
         const onChunkBoundary=cellX===0||cellZ===0||cellX===terrainSegments-1||cellZ===terrainSegments-1;
-        if (onChunkBoundary||!river || river.distanceToCentreline >= WORLD_RIVER_MAX_CARVING_RADIUS - 1e-8) {
+        const l11Distance = river
+          ? river.halfWidth + (WORLD_RIVER_CARVING.shoreTransitionWidth + river.bankWidth) / 2 : Infinity;
+        if (onChunkBoundary||!river || river.distanceToCentreline >= l11Distance - 1e-8) {
           addVertex(worldX, worldZ);
         }
       }
     }
-    const { waterHalfWidth, bankWidth } = WORLD_RIVER_CARVING;
     // Quarter-shore strips make the 0.20 wu transition four explicit 0.05 wu
-    // spans; midpoint strips similarly bound interpolation error on smoothstep
-    // portions of the submerged and inner-bank profiles.
-    const submergedStart = waterHalfWidth * 0.55;
-    const innerEnd = waterHalfWidth + bankWidth;
-    const quarterPoints = (start: number, end: number): number[] =>
-      Array.from({ length: 4 }, (_, index) => start + (end - start) * index / 4);
-    const positiveOffsets = [0, submergedStart, (submergedStart + waterHalfWidth) / 2,
-      ...quarterPoints(waterHalfWidth, WORLD_RIVER_LIP_CREST_DISTANCE),
-      WORLD_RIVER_LIP_CREST_DISTANCE, (WORLD_RIVER_LIP_CREST_DISTANCE + innerEnd) / 2,
-      innerEnd, WORLD_RIVER_MAX_CARVING_RADIUS];
-    const offsets = [...positiveOffsets.slice(1).map(value => -value).reverse(), ...positiveOffsets];
+    // spans. The final dense guide is the L1.1 topology landmark midway
+    // through the inner bank; L2 and L3 are sampled only by the coarse lattice.
+    const { waterHalfWidth } = WORLD_RIVER_CARVING;
+    const offsets = worldRiverTerrainStripOffsets();
     const globalFrames = worldRiverTerrainStripFrames(riverOwner.spine, riverOwner.identity);
     const frameCount = globalFrames.length - 1;
     const guides = new Map<number, { x: number; z: number }[]>();

@@ -1,33 +1,58 @@
 import { describe, expect, it } from "vitest";
 
 import { CHUNK_SIZE } from "./chunkCoordinates";
-import { generateChunk, WORLD_RIVER_TERRAIN_STRIP_SAMPLE_SPACING } from "./generateChunk";
-import { sampleTerrainHeight } from "./terrainSampling";
-import { WORLD_RIVER_CARVING } from "./worldRiverCarving";
+import {
+  generateChunk,
+  WORLD_RIVER_TERRAIN_STRIP_SAMPLE_SPACING,
+  worldRiverTerrainStripOffsets,
+} from "./generateChunk";
+import { sampleNaturalTerrainHeight, sampleTerrainHeight } from "./terrainSampling";
+import {
+  createWorldRiverCarvingContext,
+  sampleWorldRiverCarving,
+  WORLD_RIVER_CARVING,
+} from "./worldRiverCarving";
 import { dryChunkOutsideRiverInfluence, riverChunkAtProgress, riverSeamCrossing, strongestCurvatureProgress } from "./riverProceduralFixtures";
 import { getWorldRiverOwner } from "./worldRiverOwner";
 
 const close = (a: number, b: number): boolean => Math.abs(a - b) < 1e-8;
 
 describe("world-river terrain landmark strips", () => {
-  it("contains authoritative water, lip, inner-bank, and falloff vertices", () => {
+  it("keeps dense guides through L1.1 and hands L2 through L3 to the coarse lattice", () => {
     const owner=getWorldRiverOwner("strip-landmarks");
-    const landmarks = [0,WORLD_RIVER_CARVING.shoreTransitionWidth,WORLD_RIVER_CARVING.bankWidth,
-      WORLD_RIVER_CARVING.bankWidth+WORLD_RIVER_CARVING.falloffWidth];
+    const l1 = WORLD_RIVER_CARVING.shoreTransitionWidth;
+    const l11 = (WORLD_RIVER_CARVING.shoreTransitionWidth + WORLD_RIVER_CARVING.bankWidth) / 2;
+    const l2 = WORLD_RIVER_CARVING.bankWidth;
+    const l3 = WORLD_RIVER_CARVING.bankWidth + WORLD_RIVER_CARVING.falloffWidth;
+    const denseLandmarks = [0, l1, l11];
+    const retiredDenseLandmarks = [l2, l3];
+    const configuredRelativeOffsets = [...worldRiverTerrainStripOffsets()]
+      .map(offset => Math.max(0, Math.abs(offset) - WORLD_RIVER_CARVING.waterHalfWidth));
+    for (const magnitude of denseLandmarks) expect(configuredRelativeOffsets.some(offset => close(offset, magnitude))).toBe(true);
+    for (const magnitude of retiredDenseLandmarks) expect(configuredRelativeOffsets.some(offset => close(offset, magnitude))).toBe(false);
     const count=(vertices:NonNullable<ReturnType<typeof generateChunk>["irregularTerrain"]>["vertices"],magnitude:number)=>vertices.filter(vertex=>{const nearest=owner.spine.nearestPointToRiver(vertex.x,vertex.z);return Math.abs(Math.abs(vertex.riverStripOffset??Infinity)-owner.widthProfile.sampleAtDistance(nearest.distanceAlongRiver).halfWidth-magnitude)<WORLD_RIVER_TERRAIN_STRIP_SAMPLE_SPACING*.35}).length;
     const frame=owner.spine.sampleFrame(.5);
     const centre={x:Math.floor(frame.position.x/CHUNK_SIZE),z:Math.floor(frame.position.z/CHUNK_SIZE)};
     const coordinates=Array.from({length:9},(_,i)=>({x:centre.x+(i%3)-1,z:centre.z+Math.floor(i/3)-1}));
     const chunks=coordinates.map(coordinate=>generateChunk("strip-landmarks",coordinate));
     const vertices=chunks.flatMap(chunk=>chunk.irregularTerrain?.vertices??[]);
-    expect(landmarks.every(magnitude=>count(vertices,magnitude)>2),"derived fixture must contain every variable-width transition").toBe(true);
+    expect(denseLandmarks.every(magnitude=>count(vertices,magnitude)>2),"derived fixture must contain retained dense transition rows").toBe(true);
+    expect(retiredDenseLandmarks.every(magnitude=>count(vertices,magnitude)===0),"L2/L3 must not be full dense river strips").toBe(true);
     const relative=(vertex:typeof vertices[number])=>Math.abs(vertex.riverStripOffset??Infinity)-owner.widthProfile.sampleAtDistance(owner.spine.nearestPointToRiver(vertex.x,vertex.z).distanceAlongRiver).halfWidth;
-    for (const magnitude of landmarks) {
+    for (const magnitude of denseLandmarks) {
       const strip = vertices.filter(vertex => Math.abs(relative(vertex)-magnitude)<WORLD_RIVER_TERRAIN_STRIP_SAMPLE_SPACING*.35);
       expect(strip.length,`relative landmark ${magnitude}`).toBeGreaterThan(2);
       strip.forEach(vertex => expect(vertex.height)
         .toBeCloseTo(sampleTerrainHeight(chunks[0]!.seed, vertex.x, vertex.z), 12));
     }
+    const carving = createWorldRiverCarvingContext(owner.spine.bounds, owner.spine, owner.widthProfile);
+    const coarseOuterBankSupport = vertices.filter(vertex => {
+      if (vertex.riverStripOffset !== undefined) return false;
+      const sample = sampleWorldRiverCarving(vertex.x, vertex.z, carving);
+      const landDistance = sample ? sample.distanceToCentreline - sample.halfWidth : Infinity;
+      return landDistance >= l2 - 1e-8 && landDistance <= l3 + 1e-8;
+    });
+    expect(coarseOuterBankSupport.length).toBeGreaterThan(4);
   }, 20_000);
 
   it("triangulates 0.05-wu shore spans without skipping the lip", () => {
@@ -57,24 +82,62 @@ describe("world-river terrain landmark strips", () => {
       close(a, foundA) && close(b, foundB))).toBe(true));
   });
 
-  it("keeps representative rendered triangle interiors on the movement field", () => {
-    const riverChunk = riverChunkAtProgress(.5, "strip-interiors");
-    const chunk = generateChunk("strip-interiors", riverChunk);
-    expect(chunk.irregularTerrain).toBeDefined();
-    const { vertices, indices } = chunk.irregularTerrain!;
-    const owner=getWorldRiverOwner("strip-interiors");
-    let checked = 0;
-    for (let index = 0; index < indices.length; index += 3) {
-      const triangle = [vertices[indices[index]!]!, vertices[indices[index + 1]!]!, vertices[indices[index + 2]!]!];
-      if (!triangle.every(vertex => {if(vertex.riverStripOffset===undefined)return false;const nearest=owner.spine.nearestPointToRiver(vertex.x,vertex.z),relative=Math.abs(vertex.riverStripOffset)-owner.widthProfile.sampleAtDistance(nearest.distanceAlongRiver).halfWidth;return relative>=-1e-8&&relative<=WORLD_RIVER_CARVING.shoreTransitionWidth+1e-8})) continue;
-      const x = triangle.reduce((sum, vertex) => sum + vertex.x, 0) / 3;
-      const z = triangle.reduce((sum, vertex) => sum + vertex.z, 0) / 3;
-      const renderedHeight = triangle.reduce((sum, vertex) => sum + vertex.height, 0) / 3;
-      expect(Math.abs(renderedHeight - sampleTerrainHeight(chunk.seed, x, z))).toBeLessThan(0.04);
-      checked++;
+  it("keeps coarser bank triangle interiors close to the authoritative movement field", () => {
+    const fixtures = [
+      { name: "ordinary", seed: "strip-interiors-ordinary", coordinate: riverChunkAtProgress(.5, "strip-interiors-ordinary") },
+      { name: "low", seed: "wetland", coordinate: riverChunkAtProgress(.5, "wetland") },
+      { name: "curved", seed: "strip-interiors-curved", coordinate: riverChunkAtProgress(strongestCurvatureProgress("strip-interiors-curved"), "strip-interiors-curved") },
+      { name: "seam", seed: "strip-interiors-seam", coordinate: riverSeamCrossing("z", 32, "strip-interiors-seam").a },
+      { name: "canyon", seed: "strip-interiors-canyon", coordinate: riverChunkAtProgress(.5, "strip-interiors-canyon") },
+    ] as const;
+    const barycentricSamples = [[1 / 3, 1 / 3, 1 / 3], [.6, .2, .2], [.2, .6, .2], [.2, .2, .6]] as const;
+    // The handoff deliberately exposes the existing 2-wu coarse lattice in
+    // L2-to-L3. Keep disagreement below the approximate 1.5-wu player height
+    // so a rendered bank facet cannot visibly put the grounded/collision field
+    // on the far side of the avatar. This is intentionally below the previous
+    // observed-output tolerance and should catch material regressions.
+    const tolerance = 1.5;
+    for (const fixture of fixtures) {
+      const chunk = generateChunk(fixture.seed, fixture.coordinate);
+      expect(chunk.irregularTerrain, `${fixture.name} fixture must cross refined river terrain`).toBeDefined();
+      const { vertices, indices } = chunk.irregularTerrain!;
+      const owner = getWorldRiverOwner(fixture.seed);
+      const context = createWorldRiverCarvingContext(owner.spine.bounds, owner.spine, owner.widthProfile);
+      const regions = { innerTransition: [] as number[], outerFalloff: [] as number[] };
+      let highTerrainSamples = 0, lowTerrainSamples = 0;
+      for (let index = 0; index < indices.length; index += 3) {
+        const triangle = [vertices[indices[index]!]!, vertices[indices[index + 1]!]!, vertices[indices[index + 2]!]!] as const;
+        for (const weights of barycentricSamples) {
+          const x = triangle[0].x * weights[0] + triangle[1].x * weights[1] + triangle[2].x * weights[2];
+          const z = triangle[0].z * weights[0] + triangle[1].z * weights[1] + triangle[2].z * weights[2];
+          const sample = sampleWorldRiverCarving(x, z, context);
+          if (!sample) continue;
+          const landDistance = sample.distanceToCentreline - sample.halfWidth;
+          const renderedHeight = triangle[0].height * weights[0] + triangle[1].height * weights[1] + triangle[2].height * weights[2];
+          const authoritative = sampleTerrainHeight(chunk.seed, x, z);
+          const error = Math.abs(renderedHeight - authoritative);
+          if (landDistance >= (WORLD_RIVER_CARVING.shoreTransitionWidth + WORLD_RIVER_CARVING.bankWidth) / 2
+            && landDistance <= WORLD_RIVER_CARVING.bankWidth) regions.innerTransition.push(error);
+          if (landDistance >= WORLD_RIVER_CARVING.bankWidth
+            && landDistance <= WORLD_RIVER_CARVING.bankWidth + WORLD_RIVER_CARVING.falloffWidth) regions.outerFalloff.push(error);
+          const natural = sampleNaturalTerrainHeight(chunk.seed, x, z);
+          if (natural > sample.targetBankHeight + .5) highTerrainSamples++;
+          if (natural < sample.targetBankHeight - .05) lowTerrainSamples++;
+          if (landDistance >= (WORLD_RIVER_CARVING.shoreTransitionWidth + WORLD_RIVER_CARVING.bankWidth) / 2
+            && landDistance <= WORLD_RIVER_CARVING.bankWidth + WORLD_RIVER_CARVING.falloffWidth) {
+            expect(error, JSON.stringify({ fixture: fixture.name, x, z, landDistance, renderedHeight, authoritative }))
+              .toBeLessThan(tolerance);
+          }
+        }
+      }
+      expect(regions.innerTransition.length, `${fixture.name} must sample L1.1-to-L2 interiors`).toBeGreaterThan(0);
+      expect(regions.outerFalloff.length, `${fixture.name} must sample L2-to-L3 interiors`).toBeGreaterThan(0);
+      expect(Math.max(...regions.innerTransition), `${fixture.name} L1.1-to-L2 max error`).toBeLessThan(tolerance);
+      expect(Math.max(...regions.outerFalloff), `${fixture.name} L2-to-L3 max error`).toBeLessThan(tolerance);
+      if (fixture.name === "canyon") expect(highTerrainSamples).toBeGreaterThan(0);
+      if (fixture.name === "low") expect(lowTerrainSamples).toBeGreaterThan(0);
     }
-    expect(checked).toBeGreaterThan(20);
-  });
+  }, 60_000);
 
   it("shares exact global-lattice strip vertices at chunk seams", () => {
     const seam = riverSeamCrossing("x", 0, "strip-seams");
@@ -98,8 +161,13 @@ describe("world-river terrain landmark strips", () => {
     const edgeUse = new Map<string, { count: number; a: number; b: number }>();
     for (let index = 0; index < indices.length; index += 3) {
       const ids = [indices[index]!, indices[index + 1]!, indices[index + 2]!];
+      ids.forEach(id => expect(id).toBeGreaterThanOrEqual(0));
+      ids.forEach(id => expect(id).toBeLessThan(vertices.length));
       const [a, b, c] = ids.map(id => vertices[id]!);
       expect((b!.z - a!.z) * (c!.x - a!.x) - (b!.x - a!.x) * (c!.z - a!.z)).toBeGreaterThan(1e-10);
+      const samples = [a, b, c].map(vertex => sampleWorldRiverCarving(vertex!.x, vertex!.z));
+      const channelSides = samples.filter(sample => sample?.insideChannel).map(sample => sample!.signedSide);
+      if (channelSides.length > 0) expect(Math.min(...channelSides) * Math.max(...channelSides)).toBeGreaterThanOrEqual(0);
       const key = [...ids].sort((first, second) => first - second).join(",");
       expect(triangles.has(key)).toBe(false);
       triangles.add(key);
