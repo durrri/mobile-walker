@@ -43,6 +43,10 @@ export interface IrregularTerrainVertex {
 /** Global arc-length lattice; it never restarts at a chunk boundary. */
 export const WORLD_RIVER_TERRAIN_STRIP_SAMPLE_SPACING = 0.5;
 const terrainStripFrames = new Map<string, readonly ReturnType<RiverSpine["sampleFrame"]>[]>();
+const pslgCoordinateKey = (x: number, z: number): string => {
+  const stable = (value: number): string => (Math.abs(value) < 0.5e-9 ? 0 : value).toFixed(9);
+  return `${stable(x)},${stable(z)}`;
+};
 
 /** Resets the immutable strip-lattice memo for independent cold diagnostics. */
 export function clearWorldRiverTerrainStripCache(): void { terrainStripFrames.clear(); }
@@ -177,7 +181,7 @@ export function generateChunk(
     const addVertex = (worldX: number, worldZ: number, riverStripOffset?: number): number | undefined => {
       if (worldX < minX - 1e-8 || worldX > minX + CHUNK_SIZE + 1e-8
         || worldZ < minZ - 1e-8 || worldZ > minZ + CHUNK_SIZE + 1e-8) return undefined;
-      const key = `${worldX.toFixed(9)},${worldZ.toFixed(9)}`;
+      const key = pslgCoordinateKey(worldX, worldZ);
       const existing = pointIndex.get(key);
       if (existing !== undefined) {
         if (riverStripOffset !== undefined && vertices[existing]!.riverStripOffset === undefined) {
@@ -320,7 +324,7 @@ export function generateChunk(
     // Delaunay surface over the complete canonical point set is manifold while
     // retaining every narrow transition row.
     const originalByPosition = new Map(vertices.map(vertex =>
-      [`${vertex.x.toFixed(9)},${vertex.z.toFixed(9)}`, vertex]));
+      [pslgCoordinateKey(vertex.x, vertex.z), vertex]));
     const points = vertices.map(vertex => [vertex.x, vertex.z]);
     const constraints: [number,number][] = [...stripConstraintMap.values()];
     cleanPSLG(points, constraints);
@@ -337,7 +341,7 @@ export function generateChunk(
       if (edge[0] > edge[1]) [edge[0], edge[1]] = [edge[1], edge[0]];
     }
     constraints.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
-    vertices = points.map(([x, z]) => originalByPosition.get(`${x!.toFixed(9)},${z!.toFixed(9)}`) ?? (() => {
+    vertices = points.map(([x, z]) => originalByPosition.get(pslgCoordinateKey(x!, z!)) ?? (() => {
       const height = sampleAuthoritativeHeight(x!, z!);
       return { x: x!, z: z!, height, biomeWeights: sampleBiome(seed, x!, z!).weights,
         occlusion: 0 };
