@@ -8,6 +8,7 @@ import {
   WORLD_RIVER_INNER_BANK_WIDTH,
   WORLD_RIVER_MAX_CARVING_RADIUS,
   WORLD_RIVER_NOMINAL_SLOPES,
+  WORLD_RIVER_TERRAIN_CONFORMANCE,
 } from "./worldRiverCarving";
 import { createRiverWidthProfile } from "./worldRiverWidth";
 import { sampleChannelTerrainHeight, sampleChannelTerrainHeightInContext, sampleNaturalTerrainHeight, sampleTerrainHeight } from "./terrainSampling";
@@ -124,7 +125,8 @@ describe("world river carving field", () => {
     const nominalBankEnd = surfaceElevation + lipHeight + innerBankRise;
     const bankEndSample = sampleWorldRiverCarving(0, waterHalfWidth + bankWidth, context)!;
     expect(bankEndSample.targetBankHeight).toBeCloseTo(nominalBankEnd, 12);
-    expect(bankEndSample.naturalTerrainInfluence).toBeGreaterThan(0.6);
+    expect(bankEndSample.naturalTerrainInfluence)
+      .toBe(WORLD_RIVER_TERRAIN_CONFORMANCE.innerBankHighTerrainInfluenceAtL2);
     expect(at(waterHalfWidth + bankWidth, 20)).toBeGreaterThan(nominalBankEnd + 10);
     expect(WORLD_RIVER_INNER_BANK_WIDTH).toBeCloseTo(1.05, 12);
     expect(WORLD_RIVER_NOMINAL_SLOPES.submergedShore).toBeCloseTo(0.5408, 3);
@@ -159,13 +161,19 @@ describe("world river carving field", () => {
     expect(carvedAt(l3 - 1e-6, 20)).toBeCloseTo(carvedAt(l3 + 1e-6, 20), 4);
 
     const lowBase = surfaceElevation - 2;
-    for (const offset of [l1, l11, l2, l3]) {
-      const value = carvedAt(offset, lowBase);
-      expect(value).toBeGreaterThanOrEqual(Math.min(lowBase, sampleAt(offset).targetBankHeight) - 1e-12);
-      expect(value).toBeLessThanOrEqual(Math.max(lowBase, sampleAt(offset).targetBankHeight) + 1e-12);
+    for (const offset of [l1, l11, l2]) {
+      expect(carvedAt(offset, lowBase)).toBeCloseTo(sampleAt(offset).targetBankHeight, 12);
     }
     expect(carvedAt(l1, lowBase)).toBeCloseTo(surfaceElevation + lipHeight, 12);
     expect(carvedAt(l3, lowBase)).toBe(lowBase);
+    expect(carvedAt(l2 + falloffWidth * 0.25, lowBase)).toBeLessThan(sampleAt(l2).targetBankHeight);
+    expect(carvedAt(l2 + falloffWidth * 0.75, lowBase)).toBeLessThan(carvedAt(l2 + falloffWidth * 0.25, lowBase));
+    for (let index = 0; index <= 24; index++) {
+      const offset = l2 + falloffWidth * index / 24;
+      const value = carvedAt(offset, lowBase);
+      expect(value).toBeGreaterThanOrEqual(lowBase - 1e-12);
+      expect(value).toBeLessThanOrEqual(sampleAt(offset).targetBankHeight + 1e-12);
+    }
 
     const shallow = nominalBankEnd + 0.03;
     expect(Math.abs(carvedAt(l2, shallow) - sampleAt(l2).targetBankHeight)).toBeLessThan(0.04);
@@ -175,6 +183,10 @@ describe("world river carving field", () => {
     expect(carvedAt(l11, highBase)).toBeGreaterThan(sampleAt(l11).targetBankHeight);
     expect(carvedAt(l2, highBase)).toBeGreaterThan(nominalBankEnd + 10);
     expect(carvedAt(l3, highBase)).toBe(highBase);
+    for (const offset of [l1, l11, l2, l3]) {
+      expect(carvedAt(offset, highBase)).toBeLessThanOrEqual(highBase + 1e-12);
+      expect(carvedAt(offset, highBase)).toBeGreaterThanOrEqual(sampleAt(offset).targetBankHeight - 1e-12);
+    }
 
     const lowDiff = Math.abs(carvedAt(l1, highBase) - carvedAt(l1, lowBase));
     const midDiff = Math.abs(carvedAt(l11, highBase) - carvedAt(l11, lowBase));

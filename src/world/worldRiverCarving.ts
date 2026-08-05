@@ -39,6 +39,16 @@ export const WORLD_RIVER_LIP_CREST_DISTANCE =
 export const WORLD_RIVER_INNER_BANK_WIDTH =
   WORLD_RIVER_CARVING.bankWidth - WORLD_RIVER_CARVING.shoreTransitionWidth;
 
+/**
+ * Bank conformance policy owned by the authoritative river carving profile.
+ * High natural terrain reaches this much influence by L2; low terrain remains
+ * clamped to the nominal inner-bank profile until L2, then returns through the
+ * ordinary outer falloff so the dry bank does not collapse into a trench.
+ */
+export const WORLD_RIVER_TERRAIN_CONFORMANCE = Object.freeze({
+  innerBankHighTerrainInfluenceAtL2: 0.72,
+});
+
 /** Nominal average rises; smoothstep has zero slope at every controlled boundary. */
 export const WORLD_RIVER_NOMINAL_SLOPES = Object.freeze({
   submergedShore: (
@@ -179,12 +189,12 @@ export function sampleWorldRiverCarving(
     ? 1
     : 1 - smoothstep((distanceToCentreline - innerEnd) / falloffWidth);
   const terrainConformanceStart = waterHalfWidth + shoreTransitionWidth;
-  const innerBankTerrainInfluenceAtL2 = 0.72;
   const naturalTerrainInfluence = distanceToCentreline <= innerEnd
-    ? innerBankTerrainInfluenceAtL2
+    ? WORLD_RIVER_TERRAIN_CONFORMANCE.innerBankHighTerrainInfluenceAtL2
       * smoothstep((distanceToCentreline - terrainConformanceStart) / (innerEnd - terrainConformanceStart))
-    : innerBankTerrainInfluenceAtL2
-      + (1 - innerBankTerrainInfluenceAtL2) * smoothstep((distanceToCentreline - innerEnd) / falloffWidth);
+    : WORLD_RIVER_TERRAIN_CONFORMANCE.innerBankHighTerrainInfluenceAtL2
+      + (1 - WORLD_RIVER_TERRAIN_CONFORMANCE.innerBankHighTerrainInfluenceAtL2)
+        * smoothstep((distanceToCentreline - innerEnd) / falloffWidth);
   // R3 intentionally uses one absolute world datum rather than a downstream
   // grade, which currently adds little gameplay value: elevated terrain can
   // become a deep canyon, while low terrain is never raised. Future waterfalls
@@ -219,13 +229,19 @@ export function sampleWorldRiverCarving(
 
 /**
  * Applies the authoritative river height profile to already-sampled natural terrain.
- * The bed and lip remain river-controlled; past the lip, the nominal bank profile
- * blends monotonically toward the supplied natural/base terrain and reaches it
- * exactly at the outer falloff boundary.
+ * The bed and lip remain river-controlled. High natural terrain blends upward
+ * from the lip; low natural terrain cannot depress the nominal inner bank and
+ * instead returns smoothly through the outer falloff, reaching exact natural
+ * terrain at the outer boundary.
  */
 export function applyWorldRiverCarving(baseHeight: number, sample: WorldRiverCarvingSample | undefined): number {
   if (!sample || !sample.insideCarvingFalloff) return baseHeight;
   if (sample.insideChannel) return sample.targetBedHeight;
-  return sample.targetBankHeight
-    + (baseHeight - sample.targetBankHeight) * sample.naturalTerrainInfluence;
+  const innerBankEnd = sample.halfWidth + sample.bankWidth;
+  const isLowTerrain = baseHeight < sample.targetBankHeight;
+  const lowTerrainInfluence = sample.distanceToCentreline <= innerBankEnd
+    ? 0
+    : smoothstep((sample.distanceToCentreline - innerBankEnd) / sample.falloffWidth);
+  const terrainInfluence = isLowTerrain ? lowTerrainInfluence : sample.naturalTerrainInfluence;
+  return sample.targetBankHeight + (baseHeight - sample.targetBankHeight) * terrainInfluence;
 }
