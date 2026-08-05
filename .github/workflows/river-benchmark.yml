@@ -39,11 +39,11 @@ jobs:
           set -euo pipefail
           head_sha="$(git rev-parse HEAD)"
           base_ref="$INPUT_COMPARE_REF"
-          if [[ -z "$base_ref" && "${{ github.event_name }}" == "pull_request" ]]; then
-            base_ref="${{ github.event.pull_request.base.sha }}"
-          fi
           if [[ -n "$base_ref" ]]; then
-            git fetch --no-tags origin "$base_ref"
+            if ! git fetch --no-tags origin "$base_ref"; then
+              echo "Unable to resolve compare_ref: $base_ref" >&2
+              exit 1
+            fi
             base_sha="$(git rev-parse FETCH_HEAD)"
           else
             base_sha=""
@@ -60,12 +60,14 @@ jobs:
         if: steps.refs.outputs.base_sha != ''
         working-directory: base
         run: |
+          set -euo pipefail
           npm ci
           npm run benchmark:river 2>&1 | tee ../benchmark-base.log
 
       - name: Benchmark head
         working-directory: head
         run: |
+          set -euo pipefail
           npm ci
           npm run benchmark:river 2>&1 | tee ../benchmark-head.log
 

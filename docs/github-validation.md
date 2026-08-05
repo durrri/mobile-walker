@@ -31,9 +31,9 @@ This workflow uses Node 22, `npm ci`, npm caching, a 30-minute timeout, a GitHub
 Run **River benchmark** from the Actions tab for `npm run benchmark:river`.
 
 - To benchmark only the selected branch or commit, leave `compare_ref` empty.
-- To compare a PR base and head on the same runner, run the workflow on the PR head branch and set `compare_ref` to the PR base branch, tag, or SHA.
+- To compare a base and head on the same runner, run the workflow on the head branch or commit and set `compare_ref` to the base branch, tag, or SHA.
 
-The workflow checks out the selected ref into one directory and, when a comparison ref is provided, creates a separate Git worktree for the base. Each source tree runs its own `npm ci`, so dependencies and generated files do not contaminate the other measurement. Raw benchmark logs are uploaded as artifacts.
+The selected GitHub ref is always the benchmark head. When `compare_ref` is empty, only that head ref is benchmarked. When `compare_ref` is supplied, the workflow resolves it, fails clearly if it cannot be fetched, and creates a separate Git worktree for the base. Each source tree runs its own `npm ci`, so dependencies and generated files do not contaminate the other measurement. The job summary shows the resolved base and head SHAs, and raw benchmark logs are uploaded as artifacts.
 
 GitHub runner timings are useful mainly for same-run base-versus-head comparisons. They should not be treated as exact long-term absolute performance measurements, and no fragile hard merge threshold is enforced yet.
 

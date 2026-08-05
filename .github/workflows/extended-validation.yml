@@ -25,7 +25,9 @@ jobs:
         run: npm ci
 
       - name: Run extended validation
-        run: npm run test:extended 2>&1 | tee extended-validation.log
+        run: |
+          set -euo pipefail
+          npm run test:extended 2>&1 | tee extended-validation.log
 
       - name: Write job summary
         if: always()

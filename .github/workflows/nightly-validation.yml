@@ -27,10 +27,14 @@ jobs:
         run: npm ci
 
       - name: Run default tests
-        run: npm test 2>&1 | tee nightly-default-tests.log
+        run: |
+          set -euo pipefail
+          npm test 2>&1 | tee nightly-default-tests.log
 
       - name: Run extended river tests
-        run: npm run test:extended 2>&1 | tee nightly-extended-tests.log
+        run: |
+          set -euo pipefail
+          npm run test:extended 2>&1 | tee nightly-extended-tests.log
 
       - name: Run repeated targeted tests
         run: |
@@ -41,7 +45,9 @@ jobs:
           done
 
       - name: Run river benchmark
-        run: npm run benchmark:river 2>&1 | tee nightly-river-benchmark.log
+        run: |
+          set -euo pipefail
+          npm run benchmark:river 2>&1 | tee nightly-river-benchmark.log
 
       - name: Write job summary
         if: always()
