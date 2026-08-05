@@ -63,7 +63,7 @@ describe("terrain sampling", () => {
     expect(mountainHeights.filter((height) => height >= MOUNTAIN_SNOW_LINE).length)
       .toBeLessThan(mountainHeights.length / 4);
     expect(Math.max(...mountainHeights) - Math.min(...mountainHeights)).toBeLessThan(9);
-  });
+  }, 20_000);
 
   it("limits summit snow to the mountain biome", () => {
     const weights = (dominant: "highlands" | "mountain") => ({

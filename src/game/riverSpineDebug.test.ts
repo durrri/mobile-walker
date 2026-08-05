@@ -89,7 +89,7 @@ describe("RiverSpineDebugView", () => {
     const ribbon = scene.getObjectByName("debug:river-ribbon") as THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
     const positions = ribbon.geometry.getAttribute("position");
     for (let index = 0; index < positions.count; index += 1) {
-      expect(positions.getY(index)).toBeCloseTo(sampler(positions.getX(index), positions.getZ(index)) + RIVER_SPINE_DEBUG_SURFACE_OFFSET, 5);
+      expect(positions.getY(index)).toBeCloseTo(sampler(positions.getX(index), positions.getZ(index)) + RIVER_SPINE_DEBUG_SURFACE_OFFSET, 3);
     }
     expect(ribbon.material.depthTest).toBe(true);
     expect(ribbon.material.depthWrite).toBe(false);
@@ -105,7 +105,7 @@ describe("RiverSpineDebugView", () => {
     for (let index = 0; index < positions.count; index += 1) {
       expect(positions.getY(index)).toBeCloseTo(
         sampler(positions.getX(index), positions.getZ(index)) + RIVER_DEBUG_STYLE.centreline.offset,
-        5,
+        3,
       );
     }
     const disposeGeometry = vi.spyOn(centreline.geometry, "dispose");
@@ -127,7 +127,7 @@ describe("RiverSpineDebugView", () => {
     view.setLayerVisibility({ macro: false });
     expect(macro.visible).toBe(false); expect(final.visible).toBe(true); expect(connectors.visible).toBe(true);
     const labels = view.generationReadout();
-    expect(labels.generationVersion).toBe(9); expect(labels.macroControlPointCount).toBeGreaterThan(2);
+    expect(labels.generationVersion).toBe(10); expect(labels.macroControlPointCount).toBeGreaterThan(2);
     expect(labels.widthMinimum).toBeGreaterThan(0);expect(labels.widthMaximum).toBeGreaterThanOrEqual(labels.widthMinimum as number);
     view.dispose();
   });

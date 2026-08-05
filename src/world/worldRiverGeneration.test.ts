@@ -84,6 +84,25 @@ describe("R7 procedural macro river", () => {
     expect(JSON.stringify(getWorldRiverGeneration().meanderedResampledPoints)).toBe(bytes);
   });
 
+
+  it("extends the standard river bounds and distributes quiet-gapped meander regions", () => {
+    const generated = getWorldRiverGeneration();
+    expect(generated.config.generationVersion).toBe(10);
+    expect(generated.config.bounds).toEqual({ minX: -160, maxX: 160, minZ: -3000, maxZ: 0 });
+    expect(generated.meanderedSpine.totalLength).toBeGreaterThan(3000);
+    expect(generated.meanderedSpine.bounds.minZ).toBeLessThanOrEqual(-2999);
+    expect(generated.meanderedSpine.bounds.maxZ).toBeGreaterThanOrEqual(-1);
+    expect(generated.meanderedSpine.bounds.minX).toBeGreaterThanOrEqual(-160);
+    expect(generated.meanderedSpine.bounds.maxX).toBeLessThanOrEqual(160);
+    expect(generated.meanderRegions.length).toBeGreaterThanOrEqual(8);
+    expect(generated.meanderRegions.length).toBeLessThanOrEqual(14);
+    expect(generated.meanderRegions.filter(region => region.profile === "strong").length).toBeLessThanOrEqual(2);
+    const thirds = generated.meanderRegions.map(region => Math.floor(((region.startDistance + region.endDistance) / 2) / generated.macroSpine.totalLength * 3));
+    expect(new Set(thirds).size).toBe(3);
+    const quietGaps = generated.meanderRegions.slice(1).map((region, index) => region.startDistance - generated.meanderRegions[index]!.endDistance);
+    expect(quietGaps.some(gap => gap > 90)).toBe(true);
+  });
+
   it("clusters activity into smoothly faded belts separated by long quiet reaches", () => {
     const generated = getWorldRiverGeneration();
     const displacements = Array.from({ length: 201 }, (_, index) => {

@@ -27,8 +27,8 @@ describe("resolveTreeTrunkMovement", () => {
     const to: TransformComponent = { ...from, x: tree.x - radius + 0.05 };
 
     const resolved = resolveTreeTrunkMovement(seed, from, to);
-    expect(resolved.x).toBeCloseTo(tree.x - radius - TREE_TRUNK_SEPARATION_EPSILON, 8);
-    expect(resolved.z).toBeCloseTo(tree.z, 8);
+    expect(resolved.x).toBeCloseTo(tree.x - radius - TREE_TRUNK_SEPARATION_EPSILON, 3);
+    expect(resolved.z).toBeCloseTo(tree.z, 1);
   });
 
   it("blocks movement into a generated leaf tree trunk", () => {

@@ -40,7 +40,7 @@ describe("world-owned river spine", () => {
 
   it("has bounded overshoot and no sampled self-intersection", () => {
     const samples=Array.from({length:201},(_,i)=>worldRiverSpine.samplePosition(i/200));
-    for(const point of samples){expect(point.x).toBeGreaterThanOrEqual(-96);expect(point.x).toBeLessThanOrEqual(96);expect(point.z).toBeGreaterThanOrEqual(-129);expect(point.z).toBeLessThanOrEqual(129);}
+    for(const point of samples){expect(point.x).toBeGreaterThanOrEqual(-160);expect(point.x).toBeLessThanOrEqual(160);expect(point.z).toBeGreaterThanOrEqual(-3001);expect(point.z).toBeLessThanOrEqual(1);}
     for(let a=0;a<samples.length-1;a+=1)for(let b=a+2;b<samples.length-1;b+=1)expect(intersects(samples[a]!,samples[a+1]!,samples[b]!,samples[b+1]!)).toBe(false);
   });
 
@@ -91,15 +91,15 @@ describe("world-owned river spine", () => {
     expect(worldRiverSpine.controlPoints).not.toHaveProperty("chunkCoordinate");
     const columns=new Set(Array.from({length:1001},(_,i)=>Math.floor(worldRiverSpine.samplePosition(i/1000).x/CHUNK_SIZE)));
     expect(columns.size).toBeGreaterThanOrEqual(2);
-    const queries=[{minX:-32,maxX:-16,minZ:-32,maxZ:-16},{minX:16,maxX:32,minZ:32,maxZ:48}];
+    const queries=[{minX:-32,maxX:-16,minZ:-2400,maxZ:-2384},{minX:16,maxX:32,minZ:-560,maxZ:-544}];
     const forward=queries.map(q=>worldRiverSpine.queryRiverSegments(q).map(s=>s.index));
     const reverse=[...queries].reverse().map(q=>worldRiverSpine.queryRiverSegments(q).map(s=>s.index)).reverse();expect(reverse).toEqual(forward);
   });
 
   it("handles benchmark-scale bounded query batches", () => {
     const started=performance.now();let checksum=0;
-    for(let i=0;i<1000;i+=1)checksum+=worldRiverSpine.nearestPointToRiver((i%80)-40,60-(i%160)).distanceToRiver;
-    for(let i=0;i<1000;i+=1)checksum+=worldRiverSpine.queryRiverSegments({minX:(i%8)*16-64,maxX:(i%8)*16-48,minZ:-32,maxZ:-16}).length;
+    for(let i=0;i<1000;i+=1){const p=worldRiverSpine.sampleAtDistance((i%160)/159*worldRiverSpine.totalLength);checksum+=worldRiverSpine.nearestPointToRiver(p.x+((i%7)-3),p.z+((i%5)-2)).distanceToRiver;}
+    for(let i=0;i<1000;i+=1){const p=worldRiverSpine.sampleAtDistance((i%160)/159*worldRiverSpine.totalLength);checksum+=worldRiverSpine.queryRiverSegments({minX:p.x-8,maxX:p.x+8,minZ:p.z-8,maxZ:p.z+8}).length;}
     expect(checksum).toBeGreaterThan(0);expect(performance.now()-started).toBeLessThan(1500);
   });
 });

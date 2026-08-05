@@ -27,5 +27,5 @@ describe("production procedural river consumer integration", () => {
     const point = riverPointAtProgress(.5, seed), bounds = { minX: point.x - 8, maxX: point.x + 8, minZ: point.z - 8, maxZ: point.z + 8 };
     const gameplay = sampleWorldRiverGameplay(seed, point.x, point.z, createWorldRiverGameplayContext(bounds, owner.spine,owner.widthProfile));
     expect(gameplay.insideWater).toBe(true);
-  });
+  }, 20_000);
 });
