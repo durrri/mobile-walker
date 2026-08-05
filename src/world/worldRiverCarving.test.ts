@@ -8,8 +8,12 @@ import {
   WORLD_RIVER_INNER_BANK_WIDTH,
   WORLD_RIVER_MAX_CARVING_RADIUS,
   WORLD_RIVER_NOMINAL_SLOPES,
+  WORLD_RIVER_TERRAIN_CONFORMANCE,
 } from "./worldRiverCarving";
 import { createRiverWidthProfile } from "./worldRiverWidth";
+import { sampleChannelTerrainHeight, sampleChannelTerrainHeightInContext, sampleNaturalTerrainHeight, sampleTerrainHeight } from "./terrainSampling";
+import { normalizeSeed } from "./random";
+import { getWorldRiverOwner } from "./worldRiverOwner";
 
 describe("world river carving field", () => {
   it("is symmetric, signed, monotonic, continuous and deterministic", () => {
@@ -84,7 +88,7 @@ describe("world river carving field", () => {
     expect(centreBeds[2]).toBeCloseTo(centreBeds[0]!, 12);
   });
 
-  it("keeps the channel submerged, then crosses a continuous raised walkable bank", () => {
+  it("keeps the channel submerged, preserves the lip, then conforms banks toward natural terrain", () => {
     const spine = new RiverSpine([{ x: -20, z: 0 }, { x: 20, z: 0 }]);
     const context = { spine,widthProfile:createRiverWidthProfile("carving-bank",spine), segments: spine.indexedSegments, hasRiver: true } as const;
     const at = (offset: number, base = 20) => applyWorldRiverCarving(
@@ -110,7 +114,7 @@ describe("world river carving field", () => {
 
     const landmarks = [0, waterHalfWidth, localLip,waterHalfWidth + bankWidth, localOuter];
     for (const landmark of landmarks.slice(1, -1)) {
-      expect(Math.abs(at(landmark - 1e-6) - at(landmark + 1e-6))).toBeLessThan(1e-5);
+      expect(Math.abs(at(landmark - 1e-6) - at(landmark + 1e-6))).toBeLessThan(2e-5);
     }
     let previous = at(waterHalfWidth);
     for (let index = 1; index <= 200; index++) {
@@ -118,7 +122,12 @@ describe("world river carving field", () => {
       expect(height).toBeGreaterThanOrEqual(previous - 1e-12);
       previous = height;
     }
-    expect(at(waterHalfWidth + bankWidth)).toBeCloseTo(surfaceElevation + lipHeight + innerBankRise, 12);
+    const nominalBankEnd = surfaceElevation + lipHeight + innerBankRise;
+    const bankEndSample = sampleWorldRiverCarving(0, waterHalfWidth + bankWidth, context)!;
+    expect(bankEndSample.targetBankHeight).toBeCloseTo(nominalBankEnd, 12);
+    expect(bankEndSample.naturalTerrainInfluence)
+      .toBe(WORLD_RIVER_TERRAIN_CONFORMANCE.innerBankHighTerrainInfluenceAtL2);
+    expect(at(waterHalfWidth + bankWidth, 20)).toBeGreaterThan(nominalBankEnd + 10);
     expect(WORLD_RIVER_INNER_BANK_WIDTH).toBeCloseTo(1.05, 12);
     expect(WORLD_RIVER_NOMINAL_SLOPES.submergedShore).toBeCloseTo(0.5408, 3);
     expect(WORLD_RIVER_NOMINAL_SLOPES.landSideShore).toBeCloseTo(0.85, 3);
@@ -128,5 +137,100 @@ describe("world river carving field", () => {
     // form canyon walls rather than being globally flattened.
     expect(at(WORLD_RIVER_MAX_CARVING_RADIUS + 0.01, 20)).toBe(20);
     expect(at(WORLD_RIVER_MAX_CARVING_RADIUS + 0.01, -3)).toBe(-3);
+  });
+
+  it("exposes monotonic terrain influence and handles shallow, canyon, and low terrain", () => {
+    const spine = new RiverSpine([{ x: -20, z: 0 }, { x: 20, z: 0 }]);
+    const context = { spine, widthProfile: createRiverWidthProfile("carving-conformance", spine), segments: spine.indexedSegments, hasRiver: true } as const;
+    const waterHalfWidth = context.widthProfile.sampleAtProgress(0.5).halfWidth;
+    const { shoreTransitionWidth, bankWidth, falloffWidth, surfaceElevation, lipHeight, innerBankRise } = WORLD_RIVER_CARVING;
+    const l0 = waterHalfWidth;
+    const l1 = waterHalfWidth + shoreTransitionWidth;
+    const l11 = l1 + (bankWidth - shoreTransitionWidth) * 0.45;
+    const l2 = waterHalfWidth + bankWidth;
+    const l3 = l2 + falloffWidth;
+    const sampleAt = (offset: number) => sampleWorldRiverCarving(0, offset, context)!;
+    const carvedAt = (offset: number, base: number) => applyWorldRiverCarving(base, sampleAt(offset));
+    const nominalBankEnd = surfaceElevation + lipHeight + innerBankRise;
+
+    expect(carvedAt(l1, -5)).toBeCloseTo(surfaceElevation + lipHeight, 12);
+    expect(carvedAt(l1, -5)).toBeGreaterThan(surfaceElevation);
+    expect(carvedAt(l0 - 1e-6, 20)).toBeCloseTo(carvedAt(l0 + 1e-6, 20), 5);
+    expect(carvedAt(l1 - 1e-6, 20)).toBeCloseTo(carvedAt(l1 + 1e-6, 20), 5);
+    expect(carvedAt(l2 - 1e-6, 20)).toBeCloseTo(carvedAt(l2 + 1e-6, 20), 4);
+    expect(carvedAt(l3 - 1e-6, 20)).toBeCloseTo(carvedAt(l3 + 1e-6, 20), 4);
+
+    const lowBase = surfaceElevation - 2;
+    for (const offset of [l1, l11, l2]) {
+      expect(carvedAt(offset, lowBase)).toBeCloseTo(sampleAt(offset).targetBankHeight, 12);
+    }
+    expect(carvedAt(l1, lowBase)).toBeCloseTo(surfaceElevation + lipHeight, 12);
+    expect(carvedAt(l3, lowBase)).toBe(lowBase);
+    expect(carvedAt(l2 + falloffWidth * 0.25, lowBase)).toBeLessThan(sampleAt(l2).targetBankHeight);
+    expect(carvedAt(l2 + falloffWidth * 0.75, lowBase)).toBeLessThan(carvedAt(l2 + falloffWidth * 0.25, lowBase));
+    for (let index = 0; index <= 24; index++) {
+      const offset = l2 + falloffWidth * index / 24;
+      const value = carvedAt(offset, lowBase);
+      expect(value).toBeGreaterThanOrEqual(lowBase - 1e-12);
+      expect(value).toBeLessThanOrEqual(sampleAt(offset).targetBankHeight + 1e-12);
+    }
+
+    const shallow = nominalBankEnd + 0.03;
+    expect(Math.abs(carvedAt(l2, shallow) - sampleAt(l2).targetBankHeight)).toBeLessThan(0.04);
+
+    const highBase = 20;
+    expect(carvedAt(l1, highBase)).toBeCloseTo(surfaceElevation + lipHeight, 12);
+    expect(carvedAt(l11, highBase)).toBeGreaterThan(sampleAt(l11).targetBankHeight);
+    expect(carvedAt(l2, highBase)).toBeGreaterThan(nominalBankEnd + 10);
+    expect(carvedAt(l3, highBase)).toBe(highBase);
+    for (const offset of [l1, l11, l2, l3]) {
+      expect(carvedAt(offset, highBase)).toBeLessThanOrEqual(highBase + 1e-12);
+      expect(carvedAt(offset, highBase)).toBeGreaterThanOrEqual(sampleAt(offset).targetBankHeight - 1e-12);
+    }
+
+    const lowDiff = Math.abs(carvedAt(l1, highBase) - carvedAt(l1, lowBase));
+    const midDiff = Math.abs(carvedAt(l11, highBase) - carvedAt(l11, lowBase));
+    const outerDiff = Math.abs(carvedAt(l2, highBase) - carvedAt(l2, lowBase));
+    expect(lowDiff).toBeLessThan(1e-9);
+    expect(midDiff).toBeGreaterThan(lowDiff);
+    expect(outerDiff).toBeGreaterThan(midDiff);
+
+    let previous = sampleAt(l1).naturalTerrainInfluence;
+    for (let index = 1; index <= 32; index++) {
+      const weight = sampleAt(l1 + (l3 - l1) * index / 32).naturalTerrainInfluence;
+      expect(weight).toBeGreaterThanOrEqual(previous - 1e-12);
+      previous = weight;
+    }
+    expect(sampleAt(l3).naturalTerrainInfluence).toBe(1);
+    expect(carvedAt(l11, highBase)).toBeCloseTo(carvedAt(-l11, highBase), 12);
+  });
+
+  it("keeps random-access, bounded, and direct consumers on the same authoritative profile", () => {
+    const seedInput = "river-consumer-agreement";
+    const seed = normalizeSeed(seedInput);
+    const owner = getWorldRiverOwner(seedInput);
+    const frame = owner.spine.sampleFrame(0.45);
+    const firstContext = createWorldRiverCarvingContext({
+      minX: frame.position.x - WORLD_RIVER_MAX_CARVING_RADIUS - 1,
+      maxX: frame.position.x + WORLD_RIVER_MAX_CARVING_RADIUS + 1,
+      minZ: frame.position.z - WORLD_RIVER_MAX_CARVING_RADIUS - 1,
+      maxZ: frame.position.z + WORLD_RIVER_MAX_CARVING_RADIUS + 1,
+    }, owner.spine, owner.widthProfile);
+    const first = sampleWorldRiverCarving(frame.position.x, frame.position.z, firstContext)!;
+    const offsets = [
+      first.waterHalfWidth + WORLD_RIVER_CARVING.shoreTransitionWidth,
+      first.waterHalfWidth + WORLD_RIVER_CARVING.shoreTransitionWidth + WORLD_RIVER_INNER_BANK_WIDTH * 0.45,
+      first.waterHalfWidth + first.bankWidth,
+      first.waterHalfWidth + first.bankWidth + first.falloffWidth * 0.6,
+    ];
+    const context = firstContext;
+    for (const offset of offsets) {
+      const x = frame.position.x + frame.normal.x * offset;
+      const z = frame.position.z + frame.normal.z * offset;
+      const direct = applyWorldRiverCarving(sampleNaturalTerrainHeight(seed, x, z), sampleWorldRiverCarving(x, z, context));
+      expect(sampleChannelTerrainHeightInContext(seed, x, z, context)).toBeCloseTo(direct, 12);
+      expect(sampleChannelTerrainHeight(seed, x, z)).toBeCloseTo(direct, 12);
+      expect(sampleTerrainHeight(seedInput, x, z)).toBeCloseTo(direct, 12);
+    }
   });
 });
