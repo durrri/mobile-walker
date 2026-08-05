@@ -99,7 +99,6 @@ export class StructureCollisionSystem implements FixedSystem {
 
 /** Grounds moving entities on the generated terrain, including river beds. */
 export class TerrainSamplingSystem implements FixedSystem {
-  private readonly lastGround = new WeakMap<object, ActiveTerrainSurfaceHit>();
   constructor(private readonly seed: number | string, private readonly activeTerrain?: { queryActiveTerrainSurface(x: number, z: number): ActiveTerrainSurfaceHit | undefined }) {}
 
   fixedUpdate(world: Parameters<FixedSystem["fixedUpdate"]>[0]): void {
@@ -109,18 +108,19 @@ export class TerrainSamplingSystem implements FixedSystem {
         if (entity.jump) entity.jump.grounded = true;
         continue;
       }
-      const activeSample = this.activeTerrain?.queryActiveTerrainSurface(entity.transform.x, entity.transform.z);
+      let activeSample = this.activeTerrain?.queryActiveTerrainSurface(entity.transform.x, entity.transform.z);
       if (!activeSample && this.activeTerrain) {
-        const retained = this.lastGround.get(entity);
-        if (retained && entity.transform.y <= retained.height + entity.terrainFollower.heightOffset && (!entity.velocity || entity.velocity.y <= 0)) {
-          entity.transform.y = retained.height + entity.terrainFollower.heightOffset;
-          if (entity.velocity) entity.velocity.y = 0;
-          if (entity.jump) entity.jump.grounded = true;
+        const restored = this.activeTerrain.queryActiveTerrainSurface(entity.previousTransform.x, entity.previousTransform.z);
+        if (restored) {
+          entity.transform.x = entity.previousTransform.x;
+          entity.transform.z = entity.previousTransform.z;
+          activeSample = restored;
+        } else {
+          if (entity.jump) entity.jump.grounded = false;
+          continue;
         }
-        continue;
       }
       const sample = activeSample ?? sampleTerrain(this.seed, entity.transform.x, entity.transform.z);
-      if (activeSample) this.lastGround.set(entity, activeSample);
       const groundY = sample.height + entity.terrainFollower.heightOffset;
       if (entity.transform.y <= groundY && (!entity.velocity || entity.velocity.y <= 0)) {
         entity.transform.y = groundY;

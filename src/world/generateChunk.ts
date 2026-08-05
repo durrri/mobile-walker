@@ -113,6 +113,7 @@ export interface ChunkGenerationStageTimings {
   terrainFieldMs: number;
   poiAndBridgeMs: number;
   terrainTriangulationMs: number;
+  terrainQueryIndexMs: number;
   objectPlacementMs: number;
   totalMs: number;
 }
@@ -388,6 +389,9 @@ export function generateChunk(
   }
   for(let i=0;i<normals.length;i+=3){const length=Math.hypot(normals[i]!,normals[i+1]!,normals[i+2]!)||1;normals[i]!/=length;normals[i+1]!/=length;normals[i+2]!/=length;}
   const triangulationFinished = diagnostics ? performance.now() : 0;
+  const indexStarted = diagnostics ? performance.now() : 0;
+  const terrainSurfaceIndex = createActiveTerrainSurfaceIndex({ positions, indices, coordinate, size: CHUNK_SIZE });
+  const indexFinished = diagnostics ? performance.now() : 0;
   const pines = generateTrees(seed, coordinate, exclusionZones, riverEnvironmentContext);
   const collectibles = placeCollectibles(seed, coordinate, exclusionZones, riverEnvironmentContext);
   const vegetation = generateVegetation(seed, coordinate, exclusionZones, riverEnvironmentContext);
@@ -404,7 +408,7 @@ export function generateChunk(
     terrainBiomeWeights,
     terrainOcclusion,
     terrainMesh: { positions, indices, normals },
-    terrainSurfaceIndex: createActiveTerrainSurfaceIndex({ terrainMesh: { positions, indices, normals }, coordinate, size: CHUNK_SIZE } as GeneratedChunkData),
+    terrainSurfaceIndex,
     terrainMaximumDarkening: occlusionOptions.maximumDarkening,
     terrainVerticesPerSide: verticesPerSide,
     irregularTerrain,
@@ -421,7 +425,8 @@ export function generateChunk(
     terrainFieldMs: terrainFieldFinished - generationStarted,
     poiAndBridgeMs: structuresFinished - terrainFieldFinished,
     terrainTriangulationMs: triangulationFinished - structuresFinished,
-    objectPlacementMs: objectsFinished - triangulationFinished,
+    terrainQueryIndexMs: indexFinished - indexStarted,
+    objectPlacementMs: objectsFinished - indexFinished,
     totalMs: objectsFinished - generationStarted,
   });
   return result;

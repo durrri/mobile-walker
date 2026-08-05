@@ -17,3 +17,7 @@ Restored-position safety, exploration/presentation previews, biome/POI/river deb
 ## D. Non-terrain walkable surface
 
 Bridge decks, approaches, porches, floors, docks, foundations, ceilings, railings, trunks, and other explicit structure/tree collision records remain separate physical candidates. Structure support is resolved before terrain grounding so accessible non-terrain surfaces can override the terrain candidate without making terrain a height-column override.
+
+## Missing-active runtime policy
+
+If an entity is not on an explicit structure surface and its proposed x/z has no active terrain triangle, the terrain system rejects that terrain-dependent horizontal step by restoring the previous x/z when that previous position still has active mesh terrain. Descending or low entities ground against that restored triangle; airborne entities keep their vertical position and become ungrounded. If neither current nor previous x/z has active terrain, the initial frame remains ungrounded and no procedural fallback is used.

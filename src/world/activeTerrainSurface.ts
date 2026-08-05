@@ -1,5 +1,6 @@
 import { CHUNK_SIZE } from "./chunkCoordinates";
 import { chunkId, type ChunkId } from "./chunkId";
+import type { ChunkCoordinate } from "./chunkCoordinates";
 import type { GeneratedChunkData } from "./generateChunk";
 
 export interface ActiveTerrainSurfaceHit {
@@ -16,7 +17,12 @@ export interface ActiveTerrainSurfaceIndex {
   readonly cellsPerSide: number;
   readonly buckets: readonly (readonly number[])[];
   readonly estimatedBytes: number;
-  readonly buildMilliseconds?: number;
+}
+export interface ActiveTerrainSurfaceIndexInput {
+  readonly positions: Float32Array;
+  readonly indices: Uint16Array;
+  readonly coordinate: ChunkCoordinate;
+  readonly size: number;
 }
 export interface ActiveTerrainSurfaceDiagnostics extends ActiveTerrainSurfaceHit { readonly proceduralHeight?: number; readonly proceduralDifference?: number; }
 
@@ -30,25 +36,25 @@ const TIE_EPS = 1e-9;
  * are stored by triangle ordinal and query ties are resolved by the lowest
  * ordinal, then the canonical chunk id selected from floor(world/chunkSize).
  */
-export function createActiveTerrainSurfaceIndex(data: GeneratedChunkData): ActiveTerrainSurfaceIndex {
-  const triangleCount = data.terrainMesh.indices.length / 3;
+export function createActiveTerrainSurfaceIndex(input: ActiveTerrainSurfaceIndexInput): ActiveTerrainSurfaceIndex {
+  const triangleCount = input.indices.length / 3;
   const cellsPerSide = Math.max(4, Math.ceil(Math.sqrt(triangleCount) / 4));
   const buckets: number[][] = Array.from({ length: cellsPerSide * cellsPerSide }, () => []);
-  const originX = data.coordinate.x * data.size, originZ = data.coordinate.z * data.size;
-  const cellSize = data.size / cellsPerSide;
+  const originX = input.coordinate.x * input.size, originZ = input.coordinate.z * input.size;
+  const cellSize = input.size / cellsPerSide;
   const clampCell = (value: number) => Math.max(0, Math.min(cellsPerSide - 1, Math.floor(value)));
   for (let tri = 0; tri < triangleCount; tri++) {
-    const ia = data.terrainMesh.indices[tri * 3]! * 3, ib = data.terrainMesh.indices[tri * 3 + 1]! * 3, ic = data.terrainMesh.indices[tri * 3 + 2]! * 3;
-    const minX = Math.min(data.terrainMesh.positions[ia]!, data.terrainMesh.positions[ib]!, data.terrainMesh.positions[ic]!);
-    const maxX = Math.max(data.terrainMesh.positions[ia]!, data.terrainMesh.positions[ib]!, data.terrainMesh.positions[ic]!);
-    const minZ = Math.min(data.terrainMesh.positions[ia + 2]!, data.terrainMesh.positions[ib + 2]!, data.terrainMesh.positions[ic + 2]!);
-    const maxZ = Math.max(data.terrainMesh.positions[ia + 2]!, data.terrainMesh.positions[ib + 2]!, data.terrainMesh.positions[ic + 2]!);
+    const ia = input.indices[tri * 3]! * 3, ib = input.indices[tri * 3 + 1]! * 3, ic = input.indices[tri * 3 + 2]! * 3;
+    const minX = Math.min(input.positions[ia]!, input.positions[ib]!, input.positions[ic]!);
+    const maxX = Math.max(input.positions[ia]!, input.positions[ib]!, input.positions[ic]!);
+    const minZ = Math.min(input.positions[ia + 2]!, input.positions[ib + 2]!, input.positions[ic + 2]!);
+    const maxZ = Math.max(input.positions[ia + 2]!, input.positions[ib + 2]!, input.positions[ic + 2]!);
     for (let z = clampCell((minZ - originZ) / cellSize); z <= clampCell((maxZ - originZ) / cellSize); z++)
       for (let x = clampCell((minX - originX) / cellSize); x <= clampCell((maxX - originX) / cellSize); x++) buckets[z * cellsPerSide + x]!.push(tri);
   }
   buckets.forEach(bucket => bucket.sort((a, b) => a - b));
   const entries = buckets.reduce((sum, bucket) => sum + bucket.length, 0);
-  return Object.freeze({ positions: data.terrainMesh.positions, indices: data.terrainMesh.indices, cellsPerSide, buckets: buckets.map(bucket => Object.freeze([...bucket])), estimatedBytes: entries * 4 + buckets.length * 16 });
+  return Object.freeze({ positions: input.positions, indices: input.indices, cellsPerSide, buckets: buckets.map(bucket => Object.freeze([...bucket])), estimatedBytes: entries * 4 + buckets.length * 16 });
 }
 
 export function queryChunkTerrainSurface(data: GeneratedChunkData, worldX: number, worldZ: number): ActiveTerrainSurfaceHit | undefined {
