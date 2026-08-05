@@ -27,7 +27,7 @@ export const WORLD_RIVER_CARVING = Object.freeze({
   shoreTransitionWidth: 0.2,
   /** Authoritative dry-ground crest outside the rendered water boundary. */
   lipHeight: 0.12,
-  /** Gentle rise across the walkable inner bank before natural terrain resumes. */
+  /** Nominal river-controlled rise across the inner bank before terrain conformance takes over. */
   innerBankRise: 0.28,
 });
 
@@ -81,6 +81,8 @@ export interface WorldRiverCarvingSample {
   readonly falloffWidth: number;
   readonly channelInfluence: number;
   readonly bankInfluence: number;
+  /** Distance-only blend from the nominal river-controlled bank to supplied natural terrain. */
+  readonly naturalTerrainInfluence: number;
   readonly targetBedHeight: number;
   readonly targetBankHeight: number;
   readonly surfaceElevation: number;
@@ -128,8 +130,10 @@ function nearestOnSegments(
 }
 
 /**
- * Samples the presentation-neutral world field. The cross-section is a gently
- * curved floor, a smooth inner-bank transition, then a smooth outer falloff.
+ * Samples the presentation-neutral world field. The cross-section keeps the
+ * bed and narrow lip river-controlled, exposes a nominal bank target, and
+ * computes a distance-only conformance blend that reaches natural terrain at
+ * the outer carving boundary.
  */
 export function sampleWorldRiverCarving(
   worldX: number,
@@ -174,6 +178,13 @@ export function sampleWorldRiverCarving(
   const bankInfluence = distanceToCentreline <= innerEnd
     ? 1
     : 1 - smoothstep((distanceToCentreline - innerEnd) / falloffWidth);
+  const terrainConformanceStart = waterHalfWidth + shoreTransitionWidth;
+  const innerBankTerrainInfluenceAtL2 = 0.72;
+  const naturalTerrainInfluence = distanceToCentreline <= innerEnd
+    ? innerBankTerrainInfluenceAtL2
+      * smoothstep((distanceToCentreline - terrainConformanceStart) / (innerEnd - terrainConformanceStart))
+    : innerBankTerrainInfluenceAtL2
+      + (1 - innerBankTerrainInfluenceAtL2) * smoothstep((distanceToCentreline - innerEnd) / falloffWidth);
   // R3 intentionally uses one absolute world datum rather than a downstream
   // grade, which currently adds little gameplay value: elevated terrain can
   // become a deep canyon, while low terrain is never raised. Future waterfalls
@@ -200,17 +211,21 @@ export function sampleWorldRiverCarving(
     nearestX, nearestZ, progress, distanceAlongRiver: progress * context.spine.totalLength,
     distanceToCentreline, signedSide, tangentX, tangentZ, normalX, normalZ,
     halfWidth, waterHalfWidth, lipCrestDistance, bankWidth, falloffWidth, channelInfluence, bankInfluence,
-    targetBedHeight, targetBankHeight, surfaceElevation, nominalBedDepth,
+    naturalTerrainInfluence, targetBedHeight, targetBankHeight, surfaceElevation, nominalBedDepth,
     insideChannel: distanceToCentreline <= halfWidth,
     insideCarvingFalloff: distanceToCentreline <= outerEnd,
   };
 }
 
-/** R4.5 authoritative bed, raised lip, walkable bank, and C1 natural-terrain blend. */
+/**
+ * Applies the authoritative river height profile to already-sampled natural terrain.
+ * The bed and lip remain river-controlled; past the lip, the nominal bank profile
+ * blends monotonically toward the supplied natural/base terrain and reaches it
+ * exactly at the outer falloff boundary.
+ */
 export function applyWorldRiverCarving(baseHeight: number, sample: WorldRiverCarvingSample | undefined): number {
   if (!sample || !sample.insideCarvingFalloff) return baseHeight;
   if (sample.insideChannel) return sample.targetBedHeight;
-  const landDistance = sample.distanceToCentreline - sample.halfWidth;
-  if (landDistance <= sample.bankWidth) return sample.targetBankHeight;
-  return baseHeight + (sample.targetBankHeight - baseHeight) * sample.bankInfluence;
+  return sample.targetBankHeight
+    + (baseHeight - sample.targetBankHeight) * sample.naturalTerrainInfluence;
 }

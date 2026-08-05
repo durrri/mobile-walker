@@ -120,8 +120,8 @@ export function sampleNaturalTerrainHeight(seed: number, worldX: number, worldZ:
 
 /**
  * Height of a rendered terrain-lattice vertex after carving the river channel.
- * The channel has a gently shaped submerged bed, a distinct sloping bank, and
- * a smooth shoulder that returns to untouched natural terrain.
+ * The channel has a gently shaped submerged bed and dry lip, then a
+ * terrain-aware bank that progressively returns to untouched natural terrain.
  */
 export function sampleChannelTerrainLatticeHeight(
   seed: number,
