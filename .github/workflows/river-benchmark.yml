@@ -1,0 +1,101 @@
+name: River benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      compare_ref:
+        description: Optional base ref/SHA to compare against the selected ref
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    name: River benchmark
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out selected ref
+        uses: actions/checkout@v4
+        with:
+          path: head
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: head/package-lock.json
+
+      - name: Resolve refs
+        id: refs
+        working-directory: head
+        env:
+          INPUT_COMPARE_REF: ${{ inputs.compare_ref }}
+        run: |
+          set -euo pipefail
+          head_sha="$(git rev-parse HEAD)"
+          base_ref="$INPUT_COMPARE_REF"
+          if [[ -n "$base_ref" ]]; then
+            if ! git fetch --no-tags origin "$base_ref"; then
+              echo "Unable to resolve compare_ref: $base_ref" >&2
+              exit 1
+            fi
+            base_sha="$(git rev-parse FETCH_HEAD)"
+          else
+            base_sha=""
+          fi
+          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
+          echo "base_sha=$base_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare base worktree
+        if: steps.refs.outputs.base_sha != ''
+        working-directory: head
+        run: git worktree add ../base "${{ steps.refs.outputs.base_sha }}"
+
+      - name: Benchmark base
+        if: steps.refs.outputs.base_sha != ''
+        working-directory: base
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run benchmark:river 2>&1 | tee ../benchmark-base.log
+
+      - name: Benchmark head
+        working-directory: head
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run benchmark:river 2>&1 | tee ../benchmark-head.log
+
+      - name: Write benchmark summary
+        if: always()
+        run: |
+          {
+            echo "## River benchmark"
+            echo
+            echo "GitHub runner timings are most useful for same-run base-versus-head comparisons, not exact long-term absolute measurements."
+            echo
+            echo "| Target | Commit | Output |"
+            echo "| --- | --- | --- |"
+            if [[ -n "${{ steps.refs.outputs.base_sha }}" ]]; then
+              echo "| Base | \`${{ steps.refs.outputs.base_sha }}\` | \`benchmark-base.log\` |"
+            else
+              echo "| Base | _not requested_ | _n/a_ |"
+            fi
+            echo "| Head | \`${{ steps.refs.outputs.head_sha }}\` | \`benchmark-head.log\` |"
+            echo
+            echo "No hard performance threshold is enforced yet. Inspect artifacts for raw Vitest benchmark output."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload benchmark output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: river-benchmark-output
+          path: benchmark-*.log
+          if-no-files-found: warn
+          retention-days: 7
