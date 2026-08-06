@@ -1,0 +1,147 @@
+name: Active terrain benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      compare_ref:
+        description: Optional base ref/SHA to compare against the selected ref
+        required: false
+        default: main
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    name: Active terrain benchmark
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      BENCHMARK_COMMAND: npx vitest run src/world/activeTerrainSurface.performance.test.ts --reporter=verbose --testTimeout 120000
+    steps:
+      - name: Check out selected ref
+        uses: actions/checkout@v7
+        with:
+          path: head
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: head/package-lock.json
+
+      - name: Resolve refs
+        id: refs
+        working-directory: head
+        env:
+          INPUT_COMPARE_REF: ${{ inputs.compare_ref }}
+        run: |
+          set -euo pipefail
+          head_sha="$(git rev-parse HEAD)"
+          base_ref="${INPUT_COMPARE_REF:-main}"
+          if ! git fetch --no-tags origin "$base_ref"; then
+            echo "Unable to resolve compare_ref: $base_ref" >&2
+            exit 1
+          fi
+          base_sha="$(git rev-parse FETCH_HEAD)"
+          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
+          echo "base_ref=$base_ref" >> "$GITHUB_OUTPUT"
+          echo "base_sha=$base_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare base worktree
+        working-directory: head
+        run: git worktree add ../base "${{ steps.refs.outputs.base_sha }}"
+
+      - name: Benchmark base when available
+        id: benchmark_base
+        continue-on-error: true
+        working-directory: base
+        run: |
+          set -euo pipefail
+          if [[ ! -f src/world/activeTerrainSurface.performance.test.ts ]]; then
+            {
+              echo "Active terrain benchmark is not available on base commit ${{ steps.refs.outputs.base_sha }}."
+              echo "The compare ref '${{ steps.refs.outputs.base_ref }}' predates src/world/activeTerrainSurface.performance.test.ts."
+              echo "No base-versus-head benchmark comparison is claimed for this run."
+              echo "Head diagnostics still run and are written to active-terrain-head.log."
+            } | tee ../active-terrain-base-unavailable.log
+            exit 0
+          fi
+          npm ci
+          $BENCHMARK_COMMAND 2>&1 | tee ../active-terrain-base.log
+
+      - name: Benchmark head
+        id: benchmark_head
+        continue-on-error: true
+        working-directory: head
+        run: |
+          set -euo pipefail
+          npm ci
+          $BENCHMARK_COMMAND 2>&1 | tee ../active-terrain-head.log
+
+      - name: Write benchmark metadata
+        if: always()
+        run: |
+          {
+            echo "head_sha=${{ steps.refs.outputs.head_sha }}"
+            echo "base_ref=${{ steps.refs.outputs.base_ref }}"
+            echo "base_sha=${{ steps.refs.outputs.base_sha }}"
+            echo "benchmark_command=$BENCHMARK_COMMAND"
+            if [[ -f active-terrain-base.log ]]; then
+              echo "base_benchmark_exists=true"
+              echo "base_log=active-terrain-base.log"
+            else
+              echo "base_benchmark_exists=false"
+              echo "base_log=active-terrain-base-unavailable.log"
+            fi
+            echo "head_log=active-terrain-head.log"
+            echo "base_step_outcome=${{ steps.benchmark_base.outcome }}"
+            echo "head_step_outcome=${{ steps.benchmark_head.outcome }}"
+          } > active-terrain-benchmark-metadata.txt
+
+      - name: Write benchmark summary
+        if: always()
+        run: |
+          {
+            echo "## Active terrain benchmark"
+            echo
+            echo "Performance interpretation requires inspecting the raw artifact; this workflow enforces no hard performance threshold."
+            echo
+            echo "| Item | Value |"
+            echo "| --- | --- |"
+            echo "| Head SHA | \`${{ steps.refs.outputs.head_sha }}\` |"
+            echo "| Base ref | \`${{ steps.refs.outputs.base_ref }}\` |"
+            echo "| Base SHA | \`${{ steps.refs.outputs.base_sha }}\` |"
+            if [[ -f active-terrain-base.log ]]; then
+              echo "| Base benchmark existed | yes |"
+              echo "| Base log | \`active-terrain-base.log\` |"
+            else
+              echo "| Base benchmark existed | no |"
+              echo "| Base log | \`active-terrain-base-unavailable.log\` |"
+            fi
+            echo "| Head log | \`active-terrain-head.log\` |"
+            echo "| Metadata | \`active-terrain-benchmark-metadata.txt\` |"
+            echo "| Benchmark command | \`$BENCHMARK_COMMAND\` |"
+            echo "| Base benchmark step | \`${{ steps.benchmark_base.outcome }}\` |"
+            echo "| Head benchmark step | \`${{ steps.benchmark_head.outcome }}\` |"
+            echo "| Artifact | \`active-terrain-benchmark-output\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload active terrain benchmark output
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: active-terrain-benchmark-output
+          path: |
+            active-terrain-head.log
+            active-terrain-base.log
+            active-terrain-base-unavailable.log
+            active-terrain-benchmark-metadata.txt
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Fail if benchmark failed
+        if: steps.benchmark_base.outcome == 'failure' || steps.benchmark_head.outcome == 'failure'
+        run: exit 1
