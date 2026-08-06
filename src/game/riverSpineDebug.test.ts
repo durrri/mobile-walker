@@ -127,7 +127,7 @@ describe("RiverSpineDebugView", () => {
     view.setLayerVisibility({ macro: false });
     expect(macro.visible).toBe(false); expect(final.visible).toBe(true); expect(connectors.visible).toBe(true);
     const labels = view.generationReadout();
-    expect(labels.generationVersion).toBe(10); expect(labels.macroControlPointCount).toBeGreaterThan(2);
+    expect(labels.generationVersion).toBe(11); expect(labels.macroControlPointCount).toBeGreaterThan(2);
     expect(labels.widthMinimum).toBeGreaterThan(0);expect(labels.widthMaximum).toBeGreaterThanOrEqual(labels.widthMinimum as number);
     view.dispose();
   });

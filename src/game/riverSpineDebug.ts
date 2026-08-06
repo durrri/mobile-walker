@@ -13,7 +13,7 @@ const RIVER_DEBUG_RIBBON_SAMPLES = 512;
 const RIVER_DEBUG_WATER_SAMPLE_CAP = 160;
 const RIVER_DEBUG_FRAME_SAMPLE_CAP = 128;
 const RIVER_DEBUG_INDEX_BOUNDS_CAP = 160;
-const RIVER_DEBUG_CONNECTORS_PER_REGION = 6;
+const RIVER_DEBUG_CONNECTORS_PER_REGION = 4;
 
 export const RIVER_DEBUG_STYLE = {
   centreline: { color: 0x00f5ff, width: 0.24, offset: 0.18 },
@@ -70,6 +70,10 @@ export class RiverSpineDebugView {
     return Object.freeze({ seed: String(this.generation.config.worldSeed), generationVersion: this.generation.config.generationVersion,
       macroControlPointCount: this.generation.macroControlPoints.length, macroLength: this.macroSpine.totalLength,
       meanderedLength: this.spine.totalLength, localMacroProgress: macro.progress, localFinalProgress: final.progress,
+      macroMinX: this.macroSpine.bounds.minX, macroMaxX: this.macroSpine.bounds.maxX,
+      macroLateralRange: this.macroSpine.bounds.maxX-this.macroSpine.bounds.minX,
+      routeReachCount: this.generation.macroRoutePlan.reaches.length,
+      routeTraverseCount: this.generation.macroRoutePlan.reaches.filter(reach=>reach.behavior.startsWith("traverse")).length,
       localMeanderDisplacement: Math.hypot(final.position.x - macro.position.x, final.position.z - macro.position.z),
       amplitudeRange: this.generation.config.meanderAmplitudeRange.join("–"), wavelengthRange: this.generation.config.meanderWavelengthRange.join("–"),
       meanderRegionCount: this.generation.meanderRegions.length,
@@ -78,6 +82,7 @@ export class RiverSpineDebugView {
       activeRegionalStrength: this.generation.meanderRegions.reduce((value, region) => Math.max(value,
         macro.distanceAlongRiver <= region.startDistance || macro.distanceAlongRiver >= region.endDistance ? 0 : region.strength), 0),
       correctionApplied: this.generation.correctionApplied,
+      correctionReasons:this.generation.correctionReasons.join(",")||"none",usedFallback:this.generation.usedFallback,
       localFullWidth:localWidth.fullWidth,localTargetWidth:localWidth.targetWidth,localWidthSafetyClamped:localWidth.safetyClamped,
       widthMinimum:this.widthProfile.minimum,widthMaximum:this.widthProfile.maximum,widthMean:this.widthProfile.mean,
       widthClampedSamples:this.widthProfile.clampedSampleCount });

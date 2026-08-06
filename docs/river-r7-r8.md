@@ -2,69 +2,30 @@
 
 ## R7 macro route
 
-Generation version 8 uses a bounded `[-96, 96] × [-128, 128]` corridor. The river enters the north
-boundary at `(0, 128)` and exits the south boundary at `(0, -128)`; outside that finite domain the
-existing spatial query simply reports no local segments. Equally spaced forward stations receive
-random-access, seed-hashed lateral targets. A squared-sine endpoint envelope and two deterministic
-relaxation passes retain broad direction changes while protecting endpoint headings. Monotonic station
-progress prevents reversal, loops, and control-polygon intersections by construction. There are no unbounded retries. Control-segment lengths are checked against the configured minimum/maximum and sampled curvature is checked against `macroCurvatureLimit`; rejection deterministically selects a straight boundary-to-boundary station fallback and records both the rejected guard and fallback reason.
+Generation version 11 uses the finite `[-2000, 2000] × [-10000, 0]` world envelope. The 10,000-unit value is the boundary-to-boundary Z displacement, not an arc-length limit. A configured 260-unit internal margin reserves room for centripetal Catmull–Rom overshoot, R8 normal displacement, maximum channel width, and bank influence.
 
-The presentation-neutral `RiverSpine` applies centripetal Catmull–Rom smoothing, builds an arc-length
-lookup, and exposes immutable resampled points and a bounded spatial index. R7 remains available as
-`worldRiverMacroSpine`; the authored R6 route remains `authoredR6RiverSpine`.
+R7 begins with an immutable, inspectable, low-frequency **two-dimensional route plan**. Its named reaches own quiet downstream travel, southeast/southwest diagonals, and sustained eastward and westward near-horizontal traverses. Plan nodes and their small variations are random-access hashes of the normalized world seed, algorithm version, and explicit node/decision indices; there is no mutable PRNG stream and no chunk-order input. A seed-keyed mirror gives portfolio variation without removing either traverse direction.
+
+The sparse behavior plan is joined with a centripetal Catmull–Rom guide and sampled by arc length into bounded world-space segments. That makes heading evolve gradually around broad decisions rather than independently jittering waypoints. Lateral reaches can spend substantial route length making little southward progress because later downstream reaches retain enough endpoint budget. The north and south endpoints are exact. The complete route is generated once by `WorldRiverOwner`, never per chunk.
+
+Configuration now describes the implementation: `routeSegmentLength` controls guide sampling, `routeBoundaryMargin` protects the envelope, and `minSegmentLength`, `maxSegmentLength`, and `macroCurvatureLimit` are measured acceptance guards. The obsolete fixed-Z `macroWaypointSpacing` and X-only `lateralMacroVariation` settings were removed. Every geometry field remains in the serialized cache identity.
+
+Acceptance checks finite endpoints/frames, control segment lengths, sampled curvature, bounds, self-intersection, and non-local separation on the smoothed curve. Separation uses a deterministic spatial grid rather than a global quadratic scan. Corrections and their reasons are retained. A validated straight boundary centreline remains the bounded emergency fallback, but representative normal routes are expected to publish without it.
 
 ## Ownership and versioning
 
-The immutable configuration owns the seed, generation version, corridor, segment/curvature guards,
-resampling, and future meander ranges. Its complete serialized value (including explicit generation
-mode) is the generation cache key. `resetWorldRiverGenerationCaches` is diagnostic-only. Production constructs a `WorldRiverOwner` from the actual game seed. The owner retains one generation result, macro spine and final spine for that session. Chunks carry the same cache-key identity; terrain, water meshes, bridges, POIs, object exclusion, gameplay safety and debug receive the owner's final spine. Two seeds cannot share an owner or a geometry-dependent cache entry. Module-level reference aliases remain test diagnostics, not production ownership.
+The immutable configuration owns the seed, generation version, bounds, route-plan controls, geometry guards, resampling, and meander ranges. Its complete serialized value, including mode, is the cache key. Production constructs one `WorldRiverOwner` from the game seed and retains the route plan, macro spine, final spine, and width profile for the session. Chunks and all terrain, water, bridge, POI, collision, navigation, gameplay, and debug consumers receive the same final-spine identity. Cache resets are diagnostic only; streaming history, player/camera movement, and debug state cannot affect geometry.
 
-Convenience point queries share one 256-entry LRU of chunk-bounded carving contexts keyed by the
-river-generation identity and chunk coordinate. Eviction changes lookup cost only: contexts are pure
-derivatives of an immutable spine. Streaming/chunk generation and safe-position scans instead build
-one appropriately bounded context and reuse it. Diagnostic reset and size APIs cover the LRU.
+`RiverSpine` retains centripetal Catmull–Rom smoothing, an arc-length lookup, and a bounded spatial index. Macro and final spines remain separate immutable products.
 
 ## R8 meander layer
 
-R8 first creates a seed-stable, inspectable set of regional activity belts separated by genuinely quiet
-macro reaches. Each belt records its macro-distance interval, fade lengths, strength, gentle/strong
-profile, wavelength, minimum target bend radius, and correction status. An optional suitability callback
-and stable suitability ID provide a future biome hook without coupling the domain generator to biomes.
+R8 remains a separate local/regional normal-displacement layer. It does not create the macro traverses. A seed-stable activity plan places at most 18 smoothly faded 110–240-unit belts along the much longer route, leaving long quiet gaps. Strong regions remain uncommon. Wavelength and displacement are evaluated in the macro spine's local tangent/normal frame, so north–south, diagonal, and almost east–west reaches behave identically with respect to local geometry.
 
-Inside a gentle belt, a dominant sine and 16% harmonic form broad S-curves. Strong belts use a separate
-heading-controlled construction: a smooth local downstream reparameterization can briefly reverse
-heading while a larger lateral curve makes a deep bend, then both offsets return with zero-slope fades.
-`targetBendRadius` is profile intent metadata, not an acceptance guarantee. Acceptance is measured from the final one-unit resampling: sampled curvature must not exceed `curvatureGuard`, and the result reports `measuredMinimumBendRadius`. The permanent strong construction still exercises a 165-degree local heading reversal.
-The configured 48–80 unit wavelengths remain well above constant river width. A bounded global
-amplitude-reduction loop (75% per pass down to 2%) protects bounds, non-adjacent channel separation, and measured curvature deterministically. If reduction cannot satisfy a guard, the final layer falls back to a deterministic straight boundary spine; `usedFallback` and immutable correction reasons report the actual path taken. Endpoint protection is independent of every regional fade.
-After correction, a final acceptance gate deterministically resamples the actual Catmull–Rom spine at
-at most one-world-unit arc-length spacing and rechecks finite bounds, smoothed-curve separation,
-sampled curvature and finite non-zero frames. Separation uses a bounded spatial grid, ignores only
-samples within the same short local reach, and includes belt reconnections and endpoint approaches.
-A rejected product uses a deterministic straight boundary fallback, which is
-validated again before publication. `targetBendRadius` remains a per-region generation target;
-`curvatureGuard` and the reported `measuredMinimumBendRadius` are the enforced global guarantees.
-Macro and final buffers are stored directly; production carving, water, placement, bridges, POIs,
-navigation, and gameplay receive the session owner's final spine and never add local noise.
+A bounded amplitude-reduction loop protects final bounds, non-local separation, and measured curvature. Final acceptance resamples the actual smoothed result, checks finite non-zero frames, and records correction/fallback state. Width, carving, bridge, and consumer code likewise use local spine frames rather than world-axis assumptions.
 
-Detailed river debug renders the subdued grey R7 route, bright cyan R8 route, and at most 41 purple
-displacement connectors only in active belts. Orange cross-lines mark belt boundaries. Layers toggle
-independently and a compact metadata readout includes local strength/profile without exposing raw arrays.
+## Debug and performance
 
-For generation version 8's reference seed, the 262.45-unit macro contains two gentle belts totaling
-111.13 units, no strong belt (strong belts are intentionally uncommon), and three quiet reaches of
-47.88, 43.66, and 59.78 units (151.32 total). The
-resulting final spine is 265.00 units. Other seeds vary belt lengths, strengths, profiles, and placement.
+Debug remains lazy, presentation-only, bounded, and disposable. Its geometry is capped/decimated for the 10 km envelope. Metadata exposes macro/final lengths, macro X occupancy, retained reach/traverse counts, correction reasons, and fallback state in addition to local meander and width information.
 
-## Final performance validation
-
-The final cache-cleared, seed-owned benchmark reports cold median/p95 milliseconds of dry
-192.50/221.23, diagonal 522.31/715.19, canyon 498.86/630.62, bridge 546.53/803.14, and
-POI-adjacent 497.17/621.44. Cached retained-data lookup remains effectively zero; gameplay queries
-are 0.059 ms median and safe-position searches 14.960 ms median. The largest median synchronous stage
-is 288.51 ms (diagonal constrained terrain triangulation). Smoothed topology validation remains a
-one-time owner-generation stage and never runs during these ordinary chunk-generation samples.
-River-owner lookup and spine generation do not run per chunk after session creation.
-
-R6 is complete. R7 procedural macro path and R8 secondary meanders are complete, followed by R9
-variable width, R10 river-connected lakes, and R11 standalone-lake integration/final water rules.
+Global topology and width safety work occur during one-time owner construction. Ordinary chunk and point queries use retained spatial indexes and bounded local contexts; global generation is never moved into chunk paths.

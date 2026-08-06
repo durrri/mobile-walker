@@ -9,8 +9,10 @@ export interface RiverGenerationConfig {
   readonly worldSeed: number | string;
   readonly mode: RiverGenerationMode;
   readonly bounds: WorldBounds2D;
-  readonly macroWaypointSpacing: number;
-  readonly lateralMacroVariation: number;
+  /** Nominal chord length used to sample the retained two-dimensional route plan. */
+  readonly routeSegmentLength: number;
+  /** Clearance reserved for smoothing, meanders, the widest channel and its banks. */
+  readonly routeBoundaryMargin: number;
   readonly macroCurvatureLimit: number;
   readonly minSegmentLength: number;
   readonly maxSegmentLength: number;
@@ -40,24 +42,24 @@ export interface MeanderRegion {
 export type RiverCorrectionReason = "macro-segment-length" | "macro-curvature" | "outside-bounds" | "self-separation" | "final-curvature" | "non-finite-frame" | "fallback-straight";
 export type RegionalSuitability = (macroDistance: number, macroLength: number) => number;
 
-export const PROCEDURAL_RIVER_GENERATION_VERSION = 10;
-/** R10 extends the standard deterministic river corridor and scales the retained R8 activity plan. */
-const RIVER_SPINE_ALGORITHM_VERSION = 8;
+export const PROCEDURAL_RIVER_GENERATION_VERSION = 11;
+/** R11 replaces fixed Z stations with a retained, seed-keyed two-dimensional route plan. */
+const RIVER_SPINE_ALGORITHM_VERSION = 9;
 export const DEFAULT_RIVER_GENERATION_CONFIG: Readonly<RiverGenerationConfig> = Object.freeze({
   generationVersion: PROCEDURAL_RIVER_GENERATION_VERSION,
   worldSeed: 0x52495645,
   mode: "procedural-meandered",
-  bounds: Object.freeze({ minX: -160, maxX: 160, minZ: -3000, maxZ: 0 }),
-  macroWaypointSpacing: 32,
-  lateralMacroVariation: 42,
-  macroCurvatureLimit: 0.075,
-  minSegmentLength: 24,
-  maxSegmentLength: 48,
+  bounds: Object.freeze({ minX: -2000, maxX: 2000, minZ: -10000, maxZ: 0 }),
+  routeSegmentLength: 64,
+  routeBoundaryMargin: 260,
+  macroCurvatureLimit: 0.045,
+  minSegmentLength: 42,
+  maxSegmentLength: 82,
   selfSeparationDistance: 14,
   endpointProtectionDistance: 32,
-  meanderWavelengthRange: Object.freeze([48, 80] as const),
-  meanderAmplitudeRange: Object.freeze([3, 7] as const),
-  curvatureGuard: 0.12,
+  meanderWavelengthRange: Object.freeze([90, 180] as const),
+  meanderAmplitudeRange: Object.freeze([3, 8] as const),
+  curvatureGuard: 0.2,
   resamplingSpacing: 2,
   regionalSuitabilityId: "uniform-v1",
 });
@@ -66,6 +68,7 @@ export interface MacroRiverGeneration {
   readonly cacheKey: string;
   readonly config: Readonly<RiverGenerationConfig>;
   readonly macroControlPoints: readonly RiverControlPoint[];
+  readonly macroRoutePlan: MacroRoutePlan;
   readonly macroResampledPoints: readonly RiverControlPoint[];
   readonly macroSpine: RiverSpine;
   readonly meanderedControlPoints: readonly RiverControlPoint[];
@@ -81,32 +84,68 @@ export interface MacroRiverGeneration {
   readonly measuredMinimumBendRadius: number;
 }
 
+export type MacroRouteBehavior = "downstream" | "diagonal-southwest" | "traverse-east" | "diagonal-southeast" | "traverse-west";
+export interface MacroRouteReach {
+  readonly index: number;
+  readonly behavior: MacroRouteBehavior;
+  readonly start: RiverControlPoint;
+  readonly end: RiverControlPoint;
+  readonly length: number;
+  readonly headingRadians: number;
+}
+export interface MacroRoutePlan {
+  readonly algorithmVersion: number;
+  readonly seed: number;
+  readonly margin: number;
+  readonly reaches: readonly MacroRouteReach[];
+}
+
 const cache = new Map<string, MacroRiverGeneration>();
 const stableConfigKey = (config: RiverGenerationConfig): string => JSON.stringify(config);
 
-/**
- * Corridor-constrained R7 path. Fixed forward Z stations enforce progress, separation,
- * clean boundary entry and termination. Seeded lateral targets are relaxed twice,
- * bounding heading changes without retries; the deterministic straight interpolation
- * is the documented fallback should validation ever reject the relaxed polygon.
- */
-export function generateMacroControlPoints(config: RiverGenerationConfig): readonly RiverControlPoint[] {
+/** Builds the immutable low-frequency route whose lateral traverses belong to R7, not R8. */
+export function generateMacroRoutePlan(config: RiverGenerationConfig): MacroRoutePlan {
   const seed = normalizeSeed(config.worldSeed) ^ RIVER_SPINE_ALGORITHM_VERSION;
   const span = config.bounds.maxZ - config.bounds.minZ;
-  const count = Math.max(2, Math.round(span / config.macroWaypointSpacing));
-  const values = Array.from({ length: count + 1 }, (_, index) => {
-    if (index === 0 || index === count) return 0;
-    const envelope = Math.sin(Math.PI * index / count) ** 2;
-    const phase = hashFloat(seed, 7108) * Math.PI * 2;
-    const broadTurn = Math.sin(index / count * Math.PI * 2 + phase) * .65;
-    const seeded = (hashFloat(seed, index, 7107) * 2 - 1) * .35;
-    return (broadTurn + seeded) * config.lateralMacroVariation * envelope;
+  const half = (config.bounds.maxX - config.bounds.minX) / 2 - config.routeBoundaryMargin;
+  const centre = (config.bounds.minX + config.bounds.maxX) / 2;
+  const mirror = hashFloat(seed, 7001) < .5 ? -1 : 1;
+  // Keyed perturbations affect named plan nodes only; adding another decision cannot
+  // shift a mutable PRNG stream. Small Z jitter never removes either long traverse.
+  const template: readonly [number, number, MacroRouteBehavior][] = [
+    [0, 0, "downstream"], [-.30, .12, "diagonal-southwest"], [-.82, .25, "diagonal-southwest"],
+    [.78, .285, "traverse-east"], [.91, .40, "diagonal-southeast"], [.20, .52, "downstream"],
+    [-.80, .62, "diagonal-southwest"], [.76, .655, "traverse-east"], [.88, .77, "diagonal-southeast"],
+    [-.72, .81, "traverse-west"], [-.36, .91, "downstream"], [0, 1, "downstream"],
+  ];
+  const anchors = template.map(([unitX, progress], index) => Object.freeze({
+    x: index === 0 || index === template.length - 1 ? centre : centre + mirror * half * Math.max(-.96, Math.min(.96,
+      unitX + (hashFloat(seed, index, 7002) * 2 - 1) * .035)),
+    z: index === 0 ? config.bounds.maxZ : index === template.length - 1 ? config.bounds.minZ
+      : config.bounds.maxZ - span * Math.max(.01, Math.min(.99, progress + (hashFloat(seed, index, 7003) * 2 - 1) * .008)),
+  }));
+  const reaches = anchors.slice(1).map((end, index) => {
+    const start = anchors[index]!, dx = end.x - start.x, dz = end.z - start.z;
+    const rawBehavior = template[index + 1]![2];
+    const behavior = mirror < 0
+      ? rawBehavior === "traverse-east" ? "traverse-west" : rawBehavior === "traverse-west" ? "traverse-east"
+        : rawBehavior === "diagonal-southeast" ? "diagonal-southwest" : rawBehavior === "diagonal-southwest" ? "diagonal-southeast" : rawBehavior
+      : rawBehavior;
+    return Object.freeze({ index, behavior, start, end, length: Math.hypot(dx, dz), headingRadians: Math.atan2(dz, dx) });
   });
-  for (let pass = 0; pass < 2; pass += 1) {
-    const before = [...values];
-    for (let index = 2; index < count - 1; index += 1) values[index] = before[index - 1]! * .25 + before[index]! * .5 + before[index + 1]! * .25;
-  }
-  return Object.freeze(values.map((x, index) => Object.freeze({ x, z: config.bounds.maxZ - span * index / count })));
+  return Object.freeze({ algorithmVersion: RIVER_SPINE_ALGORITHM_VERSION, seed, margin: config.routeBoundaryMargin,
+    reaches: Object.freeze(reaches) });
+}
+
+/** Samples bounded world-space segments from the retained two-dimensional plan. */
+export function generateMacroControlPoints(config: RiverGenerationConfig, plan = generateMacroRoutePlan(config)): readonly RiverControlPoint[] {
+  const anchors = [plan.reaches[0]!.start, ...plan.reaches.map(reach => reach.end)];
+  // The plan's sparse behavior nodes are first joined by the same centripetal
+  // interpolant as the published spine. Arc-length sampling that guide turns each
+  // broad decision into a smoothly evolving sequence of bounded world segments.
+  const guide = new RiverSpine(anchors);
+  const count = Math.max(2, Math.round(guide.totalLength / config.routeSegmentLength));
+  return Object.freeze(Array.from({ length: count + 1 }, (_, index) => Object.freeze(guide.samplePosition(index / count))));
 }
 
 function segmentLengths(points: readonly RiverControlPoint[]): number[] {
@@ -150,13 +189,13 @@ export function generateMeanderRegions(
   const seed = normalizeSeed(config.worldSeed) ^ RIVER_SPINE_ALGORITHM_VERSION;
   const protectedLength = config.endpointProtectionDistance;
   const available = Math.max(0, macroLength - protectedLength * 2);
-  const desiredCount = available > 60 ? Math.max(1, Math.min(14, Math.round(available / 245))) : 0;
+  const desiredCount = available > 60 ? Math.max(1, Math.min(18, Math.round(available / 600))) : 0;
   const regions: MeanderRegion[] = [];
   for (let index = 0; index < desiredCount; index += 1) {
     const slotStart = protectedLength + available * (index + .12) / desiredCount;
     const slotEnd = protectedLength + available * (index + .58) / desiredCount;
     const slotSpan = slotEnd - slotStart;
-    const length = Math.min(slotSpan * .72, 44 + hashFloat(seed, index, 8201) * 38);
+    const length = Math.min(slotSpan * .58, 110 + hashFloat(seed, index, 8201) * 130);
     const startDistance = slotStart + hashFloat(seed, index, 8202) * Math.max(0, slotEnd - slotStart - length);
     const endDistance = startDistance + length;
     const centre = (startDistance + endDistance) * .5;
@@ -166,7 +205,7 @@ export function generateMeanderRegions(
     const wavelength = config.meanderWavelengthRange[0] + hashFloat(seed, index, 8204)
       * (config.meanderWavelengthRange[1] - config.meanderWavelengthRange[0]);
     regions.push(Object.freeze({ startDistance, endDistance,
-      fadeInDistance: Math.min(14, length * .28), fadeOutDistance: Math.min(14, length * .28),
+      fadeInDistance: Math.min(32, length * .28), fadeOutDistance: Math.min(32, length * .28),
       strength: allowed * (.55 + hashFloat(seed, index, 8205) * .45), profile,
       targetWavelength: profile === "strong" ? Math.max(length * .9, wavelength) : wavelength,
       targetBendRadius: profile === "strong" ? 4 : 18, correctionApplied: false,
@@ -193,7 +232,9 @@ export function generateMeanderedControlPoints(
   const amplitude = config.meanderAmplitudeRange[0] + hashFloat(seed, 8101)
     * (config.meanderAmplitudeRange[1] - config.meanderAmplitudeRange[0]);
   const phase = hashFloat(seed, 8103) * Math.PI * 2;
-  const count = Math.ceil(macroSpine.totalLength / Math.max(4, config.resamplingSpacing * 4));
+  const controlSpacing = macroSpine.totalLength < 1000 ? Math.max(4, config.resamplingSpacing * 4)
+    : Math.max(24, config.resamplingSpacing * 8);
+  const count = Math.ceil(macroSpine.totalLength / controlSpacing);
   return Object.freeze(Array.from({ length: count + 1 }, (_, index) => {
     const distance = macroSpine.totalLength * index / count;
     const frame = macroSpine.sampleFrame(macroSpine.progressAtDistance(distance));
@@ -260,7 +301,7 @@ function segmentSeparation(a:RiverControlPoint,b:RiverControlPoint,c:RiverContro
 
 /** One-time topology check over deterministic arc-length samples of the actual smoothed curve. */
 export function validateSmoothedSpineSeparation(spine:RiverSpine,config:RiverGenerationConfig):SmoothedSeparationValidation {
-  const spacing=Math.min(1,config.resamplingSpacing),points=resample(spine,spacing),cellSize=config.selfSeparationDistance;
+  const spacing=Math.min(2,config.resamplingSpacing),points=resample(spine,spacing),cellSize=config.selfSeparationDistance;
   const cells=new Map<string,number[]>(),segments=points.length-1;
   const localReachDistance=config.selfSeparationDistance*2,checked=new Set<string>();let minimumDistance=Infinity;
   for(let index=0;index<segments;index+=1){
@@ -307,7 +348,8 @@ export function getWorldRiverGeneration(config: RiverGenerationConfig = DEFAULT_
   if (retained) return retained;
   const correctionReasons: RiverCorrectionReason[] = [];
   let usedFallback = false;
-  let macroControlPoints = config.mode === "authored-r6" ? authoredR6RiverSpine.controlPoints : generateMacroControlPoints(config);
+  const macroRoutePlan = generateMacroRoutePlan(config);
+  let macroControlPoints = config.mode === "authored-r6" ? authoredR6RiverSpine.controlPoints : generateMacroControlPoints(config, macroRoutePlan);
   if (config.mode !== "authored-r6") {
     const lengths = segmentLengths(macroControlPoints);
     if (lengths.some(length => length < config.minSegmentLength || length > config.maxSegmentLength)) correctionReasons.push("macro-segment-length");
@@ -364,7 +406,7 @@ export function getWorldRiverGeneration(config: RiverGenerationConfig = DEFAULT_
     * (config.meanderAmplitudeRange[1] - config.meanderAmplitudeRange[0])) * scale;
   const meanderWavelength = config.meanderWavelengthRange[0] + hashFloat(seed, 8102)
     * (config.meanderWavelengthRange[1] - config.meanderWavelengthRange[0]);
-  const result = Object.freeze({ cacheKey, config: Object.freeze(config), macroControlPoints,
+  const result = Object.freeze({ cacheKey, config: Object.freeze(config), macroControlPoints, macroRoutePlan,
     macroResampledPoints: resample(macroSpine, config.resamplingSpacing), macroSpine,
     meanderedControlPoints, meanderedResampledPoints: resample(meanderedSpine, config.resamplingSpacing), meanderedSpine,
     sourceMacroCacheKey: cacheKey, meanderAmplitude, meanderWavelength, correctionApplied,

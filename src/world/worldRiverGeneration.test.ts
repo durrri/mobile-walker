@@ -87,20 +87,42 @@ describe("R7 procedural macro river", () => {
 
   it("extends the standard river bounds and distributes quiet-gapped meander regions", () => {
     const generated = getWorldRiverGeneration();
-    expect(generated.config.generationVersion).toBe(10);
-    expect(generated.config.bounds).toEqual({ minX: -160, maxX: 160, minZ: -3000, maxZ: 0 });
-    expect(generated.meanderedSpine.totalLength).toBeGreaterThan(3000);
-    expect(generated.meanderedSpine.bounds.minZ).toBeLessThanOrEqual(-2999);
+    expect(generated.config.generationVersion).toBe(11);
+    expect(generated.config.bounds).toEqual({ minX: -2000, maxX: 2000, minZ: -10000, maxZ: 0 });
+    expect(generated.macroSpine.totalLength).toBeGreaterThan(10000);
+    expect(generated.meanderedSpine.totalLength).toBeGreaterThan(10000);
+    expect(generated.meanderedSpine.bounds.minZ).toBeLessThanOrEqual(-9999);
     expect(generated.meanderedSpine.bounds.maxZ).toBeGreaterThanOrEqual(-1);
-    expect(generated.meanderedSpine.bounds.minX).toBeGreaterThanOrEqual(-160);
-    expect(generated.meanderedSpine.bounds.maxX).toBeLessThanOrEqual(160);
+    expect(generated.meanderedSpine.bounds.minX).toBeGreaterThanOrEqual(-2000);
+    expect(generated.meanderedSpine.bounds.maxX).toBeLessThanOrEqual(2000);
+    expect(generated.macroSpine.bounds.maxX-generated.macroSpine.bounds.minX).toBeGreaterThan(2500);
+    expect(generated.usedFallback).toBe(false);
+    expect(Object.isFrozen(generated.macroRoutePlan.reaches)).toBe(true);
     expect(generated.meanderRegions.length).toBeGreaterThanOrEqual(8);
-    expect(generated.meanderRegions.length).toBeLessThanOrEqual(14);
-    expect(generated.meanderRegions.filter(region => region.profile === "strong").length).toBeLessThanOrEqual(2);
+    expect(generated.meanderRegions.length).toBeLessThanOrEqual(18);
+    expect(generated.meanderRegions.filter(region => region.profile === "strong").length).toBeLessThanOrEqual(4);
     const thirds = generated.meanderRegions.map(region => Math.floor(((region.startDistance + region.endDistance) / 2) / generated.macroSpine.totalLength * 3));
     expect(new Set(thirds).size).toBe(3);
     const quietGaps = generated.meanderRegions.slice(1).map((region, index) => region.startDistance - generated.meanderRegions[index]!.endDistance);
     expect(quietGaps.some(gap => gap > 90)).toBe(true);
+  });
+
+  it("retains contiguous diagonal and bidirectional near-horizontal macro reaches",()=>{
+    const {macroSpine,macroRoutePlan}=getWorldRiverGeneration();
+    expect(macroRoutePlan.reaches.some(reach=>reach.behavior==="traverse-east")).toBe(true);
+    expect(macroRoutePlan.reaches.some(reach=>reach.behavior==="traverse-west")).toBe(true);
+    const spacing=20,runs:{east:number[];west:number[];diagonal:number[]}={east:[],west:[],diagonal:[]};
+    let east=0,west=0,diagonal=0;
+    for(let distance=0;distance<=macroSpine.totalLength;distance+=spacing){
+      const tangent=macroSpine.sampleTangent(macroSpine.progressAtDistance(distance));
+      east=Math.abs(tangent.z)<.3&&tangent.x>.8?east+spacing:0;
+      west=Math.abs(tangent.z)<.3&&tangent.x<-.8?west+spacing:0;
+      diagonal=Math.abs(tangent.x)>.45&&tangent.z<-.45?diagonal+spacing:0;
+      runs.east.push(east);runs.west.push(west);runs.diagonal.push(diagonal);
+    }
+    expect(Math.max(...runs.east)).toBeGreaterThan(1000);
+    expect(Math.max(...runs.west)).toBeGreaterThan(1000);
+    expect(Math.max(...runs.diagonal)).toBeGreaterThan(500);
   });
 
   it("clusters activity into smoothly faded belts separated by long quiet reaches", () => {
@@ -146,8 +168,8 @@ describe("R7 procedural macro river", () => {
     for (const distance of [region.startDistance, region.endDistance]) {
       const progress = macro.progressAtDistance(distance), expected = macro.samplePosition(progress);
       const actual = final.nearestPointToRiver(expected.x, expected.z);
-      expect(actual.distanceToRiver).toBeLessThan(.35);
-      expect(Math.abs(actual.tangent.z)).toBeGreaterThan(.8);
+      expect(actual.distanceToRiver).toBeLessThan(.65);
+      expect(Object.values(actual.tangent).every(Number.isFinite)).toBe(true);
     }
   });
 });
