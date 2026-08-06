@@ -7,9 +7,9 @@ const main = readFileSync(new URL("../main.ts", import.meta.url), "utf8");
 describe("camera settings UI", () => {
   it("puts a persisted player movement speed slider at the top of settings", () => {
     expect(html).toMatch(/<h2>Settings<\/h2>\s*<fieldset>\s*<legend>Movement<\/legend>/);
-    expect(html).toContain('id="movement-speed" type="range" min="1" max="10" value="1" step="1"');
+    expect(html).toContain('id="movement-speed" type="range" min="1" max="2" value="1" step="1"');
     expect(main).toContain('MOVEMENT_SPEED_STORAGE_KEY');
-    expect(main).toContain("game.setPlayerMovementSpeed(PLAYER_SPEED * multiplier)");
+    expect(main).toContain("game.setPlayerMovementSpeed(playerSpeedForMultiplier(multiplier))");
   });
 
   it("exposes horizontal accessible orientation choices with selected state", () => {

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { createEcsWorld } from "../ecs/createEcsWorld";
 import { sampleTerrain } from "../world/terrainSampling";
 import { getWorldRiverOwner } from "../world/worldRiverOwner";
-import { PLAYER_SPEED } from "./movement";
+import { MAX_PLAYER_SPEED, PLAYER_SPEED } from "./movement";
 import { InputSnapshotSystem, PlayerMovementSystem, rotateInputByCameraYaw, TerrainSamplingSystem } from "./systems";
 
 describe("camera-relative input", () => {
@@ -53,9 +53,61 @@ describe("PlayerMovementSystem", () => {
 
     expect(player.transform.x).toBeCloseTo(speed * 0.1);
   });
+
+  it("rejects invalid or excessive movement speeds at the owning API", () => {
+    const world = createEcsWorld();
+    const player = world.add({
+      transform: { x: 0, y: 0, z: 0, yaw: 0 },
+      previousTransform: { x: 0, y: 0, z: 0, yaw: 0 },
+      velocity: { x: 0, y: 0, z: 0 },
+      playerControl: { moveX: 1, moveZ: 0, active: true, jump: false },
+      jump: { grounded: true },
+    });
+    const system = new PlayerMovementSystem();
+    system.setSpeed(Number.NaN);
+    system.fixedUpdate(world, 1);
+    expect(player.transform.x).toBe(PLAYER_SPEED);
+
+    system.setSpeed(MAX_PLAYER_SPEED * 2);
+    system.fixedUpdate(world, 1);
+    expect(player.transform.x).toBe(PLAYER_SPEED + MAX_PLAYER_SPEED);
+  });
 });
 
 describe("TerrainSamplingSystem", () => {
+  it("restores maximum-speed traversal before it enters terrain awaiting chunk activation", () => {
+    const world = createEcsWorld();
+    const player = world.add({
+      transform: { x: 15.95, y: 1, z: 0, yaw: 0 },
+      previousTransform: { x: 15.95, y: 1, z: 0, yaw: 0 },
+      velocity: { x: 0, y: 0, z: 0 },
+      playerControl: { moveX: 1, moveZ: 0, active: true, jump: false },
+      jump: { grounded: true },
+      terrainFollower: { heightOffset: 0.76 },
+    });
+    const movement = new PlayerMovementSystem();
+    movement.setSpeed(MAX_PLAYER_SPEED);
+    movement.fixedUpdate(world, 1 / 60);
+
+    const queried: number[] = [];
+    new TerrainSamplingSystem("seed", {
+      queryActiveTerrainSurface: (x) => {
+        queried.push(x);
+        return x < 16 ? {
+          height: 0,
+          normal: { x: 0, y: 1, z: 0 },
+          chunkId: "0,0",
+          triangleIndex: 0,
+          candidateCount: 1,
+          barycentric: [1, 0, 0],
+        } : undefined;
+      },
+    }).fixedUpdate(world);
+
+    expect(queried.some((x) => x >= 16)).toBe(true);
+    expect(player.transform.x).toBeCloseTo(15.95);
+  });
+
   it("allows a terrain follower to move through a river", () => {
     const seed = "walkable-river";
     const world = createEcsWorld();

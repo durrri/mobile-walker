@@ -5,7 +5,7 @@ import { resolveTreeTrunkMovement } from "../world/treeCollision";
 import { sampleWetlandSpeedMultiplier } from "../world/wetlands";
 import type { InputController } from "./InputController";
 import type { GeneratedChunkRepository } from "../world/GeneratedChunkRepository";
-import { integrateMovement, normalizeInput, PLAYER_SPEED } from "./movement";
+import { constrainPlayerSpeed, integrateMovement, normalizeInput, PLAYER_SPEED } from "./movement";
 import { queryStructureCollisions, resolveStructureMovement } from "../world/structureCollision";
 
 /** Converts screen-aligned input into world-space movement for a camera yaw. */
@@ -43,7 +43,7 @@ export class PlayerMovementSystem implements FixedSystem {
   constructor(private readonly seed?: number | string) {}
 
   setSpeed(speed: number): void {
-    this.speed = speed;
+    this.speed = constrainPlayerSpeed(speed);
   }
 
   fixedUpdate(world: Parameters<FixedSystem["fixedUpdate"]>[0], deltaSeconds: number): void {

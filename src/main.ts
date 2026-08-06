@@ -14,7 +14,12 @@ import {
   isCameraOrientationMode, isFollowResponsiveness,
   type CameraOrientationMode, type FollowResponsiveness,
 } from "./game/cameraOrientation";
-import { PLAYER_SPEED } from "./player/movement";
+import {
+  MAX_MOVEMENT_SPEED_MULTIPLIER,
+  normalizeMovementSpeedMultiplier,
+  playerSpeedForMultiplier,
+  restoreMovementSpeedMultiplier,
+} from "./player/movement";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#game-canvas");
 const restartButton = document.querySelector<HTMLButtonElement>("#restart-button");
@@ -68,10 +73,7 @@ try {
   if (isFollowResponsiveness(savedResponse)) followResponsiveness = savedResponse;
 } catch { /* Invalid or unavailable settings retain safe defaults. */ }
 try {
-  const savedMovementSpeed = Number(storage.getItem(MOVEMENT_SPEED_STORAGE_KEY));
-  if (Number.isInteger(savedMovementSpeed) && savedMovementSpeed >= 1 && savedMovementSpeed <= 10) {
-    movementSpeedInput.value = String(savedMovementSpeed);
-  }
+  movementSpeedInput.value = String(restoreMovementSpeedMultiplier(storage.getItem(MOVEMENT_SPEED_STORAGE_KEY)));
 } catch { /* Invalid or unavailable settings fall back to the value in the interface. */ }
 try {
   const savedMovementYawSetting = storage.getItem(MOVEMENT_YAW_STORAGE_KEY);
@@ -175,10 +177,10 @@ const updateMovementYaw = (): void => {
   try { storage.setItem(MOVEMENT_YAW_STORAGE_KEY, String(degrees)); } catch { /* Gameplay remains live without storage. */ }
 };
 const updateMovementSpeed = (): void => {
-  const multiplier = Math.min(10, Math.max(1, Math.round(Number(movementSpeedInput.value))));
+  const multiplier = normalizeMovementSpeedMultiplier(Number(movementSpeedInput.value));
   movementSpeedInput.value = String(multiplier);
   movementSpeedValue.value = `${multiplier}×`;
-  game.setPlayerMovementSpeed(PLAYER_SPEED * multiplier);
+  game.setPlayerMovementSpeed(playerSpeedForMultiplier(multiplier));
   try { storage.setItem(MOVEMENT_SPEED_STORAGE_KEY, String(multiplier)); } catch { /* Gameplay remains live without storage. */ }
 };
 const updateSunlight = (): void => {
