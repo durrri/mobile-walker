@@ -46,7 +46,7 @@ describe("integrateMovement", () => {
 
   it("restores only valid stored movement speed preferences", () => {
     expect(restoreMovementSpeedMultiplier(String(MAX_MOVEMENT_SPEED_MULTIPLIER))).toBe(MAX_MOVEMENT_SPEED_MULTIPLIER);
-    for (const value of [null, "not-a-number", "1.5", "0", "3", "Infinity"]) {
+    for (const value of [null, "not-a-number", "1.5", "0", "9", "Infinity"]) {
       expect(restoreMovementSpeedMultiplier(value)).toBe(DEFAULT_MOVEMENT_SPEED_MULTIPLIER);
     }
   });

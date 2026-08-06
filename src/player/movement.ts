@@ -1,7 +1,7 @@
 import type { PlayerControlComponent, TransformComponent, VelocityComponent } from "../ecs/Entity";
 
 export const PLAYER_SPEED = 4;
-export const MAX_PLAYER_SPEED = 8;
+export const MAX_PLAYER_SPEED = 32;
 export const MIN_MOVEMENT_SPEED_MULTIPLIER = 1;
 export const MAX_MOVEMENT_SPEED_MULTIPLIER = MAX_PLAYER_SPEED / PLAYER_SPEED;
 export const DEFAULT_MOVEMENT_SPEED_MULTIPLIER = 1;
