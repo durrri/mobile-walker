@@ -14,6 +14,7 @@ import {
   isCameraOrientationMode, isFollowResponsiveness,
   type CameraOrientationMode, type FollowResponsiveness,
 } from "./game/cameraOrientation";
+import { PLAYER_SPEED } from "./player/movement";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#game-canvas");
 const restartButton = document.querySelector<HTMLButtonElement>("#restart-button");
@@ -34,6 +35,8 @@ const performanceInput = document.querySelector<HTMLInputElement>("#debug-perfor
 const shadowsInput = document.querySelector<HTMLInputElement>("#debug-shadows");
 const movementYawInput = document.querySelector<HTMLInputElement>("#movement-yaw");
 const movementYawValue = document.querySelector<HTMLOutputElement>("#movement-yaw-value");
+const movementSpeedInput = document.querySelector<HTMLInputElement>("#movement-speed");
+const movementSpeedValue = document.querySelector<HTMLOutputElement>("#movement-speed-value");
 const orientationControl = document.querySelector<HTMLElement>("#camera-orientation");
 const responsivenessControl = document.querySelector<HTMLElement>("#follow-responsiveness");
 const movementYawSettings = document.querySelector<HTMLElement>("#movement-yaw-settings");
@@ -47,13 +50,14 @@ const offsetOutputs = Object.fromEntries(["west", "east", "north", "south"].map(
 ])) as Record<keyof ChunkNeighborhoodOffsets, HTMLOutputElement | null>;
 const offsetButtons = [...document.querySelectorAll<HTMLButtonElement>("[data-offset-direction][data-offset-change]")];
 
-if (!canvas || !restartButton || !resetProgressButton || !settingsButton || !settingsPanel || !debugButton || !debugPanel || !wireframeInput || !biomesInput || !poiDirectionsInput || !terrainOcclusionInput || !occlusionMapInput || !poisInput || !riverSpineInput || !cameraInput || !performanceInput || !shadowsInput || !movementYawInput || !movementYawValue || !orientationControl || !responsivenessControl || !movementYawSettings || !responsivenessSettings || !sunlightVerticalInput || !sunlightHorizontalInput || !sunlightVerticalValue || !sunlightHorizontalValue || Object.values(offsetOutputs).some((output) => !output) || offsetButtons.length !== 8) {
+if (!canvas || !restartButton || !resetProgressButton || !settingsButton || !settingsPanel || !debugButton || !debugPanel || !wireframeInput || !biomesInput || !poiDirectionsInput || !terrainOcclusionInput || !occlusionMapInput || !poisInput || !riverSpineInput || !cameraInput || !performanceInput || !shadowsInput || !movementYawInput || !movementYawValue || !movementSpeedInput || !movementSpeedValue || !orientationControl || !responsivenessControl || !movementYawSettings || !responsivenessSettings || !sunlightVerticalInput || !sunlightHorizontalInput || !sunlightVerticalValue || !sunlightHorizontalValue || Object.values(offsetOutputs).some((output) => !output) || offsetButtons.length !== 8) {
   throw new Error("The game interface could not be found.");
 }
 
 const NEIGHBORHOOD_STORAGE_KEY = "mobile-walker:neighborhood-offsets";
 const SUNLIGHT_STORAGE_KEY = "mobile-walker:sunlight-angles";
 const MOVEMENT_YAW_STORAGE_KEY = "mobile-walker:movement-yaw";
+const MOVEMENT_SPEED_STORAGE_KEY = "mobile-walker:movement-speed";
 const storage = getBrowserStorage();
 let orientationMode: CameraOrientationMode = "north-locked";
 let followResponsiveness: FollowResponsiveness = "normal";
@@ -63,6 +67,12 @@ try {
   const savedResponse = storage.getItem(FOLLOW_RESPONSIVENESS_STORAGE_KEY);
   if (isFollowResponsiveness(savedResponse)) followResponsiveness = savedResponse;
 } catch { /* Invalid or unavailable settings retain safe defaults. */ }
+try {
+  const savedMovementSpeed = Number(storage.getItem(MOVEMENT_SPEED_STORAGE_KEY));
+  if (Number.isInteger(savedMovementSpeed) && savedMovementSpeed >= 1 && savedMovementSpeed <= 10) {
+    movementSpeedInput.value = String(savedMovementSpeed);
+  }
+} catch { /* Invalid or unavailable settings fall back to the value in the interface. */ }
 try {
   const savedMovementYawSetting = storage.getItem(MOVEMENT_YAW_STORAGE_KEY);
   if (savedMovementYawSetting !== null) {
@@ -164,6 +174,13 @@ const updateMovementYaw = (): void => {
   game.setMovementYawStrength(degrees);
   try { storage.setItem(MOVEMENT_YAW_STORAGE_KEY, String(degrees)); } catch { /* Gameplay remains live without storage. */ }
 };
+const updateMovementSpeed = (): void => {
+  const multiplier = Math.min(10, Math.max(1, Math.round(Number(movementSpeedInput.value))));
+  movementSpeedInput.value = String(multiplier);
+  movementSpeedValue.value = `${multiplier}×`;
+  game.setPlayerMovementSpeed(PLAYER_SPEED * multiplier);
+  try { storage.setItem(MOVEMENT_SPEED_STORAGE_KEY, String(multiplier)); } catch { /* Gameplay remains live without storage. */ }
+};
 const updateSunlight = (): void => {
   const angles = { vertical: Number(sunlightVerticalInput.value), horizontal: Number(sunlightHorizontalInput.value) };
   sunlightVerticalValue.value = `${angles.vertical}°`;
@@ -205,6 +222,7 @@ cameraInput.addEventListener("change", updateCameraDetails);
 performanceInput.addEventListener("change", updatePerformanceView);
 shadowsInput.addEventListener("change", updateShadows);
 movementYawInput.addEventListener("input", updateMovementYaw);
+movementSpeedInput.addEventListener("input", updateMovementSpeed);
 orientationControl.addEventListener("click", activateSegment);
 orientationControl.addEventListener("keydown", navigateSegment);
 responsivenessControl.addEventListener("click", activateSegment);
@@ -217,6 +235,7 @@ updateResponsiveness(followResponsiveness);
 updateOrientation(orientationMode);
 game.start();
 updateShadows();
+updateMovementSpeed();
 updateMovementYaw();
 updateSunlight();
 
@@ -233,6 +252,7 @@ if (import.meta.hot) {
     performanceInput.removeEventListener("change", updatePerformanceView);
     shadowsInput.removeEventListener("change", updateShadows);
     movementYawInput.removeEventListener("input", updateMovementYaw);
+    movementSpeedInput.removeEventListener("input", updateMovementSpeed);
     orientationControl.removeEventListener("click", activateSegment);
     orientationControl.removeEventListener("keydown", navigateSegment);
     responsivenessControl.removeEventListener("click", activateSegment);

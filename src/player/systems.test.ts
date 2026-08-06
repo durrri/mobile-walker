@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { createEcsWorld } from "../ecs/createEcsWorld";
 import { sampleTerrain } from "../world/terrainSampling";
 import { getWorldRiverOwner } from "../world/worldRiverOwner";
-import { InputSnapshotSystem, rotateInputByCameraYaw, TerrainSamplingSystem } from "./systems";
+import { InputSnapshotSystem, PlayerMovementSystem, rotateInputByCameraYaw, TerrainSamplingSystem } from "./systems";
 
 describe("camera-relative input", () => {
   it("rotates screen directions into the camera's world-space frame", () => {
@@ -31,6 +31,25 @@ describe("camera-relative input", () => {
     system.fixedUpdate(world);
     expect(player.playerControl.moveX).toBeCloseTo(1);
     expect(player.playerControl.moveZ).toBeCloseTo(0);
+  });
+});
+
+describe("PlayerMovementSystem", () => {
+  it("uses the configured movement speed", () => {
+    const world = createEcsWorld();
+    const player = world.add({
+      transform: { x: 0, y: 0, z: 0, yaw: 0 },
+      previousTransform: { x: 0, y: 0, z: 0, yaw: 0 },
+      velocity: { x: 0, y: 0, z: 0 },
+      playerControl: { moveX: 1, moveZ: 0, active: true, jump: false },
+      jump: { grounded: true },
+    });
+    const system = new PlayerMovementSystem();
+    system.setSpeed(10);
+
+    system.fixedUpdate(world, 0.1);
+
+    expect(player.transform.x).toBeCloseTo(1);
   });
 });
 

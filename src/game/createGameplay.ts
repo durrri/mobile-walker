@@ -26,6 +26,7 @@ export interface GameplayControllers {
   readonly persistence: PersistenceSystem;
   readonly exploration: ExplorationPresentationSystem;
   readonly playerShadow: THREE.Mesh;
+  readonly playerMovement: PlayerMovementSystem;
   readonly riverSpineDebug: RiverSpineDebugView;
 }
 
@@ -95,7 +96,8 @@ export function createGameplay(
   const input = new InputController(inputElement, dragIndicator);
   const camera = new CameraPresentationSystem(renderer.camera, input, savedState?.playerHeading);
   systems.addFixedSystem(new InputSnapshotSystem(input, () => camera.getMovementReferenceYaw()));
-  systems.addFixedSystem(new PlayerMovementSystem(worldSeed));
+  const playerMovement = new PlayerMovementSystem(worldSeed);
+  systems.addFixedSystem(playerMovement);
   const persistence = new PersistenceSystem(storage, worldSeed, 1, () => camera.getEffectiveYaw());
   // Generate data before constructing meshes; then interpolate visuals and derive the camera pose.
   // The camera remains south of the player and looks north (negative world Z),
@@ -138,5 +140,5 @@ export function createGameplay(
     riverOwner.generation,
     riverOwner.widthProfile,
   );
-  return { chunks, biomeDebug, poiDebug, camera, persistence, exploration, playerShadow, riverSpineDebug };
+  return { chunks, biomeDebug, poiDebug, camera, persistence, exploration, playerShadow, playerMovement, riverSpineDebug };
 }

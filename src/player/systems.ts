@@ -5,7 +5,7 @@ import { resolveTreeTrunkMovement } from "../world/treeCollision";
 import { sampleWetlandSpeedMultiplier } from "../world/wetlands";
 import type { InputController } from "./InputController";
 import type { GeneratedChunkRepository } from "../world/GeneratedChunkRepository";
-import { integrateMovement, normalizeInput } from "./movement";
+import { integrateMovement, normalizeInput, PLAYER_SPEED } from "./movement";
 import { queryStructureCollisions, resolveStructureMovement } from "../world/structureCollision";
 
 /** Converts screen-aligned input into world-space movement for a camera yaw. */
@@ -38,7 +38,13 @@ export class InputSnapshotSystem implements FixedSystem {
 }
 
 export class PlayerMovementSystem implements FixedSystem {
+  private speed = PLAYER_SPEED;
+
   constructor(private readonly seed?: number | string) {}
+
+  setSpeed(speed: number): void {
+    this.speed = speed;
+  }
 
   fixedUpdate(world: Parameters<FixedSystem["fixedUpdate"]>[0], deltaSeconds: number): void {
     for (const entity of world.entities) {
@@ -48,7 +54,7 @@ export class PlayerMovementSystem implements FixedSystem {
         ? 1
         : sampleWetlandSpeedMultiplier(this.seed, entity.transform.x, entity.transform.z);
       Object.assign(entity.transform, integrateMovement(
-        entity.transform, entity.playerControl, entity.velocity, deltaSeconds, undefined, entity.jump?.grounded,
+        entity.transform, entity.playerControl, entity.velocity, deltaSeconds, this.speed, entity.jump?.grounded,
         speedMultiplier,
       ));
       if (entity.playerControl.jump && entity.jump?.grounded) entity.jump.grounded = false;
