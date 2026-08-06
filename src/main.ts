@@ -15,7 +15,6 @@ import {
   type CameraOrientationMode, type FollowResponsiveness,
 } from "./game/cameraOrientation";
 import {
-  MAX_MOVEMENT_SPEED_MULTIPLIER,
   normalizeMovementSpeedMultiplier,
   playerSpeedForMultiplier,
   restoreMovementSpeedMultiplier,
