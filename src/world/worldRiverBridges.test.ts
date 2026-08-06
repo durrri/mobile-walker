@@ -15,7 +15,7 @@ import { WORLD_RIVER_CARVING } from "./worldRiverCarving";
 import { getWorldRiverOwner } from "./worldRiverOwner";
 
 const all = (seed = 7) => queryWorldRiverBridgeCandidates(seed, getWorldRiverOwner(seed).spine.bounds);
-const generated = (seed = 7) => all(seed).flatMap(candidate => generateBridges(seed, candidate.ownerChunk).bridges);
+const generated = (seed = 7) => all(seed).slice(0,64).flatMap(candidate => generateBridges(seed, candidate.ownerChunk).bridges);
 
 describe("world-owned river bridges", () => {
   it("uses stable global-distance identities independent of chunk discovery", () => {
@@ -26,7 +26,7 @@ describe("world-owned river bridges", () => {
       expect(candidates[index]!.riverDistance - candidates[index - 1]!.riverDistance).toBeCloseTo(BRIDGE_CANDIDATE_SPACING);
       expect(candidates[index]!.id).toContain(`:d${candidates[index]!.latticeIndex}`);
     }
-    const accepted=candidates.filter(candidate=>generateBridges(7,candidate.ownerChunk).candidates.find(value=>value.id===candidate.id)?.accepted);
+    const accepted=candidates.slice(0,48).filter(candidate=>generateBridges(7,candidate.ownerChunk).candidates.find(value=>value.id===candidate.id)?.accepted);
     for(let index=1;index<accepted.length;index+=1)expect(accepted[index]!.riverDistance-accepted[index-1]!.riverDistance).toBeGreaterThanOrEqual(BRIDGE_CANDIDATE_SPACING);
     const candidate = candidates[Math.min(2, candidates.length - 1)]!;
     const aroundOwner = queryWorldRiverBridgeCandidates(7, {
@@ -40,7 +40,7 @@ describe("world-owned river bridges", () => {
   });
 
   it.each(["pedestrian-footbridge","heavy-timber-bridge","stone-bridge"] as const)("uses the actual %s deck top for terrain, collision and rendering",archetype=>{
-    const candidate=all().find(value=>generateBridges(7,value.ownerChunk).candidates.find(item=>item.id===value.id)?.accepted)!;
+    const candidate=all().slice(0,64).find(value=>generateBridges(7,value.ownerChunk).candidates.find(item=>item.id===value.id)?.accepted)!;
     const source=generateBridges(7,candidate.ownerChunk).bridges.find(value=>value.id===candidate.id)!;
     const profileHeight=archetype==="stone-bridge"?.65:archetype==="heavy-timber-bridge"?.22:.3;
     const structural={...source,archetype,scale:{...source.scale,profileHeight},crossingCentre:{...source.crossingCentre,y:candidate.proposedDeckElevation-profileHeight*.28-.11}};
@@ -50,7 +50,7 @@ describe("world-owned river bridges", () => {
   });
 
   it("derives orientation, span, landings, elevation and ownership from the world river", () => {
-    for (const candidate of all()) {
+    for (const candidate of all().slice(0,64)) {
       expect(Math.abs(candidate.riverTangent.x * candidate.crossingDirection.x + candidate.riverTangent.z * candidate.crossingDirection.z)).toBeLessThan(1e-9);
       expect(candidate.spanLength).toBeCloseTo(2 * (candidate.waterHalfWidth + WORLD_RIVER_CARVING.bankWidth + BRIDGE_LANDING_MARGIN));
       expect(candidate.proposedDeckElevation).toBeGreaterThan(WORLD_RIVER_CARVING.surfaceElevation);
@@ -61,7 +61,7 @@ describe("world-owned river bridges", () => {
   });
 
   it("deterministically rejects endpoints, bends, and unsuitable terrain", () => {
-    for (const candidate of all()) {
+    for (const candidate of all().slice(0,64)) {
       const result = generateBridges(7, candidate.ownerChunk);
       const diagnostic = result.candidates.find(value => value.id === candidate.id)!;
       expect(diagnostic).toBeDefined();

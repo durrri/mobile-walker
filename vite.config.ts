@@ -1,7 +1,6 @@
-import { defineConfig } from "vitest/config";
+import { defineConfig } from "vite";
 
 export default defineConfig(({ command }) => ({
   base: command === "build" ? "/mobile-walker/" : "/",
   resolve: { alias: { buffer: "buffer/" } },
-  test: { testTimeout: 20_000 },
 }));

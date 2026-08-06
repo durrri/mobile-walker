@@ -42,9 +42,9 @@ export interface MeanderRegion {
 export type RiverCorrectionReason = "macro-segment-length" | "macro-curvature" | "outside-bounds" | "self-separation" | "final-curvature" | "non-finite-frame" | "fallback-straight";
 export type RegionalSuitability = (macroDistance: number, macroLength: number) => number;
 
-export const PROCEDURAL_RIVER_GENERATION_VERSION = 11;
-/** R11 replaces fixed Z stations with a retained, seed-keyed two-dimensional route plan. */
-const RIVER_SPINE_ALGORITHM_VERSION = 9;
+export const PROCEDURAL_RIVER_GENERATION_VERSION = 12;
+/** R12 uses a seed-planned, heading-evolving control polygon with one smoothing pass. */
+const RIVER_SPINE_ALGORITHM_VERSION = 10;
 export const DEFAULT_RIVER_GENERATION_CONFIG: Readonly<RiverGenerationConfig> = Object.freeze({
   generationVersion: PROCEDURAL_RIVER_GENERATION_VERSION,
   worldSeed: 0x52495645,
@@ -52,14 +52,14 @@ export const DEFAULT_RIVER_GENERATION_CONFIG: Readonly<RiverGenerationConfig> = 
   bounds: Object.freeze({ minX: -2000, maxX: 2000, minZ: -10000, maxZ: 0 }),
   routeSegmentLength: 64,
   routeBoundaryMargin: 260,
-  macroCurvatureLimit: 0.045,
-  minSegmentLength: 42,
-  maxSegmentLength: 82,
+  macroCurvatureLimit: 0.075,
+  minSegmentLength: 24,
+  maxSegmentLength: 96,
   selfSeparationDistance: 14,
   endpointProtectionDistance: 32,
   meanderWavelengthRange: Object.freeze([90, 180] as const),
   meanderAmplitudeRange: Object.freeze([3, 8] as const),
-  curvatureGuard: 0.2,
+  curvatureGuard: 0.12,
   resamplingSpacing: 2,
   regionalSuitabilityId: "uniform-v1",
 });
@@ -84,7 +84,7 @@ export interface MacroRiverGeneration {
   readonly measuredMinimumBendRadius: number;
 }
 
-export type MacroRouteBehavior = "downstream" | "diagonal-southwest" | "traverse-east" | "diagonal-southeast" | "traverse-west";
+export type MacroRouteBehavior = "downstream" | "diagonal-southwest" | "traverse-east" | "diagonal-southeast" | "traverse-west" | "recovery" | "endpoint-approach";
 export interface MacroRouteReach {
   readonly index: number;
   readonly behavior: MacroRouteBehavior;
@@ -98,6 +98,8 @@ export interface MacroRoutePlan {
   readonly seed: number;
   readonly margin: number;
   readonly reaches: readonly MacroRouteReach[];
+  /** The sole authoritative macro control polygon; RiverSpine smooths it once. */
+  readonly controlPoints: readonly RiverControlPoint[];
 }
 
 const cache = new Map<string, MacroRiverGeneration>();
@@ -107,45 +109,71 @@ const stableConfigKey = (config: RiverGenerationConfig): string => JSON.stringif
 export function generateMacroRoutePlan(config: RiverGenerationConfig): MacroRoutePlan {
   const seed = normalizeSeed(config.worldSeed) ^ RIVER_SPINE_ALGORITHM_VERSION;
   const span = config.bounds.maxZ - config.bounds.minZ;
-  const half = (config.bounds.maxX - config.bounds.minX) / 2 - config.routeBoundaryMargin;
   const centre = (config.bounds.minX + config.bounds.maxX) / 2;
-  const mirror = hashFloat(seed, 7001) < .5 ? -1 : 1;
-  // Keyed perturbations affect named plan nodes only; adding another decision cannot
-  // shift a mutable PRNG stream. Small Z jitter never removes either long traverse.
-  const template: readonly [number, number, MacroRouteBehavior][] = [
-    [0, 0, "downstream"], [-.30, .12, "diagonal-southwest"], [-.82, .25, "diagonal-southwest"],
-    [.78, .285, "traverse-east"], [.91, .40, "diagonal-southeast"], [.20, .52, "downstream"],
-    [-.80, .62, "diagonal-southwest"], [.76, .655, "traverse-east"], [.88, .77, "diagonal-southeast"],
-    [-.72, .81, "traverse-west"], [-.36, .91, "downstream"], [0, 1, "downstream"],
-  ];
-  const anchors = template.map(([unitX, progress], index) => Object.freeze({
-    x: index === 0 || index === template.length - 1 ? centre : centre + mirror * half * Math.max(-.96, Math.min(.96,
-      unitX + (hashFloat(seed, index, 7002) * 2 - 1) * .035)),
-    z: index === 0 ? config.bounds.maxZ : index === template.length - 1 ? config.bounds.minZ
-      : config.bounds.maxZ - span * Math.max(.01, Math.min(.99, progress + (hashFloat(seed, index, 7003) * 2 - 1) * .008)),
-  }));
-  const reaches = anchors.slice(1).map((end, index) => {
-    const start = anchors[index]!, dx = end.x - start.x, dz = end.z - start.z;
-    const rawBehavior = template[index + 1]![2];
-    const behavior = mirror < 0
-      ? rawBehavior === "traverse-east" ? "traverse-west" : rawBehavior === "traverse-west" ? "traverse-east"
-        : rawBehavior === "diagonal-southeast" ? "diagonal-southwest" : rawBehavior === "diagonal-southwest" ? "diagonal-southeast" : rawBehavior
-      : rawBehavior;
-    return Object.freeze({ index, behavior, start, end, length: Math.hypot(dx, dz), headingRadians: Math.atan2(dz, dx) });
+  const usableHalfWidth = (config.bounds.maxX - config.bounds.minX) / 2 - config.routeBoundaryMargin;
+  const reachCount = 8 + Math.floor(hashFloat(seed, 7001) * 4);
+  const segmentCount = Math.ceil(span / (config.routeSegmentLength * .70));
+  const basePerReach = Math.floor(segmentCount / reachCount);
+  const behaviors: MacroRouteBehavior[] = [];
+  const targets: number[] = [];
+  for (let index = 0; index < reachCount; index += 1) {
+    if (index === reachCount - 1) { behaviors.push("endpoint-approach"); targets.push(0); continue; }
+    const choice = hashFloat(seed, index, 7011), direction = hashFloat(seed, index, 7012) < .5 ? -1 : 1;
+    if (index >= reachCount - 2) { behaviors.push("recovery"); targets.push(0); }
+    else if (choice < .30) { behaviors.push("downstream"); targets.push((hashFloat(seed, index, 7013) * 2 - 1) * .18); }
+    else if (choice < .67) { behaviors.push(direction < 0 ? "diagonal-southwest" : "diagonal-southeast"); targets.push(direction * (.56 + hashFloat(seed, index, 7014) * .25)); }
+    else if (choice < .86) { behaviors.push(direction < 0 ? "traverse-west" : "traverse-east"); targets.push(direction * (1.36 + hashFloat(seed, index, 7015) * .10)); }
+    else { behaviors.push("recovery"); targets.push(0); }
+  }
+  const raw: RiverControlPoint[] = [{ x: centre, z: config.bounds.maxZ }];
+  const reachEnds: number[] = [];
+  let heading = 0;
+  for (let reach = 0; reach < reachCount; reach += 1) {
+    const remainingSegments=segmentCount-raw.length+1,remainingReaches=reachCount-reach-1;
+    const desiredCount=basePerReach+Math.floor(hashFloat(seed,reach,7021)*7)-3;
+    const count=reach===reachCount-1?remainingSegments:Math.max(12,Math.min(desiredCount,remainingSegments-remainingReaches*12));
+    for (let local = 0; local < count; local += 1) {
+      const previous = raw.at(-1)!;
+      let target = targets[reach]!;
+      if (behaviors[reach] === "recovery" || behaviors[reach] === "endpoint-approach")
+        target = Math.atan2((centre - previous.x) * .65, Math.max(300, -config.bounds.minZ + previous.z));
+      if (Math.abs(previous.x - centre) > usableHalfWidth * .82)
+        target = Math.atan2((centre - previous.x) * .8, 900);
+      const maximumTurn = .045 + hashFloat(seed, reach, local, 7022) * .015;
+      heading += Math.max(-maximumTurn, Math.min(maximumTurn, target - heading));
+      raw.push({ x: previous.x + Math.sin(heading) * config.routeSegmentLength,
+        z: previous.z - Math.cos(heading) * config.routeSegmentLength });
+    }
+    reachEnds.push(raw.length - 1);
+  }
+  // Deterministic endpoint-budget correction is distributed over the whole route.
+  // It permits lateral reaches to spend little Z while preserving an exact exit.
+  const last = raw.at(-1)!, desiredX = centre, desiredZ = config.bounds.minZ;
+  const corrected = raw.map((point, index) => {
+    const progress = index / (raw.length - 1), eased = progress * progress * (3 - 2 * progress);
+    return { x: point.x + (desiredX - last.x) * eased, z: point.z + (desiredZ - last.z) * eased };
   });
+  const maximumOffset=Math.max(...corrected.map(point=>Math.abs(point.x-centre)));
+  const lateralScale=Math.min(1,usableHalfWidth*.90/Math.max(1,maximumOffset));
+  const controlPoints = Object.freeze(corrected.map(point=>Object.freeze({x:centre+(point.x-centre)*lateralScale,z:point.z})));
+  const reaches: MacroRouteReach[] = [];
+  let startIndex = 0;
+  for (let index = 0; index < reachCount; index += 1) {
+    const endIndex = reachEnds[index]!, start = controlPoints[startIndex]!, end = controlPoints[endIndex]!;
+    const dx = end.x - start.x, dz = end.z - start.z;
+    reaches.push(Object.freeze({ index, behavior: behaviors[index]!, start, end,
+      length: controlPoints.slice(startIndex + 1, endIndex + 1).reduce((sum, point, offset) => {
+        const before = controlPoints[startIndex + offset]!; return sum + Math.hypot(point.x - before.x, point.z - before.z);
+      }, 0), headingRadians: Math.atan2(dz, dx) }));
+    startIndex = endIndex;
+  }
   return Object.freeze({ algorithmVersion: RIVER_SPINE_ALGORITHM_VERSION, seed, margin: config.routeBoundaryMargin,
-    reaches: Object.freeze(reaches) });
+    reaches: Object.freeze(reaches), controlPoints });
 }
 
 /** Samples bounded world-space segments from the retained two-dimensional plan. */
 export function generateMacroControlPoints(config: RiverGenerationConfig, plan = generateMacroRoutePlan(config)): readonly RiverControlPoint[] {
-  const anchors = [plan.reaches[0]!.start, ...plan.reaches.map(reach => reach.end)];
-  // The plan's sparse behavior nodes are first joined by the same centripetal
-  // interpolant as the published spine. Arc-length sampling that guide turns each
-  // broad decision into a smoothly evolving sequence of bounded world segments.
-  const guide = new RiverSpine(anchors);
-  const count = Math.max(2, Math.round(guide.totalLength / config.routeSegmentLength));
-  return Object.freeze(Array.from({ length: count + 1 }, (_, index) => Object.freeze(guide.samplePosition(index / count))));
+  return plan.controlPoints;
 }
 
 function segmentLengths(points: readonly RiverControlPoint[]): number[] {
@@ -301,7 +329,7 @@ function segmentSeparation(a:RiverControlPoint,b:RiverControlPoint,c:RiverContro
 
 /** One-time topology check over deterministic arc-length samples of the actual smoothed curve. */
 export function validateSmoothedSpineSeparation(spine:RiverSpine,config:RiverGenerationConfig):SmoothedSeparationValidation {
-  const spacing=Math.min(2,config.resamplingSpacing),points=resample(spine,spacing),cellSize=config.selfSeparationDistance;
+  const spacing=Math.min(1,config.resamplingSpacing),points=resample(spine,spacing),cellSize=config.selfSeparationDistance;
   const cells=new Map<string,number[]>(),segments=points.length-1;
   const localReachDistance=config.selfSeparationDistance*2,checked=new Set<string>();let minimumDistance=Infinity;
   for(let index=0;index<segments;index+=1){
@@ -406,7 +434,11 @@ export function getWorldRiverGeneration(config: RiverGenerationConfig = DEFAULT_
     * (config.meanderAmplitudeRange[1] - config.meanderAmplitudeRange[0])) * scale;
   const meanderWavelength = config.meanderWavelengthRange[0] + hashFloat(seed, 8102)
     * (config.meanderWavelengthRange[1] - config.meanderWavelengthRange[0]);
-  const result = Object.freeze({ cacheKey, config: Object.freeze(config), macroControlPoints, macroRoutePlan,
+  Object.freeze(macroSpine);Object.freeze(meanderedSpine);
+  const retainedConfig=Object.freeze({...config,bounds:Object.freeze({...config.bounds}),
+    meanderWavelengthRange:Object.freeze([...config.meanderWavelengthRange] as [number,number]),
+    meanderAmplitudeRange:Object.freeze([...config.meanderAmplitudeRange] as [number,number])});
+  const result = Object.freeze({ cacheKey, config: retainedConfig, macroControlPoints, macroRoutePlan,
     macroResampledPoints: resample(macroSpine, config.resamplingSpacing), macroSpine,
     meanderedControlPoints, meanderedResampledPoints: resample(meanderedSpine, config.resamplingSpacing), meanderedSpine,
     sourceMacroCacheKey: cacheKey, meanderAmplitude, meanderWavelength, correctionApplied,

@@ -19,7 +19,10 @@ describe("deterministic chunk generation", () => {
   });
 
   it("changes with the seed", () => {
-    expect(generateChunk("alpine", { x: 0, z: 0 })).not.toEqual(generateChunk("coastal", { x: 0, z: 0 }));
+    const alpineCoordinate=dryChunkOutsideRiverInfluence("alpine"),coastalCoordinate=dryChunkOutsideRiverInfluence("coastal");
+    expect(getWorldRiverOwner("alpine").spine.queryRiverSegments({minX:alpineCoordinate.x*CHUNK_SIZE,maxX:(alpineCoordinate.x+1)*CHUNK_SIZE,minZ:alpineCoordinate.z*CHUNK_SIZE,maxZ:(alpineCoordinate.z+1)*CHUNK_SIZE},16)).toEqual([]);
+    expect(getWorldRiverOwner("coastal").spine.queryRiverSegments({minX:coastalCoordinate.x*CHUNK_SIZE,maxX:(coastalCoordinate.x+1)*CHUNK_SIZE,minZ:coastalCoordinate.z*CHUNK_SIZE,maxZ:(coastalCoordinate.z+1)*CHUNK_SIZE},16)).toEqual([]);
+    expect(generateChunk("alpine", alpineCoordinate)).not.toEqual(generateChunk("coastal", coastalCoordinate));
   });
 
   it("uses mathematical floor for negative world coordinates", () => {
@@ -80,12 +83,18 @@ describe("deterministic chunk generation", () => {
   });
 
   it("carves the world spine outside the old fixed river column", () => {
-    const point = riverReachOutsideLegacyColumn().position;
+    const seed=42,owner=getWorldRiverOwner(seed),context=createWorldRiverCarvingContext(owner.spine.bounds,owner.spine,owner.widthProfile);
+    const point=Array.from({length:399},(_,index)=>riverReachOutsideLegacyColumn(seed).progress+(index-199)*.0001)
+      .filter(progress=>progress>0&&progress<1).map(progress=>owner.spine.samplePosition(progress))
+      .find(candidate=>{const carving=sampleWorldRiverCarving(candidate.x,candidate.z,context);return carving?.insideChannel
+        &&sampleNaturalTerrainHeight(normalizeSeed(seed),candidate.x,candidate.z)>carving.targetBedHeight;});
+    expect(point,"fixture must find an actually lowered off-column channel point for the same seed-owned river").toBeDefined();
+    if(!point)throw new Error("missing lowered off-column point");
     expect(worldToChunk(point.x, point.z).x).not.toBe(0);
-    const sample = sampleWorldRiverCarving(point.x, point.z)!;
+    const sample = sampleWorldRiverCarving(point.x, point.z,context)!;
     expect(sample.insideChannel).toBe(true);
-    const natural = sampleNaturalTerrainHeight(42, point.x, point.z);
-    expect(sampleChannelTerrainHeight(42, point.x, point.z)).toBeLessThan(natural);
+    const natural = sampleNaturalTerrainHeight(normalizeSeed(seed), point.x, point.z);
+    expect(sampleChannelTerrainHeight(normalizeSeed(seed), point.x, point.z)).toBeLessThan(natural);
   });
 
 
