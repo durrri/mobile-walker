@@ -1,5 +1,6 @@
 import type { FixedSystem } from "../ecs/System";
 import { sampleTerrain } from "../world/terrainSampling";
+import type { ActiveTerrainSurfaceHit } from "../world/activeTerrainSurface";
 import { resolveTreeTrunkMovement } from "../world/treeCollision";
 import { sampleWetlandSpeedMultiplier } from "../world/wetlands";
 import type { InputController } from "./InputController";
@@ -98,7 +99,7 @@ export class StructureCollisionSystem implements FixedSystem {
 
 /** Grounds moving entities on the generated terrain, including river beds. */
 export class TerrainSamplingSystem implements FixedSystem {
-  constructor(private readonly seed: number | string) {}
+  constructor(private readonly seed: number | string, private readonly activeTerrain?: { queryActiveTerrainSurface(x: number, z: number): ActiveTerrainSurfaceHit | undefined }) {}
 
   fixedUpdate(world: Parameters<FixedSystem["fixedUpdate"]>[0]): void {
     for (const entity of world.entities) {
@@ -107,7 +108,19 @@ export class TerrainSamplingSystem implements FixedSystem {
         if (entity.jump) entity.jump.grounded = true;
         continue;
       }
-      const sample = sampleTerrain(this.seed, entity.transform.x, entity.transform.z);
+      let activeSample = this.activeTerrain?.queryActiveTerrainSurface(entity.transform.x, entity.transform.z);
+      if (!activeSample && this.activeTerrain) {
+        const restored = this.activeTerrain.queryActiveTerrainSurface(entity.previousTransform.x, entity.previousTransform.z);
+        if (restored) {
+          entity.transform.x = entity.previousTransform.x;
+          entity.transform.z = entity.previousTransform.z;
+          activeSample = restored;
+        } else {
+          if (entity.jump) entity.jump.grounded = false;
+          continue;
+        }
+      }
+      const sample = activeSample ?? sampleTerrain(this.seed, entity.transform.x, entity.transform.z);
       const groundY = sample.height + entity.terrainFollower.heightOffset;
       if (entity.transform.y <= groundY && (!entity.velocity || entity.velocity.y <= 0)) {
         entity.transform.y = groundY;

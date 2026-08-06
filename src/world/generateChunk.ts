@@ -21,6 +21,7 @@ import { generatePois, isVegetationExcluded, type GeneratedPoi, type PoiDebugCan
 import { generateWetlandPools, type WetlandPoolPlacement } from "./wetlands";
 import { placeCollectibles, type CollectiblePlacement } from "./collectibles";
 import { generateBridges, type BridgeCrossingCandidate, type GeneratedBridge } from "./bridges";
+import { createActiveTerrainSurfaceIndex, type ActiveTerrainSurfaceIndex } from "./activeTerrainSurface";
 import { validateStructureDefinition } from "./structureTypes";
 import {
   DEFAULT_TERRAIN_OCCLUSION_OPTIONS,
@@ -87,6 +88,8 @@ export interface GeneratedChunkData {
   readonly terrainOcclusion: readonly number[];
   /** Presentation-neutral buffers baked off-thread and transferred without cloning. */
   readonly terrainMesh: { readonly positions: Float32Array; readonly indices: Uint16Array; readonly normals: Float32Array };
+  /** Immutable runtime terrain query index derived from the same buffers used for rendering. */
+  readonly terrainSurfaceIndex: ActiveTerrainSurfaceIndex;
   readonly terrainMaximumDarkening: number;
   readonly terrainVerticesPerSide: number;
   /** Explicit coarse regions used when a rectangular grid would overlap the river channel. */
@@ -110,6 +113,7 @@ export interface ChunkGenerationStageTimings {
   terrainFieldMs: number;
   poiAndBridgeMs: number;
   terrainTriangulationMs: number;
+  terrainQueryIndexMs: number;
   objectPlacementMs: number;
   totalMs: number;
 }
@@ -385,6 +389,9 @@ export function generateChunk(
   }
   for(let i=0;i<normals.length;i+=3){const length=Math.hypot(normals[i]!,normals[i+1]!,normals[i+2]!)||1;normals[i]!/=length;normals[i+1]!/=length;normals[i+2]!/=length;}
   const triangulationFinished = diagnostics ? performance.now() : 0;
+  const indexStarted = diagnostics ? performance.now() : 0;
+  const terrainSurfaceIndex = createActiveTerrainSurfaceIndex({ positions, indices, coordinate, size: CHUNK_SIZE });
+  const indexFinished = diagnostics ? performance.now() : 0;
   const pines = generateTrees(seed, coordinate, exclusionZones, riverEnvironmentContext);
   const collectibles = placeCollectibles(seed, coordinate, exclusionZones, riverEnvironmentContext);
   const vegetation = generateVegetation(seed, coordinate, exclusionZones, riverEnvironmentContext);
@@ -401,6 +408,7 @@ export function generateChunk(
     terrainBiomeWeights,
     terrainOcclusion,
     terrainMesh: { positions, indices, normals },
+    terrainSurfaceIndex,
     terrainMaximumDarkening: occlusionOptions.maximumDarkening,
     terrainVerticesPerSide: verticesPerSide,
     irregularTerrain,
@@ -417,7 +425,8 @@ export function generateChunk(
     terrainFieldMs: terrainFieldFinished - generationStarted,
     poiAndBridgeMs: structuresFinished - terrainFieldFinished,
     terrainTriangulationMs: triangulationFinished - structuresFinished,
-    objectPlacementMs: objectsFinished - triangulationFinished,
+    terrainQueryIndexMs: indexFinished - indexStarted,
+    objectPlacementMs: objectsFinished - indexFinished,
     totalMs: objectsFinished - generationStarted,
   });
   return result;

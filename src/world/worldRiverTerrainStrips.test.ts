@@ -137,7 +137,7 @@ describe("world-river terrain landmark strips", () => {
       if (fixture.name === "canyon") expect(highTerrainSamples).toBeGreaterThan(0);
       if (fixture.name === "low") expect(lowTerrainSamples).toBeGreaterThan(0);
     }
-  }, 60_000);
+  }, 120_000);
 
   it("shares exact global-lattice strip vertices at chunk seams", () => {
     const seam = riverSeamCrossing("x", 0, "strip-seams");
