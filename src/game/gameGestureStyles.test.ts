@@ -25,6 +25,7 @@ describe("game gesture styles", () => {
     expect(styles).toMatch(/--overlay-top:\s*calc\(max\(1rem, env\(safe-area-inset-top\)\) \+ 3rem\);/);
     expect(styles).toMatch(/--overlay-bottom-clearance:\s*max\(1rem, env\(safe-area-inset-bottom\)\);/);
     expect(styles).toMatch(/max-height:\s*calc\(var\(--overlay-viewport-height\) - var\(--overlay-top\) - var\(--overlay-bottom-clearance\)\);/);
+    expect(styles).toMatch(/--overlay-content-bottom-clearance:\s*var\(--overlay-bottom-clearance\);/);
     expect(styles).toMatch(/padding-bottom:\s*var\(--overlay-content-bottom-clearance\);/);
   });
 });

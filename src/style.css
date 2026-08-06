@@ -2,7 +2,7 @@
   --overlay-viewport-height: 100vh;
   --overlay-top: calc(max(1rem, env(safe-area-inset-top)) + 3rem);
   --overlay-bottom-clearance: max(1rem, env(safe-area-inset-bottom));
-  --overlay-content-bottom-clearance: max(1rem, env(safe-area-inset-bottom));
+  --overlay-content-bottom-clearance: var(--overlay-bottom-clearance);
   color: #31473a;
   background: #d9ead8;
   font-family: Inter, ui-rounded, "SF Pro Rounded", system-ui, sans-serif;
@@ -148,7 +148,6 @@ input, textarea, select, [contenteditable="true"] {
   -webkit-touch-callout: default;
   touch-action: pan-y;
   overscroll-behavior-y: contain;
-  -webkit-overflow-scrolling: touch;
 }
 
 .debug-panel h2 { margin: 0 0 .75rem; font-size: .85rem; letter-spacing: .08em; text-transform: uppercase; }
