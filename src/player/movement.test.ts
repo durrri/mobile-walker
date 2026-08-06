@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import { integrateMovement, normalizeInput } from "./movement";
+import {
+  DEFAULT_MOVEMENT_SPEED_MULTIPLIER,
+  MAX_MOVEMENT_SPEED_MULTIPLIER,
+  MAX_PLAYER_SPEED,
+  PLAYER_SPEED,
+  constrainPlayerSpeed,
+  integrateMovement,
+  normalizeInput,
+  playerSpeedForMultiplier,
+  restoreMovementSpeedMultiplier,
+} from "./movement";
 
 describe("normalizeInput", () => {
   it("normalizes diagonal input to unit magnitude", () => {
@@ -17,6 +27,37 @@ describe("normalizeInput", () => {
 });
 
 describe("integrateMovement", () => {
+  it("uses the default speed and composes terrain multipliers", () => {
+    const velocity = { x: 0, y: 0, z: 0 };
+    const result = integrateMovement(
+      { x: 0, y: 1, z: 0, yaw: 0 },
+      { moveX: 1, moveZ: 0, active: true, jump: false },
+      velocity,
+      1,
+      playerSpeedForMultiplier(MAX_MOVEMENT_SPEED_MULTIPLIER),
+      true,
+      0.55,
+    );
+
+    expect(playerSpeedForMultiplier(DEFAULT_MOVEMENT_SPEED_MULTIPLIER)).toBe(PLAYER_SPEED);
+    expect(playerSpeedForMultiplier(MAX_MOVEMENT_SPEED_MULTIPLIER)).toBe(MAX_PLAYER_SPEED);
+    expect(result.x).toBeCloseTo(MAX_PLAYER_SPEED * 0.55);
+  });
+
+  it("restores only valid stored movement speed preferences", () => {
+    expect(restoreMovementSpeedMultiplier(String(MAX_MOVEMENT_SPEED_MULTIPLIER))).toBe(MAX_MOVEMENT_SPEED_MULTIPLIER);
+    for (const value of [null, "not-a-number", "1.5", "0", "9", "Infinity"]) {
+      expect(restoreMovementSpeedMultiplier(value)).toBe(DEFAULT_MOVEMENT_SPEED_MULTIPLIER);
+    }
+  });
+
+  it("keeps the movement-speed API finite and within collision-safe bounds", () => {
+    expect(constrainPlayerSpeed(Number.NaN)).toBe(PLAYER_SPEED);
+    expect(constrainPlayerSpeed(Number.POSITIVE_INFINITY)).toBe(PLAYER_SPEED);
+    expect(constrainPlayerSpeed(-1)).toBe(PLAYER_SPEED);
+    expect(constrainPlayerSpeed(MAX_PLAYER_SPEED * 2)).toBe(MAX_PLAYER_SPEED);
+  });
+
   it("preserves yaw while input is inactive", () => {
     const velocity = { x: 9, y: 9, z: 9 };
     const result = integrateMovement(

@@ -5,6 +5,13 @@ const html = readFileSync(new URL("../../index.html", import.meta.url), "utf8");
 const main = readFileSync(new URL("../main.ts", import.meta.url), "utf8");
 
 describe("camera settings UI", () => {
+  it("puts a persisted player movement speed slider at the top of settings", () => {
+    expect(html).toMatch(/<h2>Settings<\/h2>\s*<fieldset>\s*<legend>Movement<\/legend>/);
+    expect(html).toContain('id="movement-speed" type="range" min="1" max="8" value="1" step="1"');
+    expect(main).toContain('MOVEMENT_SPEED_STORAGE_KEY');
+    expect(main).toContain("game.setPlayerMovementSpeed(playerSpeedForMultiplier(multiplier))");
+  });
+
   it("exposes horizontal accessible orientation choices with selected state", () => {
     expect(html).toContain('id="camera-orientation" role="radiogroup"');
     expect(html).toMatch(/role="radio" aria-checked="true" data-value="north-locked">North/);

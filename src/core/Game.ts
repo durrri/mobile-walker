@@ -14,6 +14,7 @@ import type { SunlightAngles } from "../rendering/ThreeRenderer";
 import type { PoiDebugPresentationSystem } from "../game/poiDebug";
 import type { CameraOrientationMode, FollowResponsiveness } from "../game/cameraOrientation";
 import type { RiverSpineDebugMode, RiverSpineDebugView } from "../game/riverSpineDebug";
+import type { PlayerMovementSystem } from "../player/systems";
 
 export class Game {
   private readonly renderer: ThreeRenderer;
@@ -27,6 +28,7 @@ export class Game {
   private readonly persistence: PersistenceSystem;
   private readonly exploration: ExplorationPresentationSystem;
   private readonly playerShadow: import("three").Mesh;
+  private readonly playerMovement: PlayerMovementSystem;
   private readonly riverSpineDebug: RiverSpineDebugView;
   private readonly cameraDetails: HTMLOutputElement;
   private readonly performanceView: HTMLOutputElement;
@@ -47,6 +49,7 @@ export class Game {
     this.persistence = gameplay.persistence;
     this.exploration = gameplay.exploration;
     this.playerShadow = gameplay.playerShadow;
+    this.playerMovement = gameplay.playerMovement;
     this.riverSpineDebug = gameplay.riverSpineDebug;
     const cameraDetails = document.querySelector<HTMLOutputElement>("#camera-details");
     const performanceView = document.querySelector<HTMLOutputElement>("#performance-view");
@@ -106,6 +109,10 @@ export class Game {
 
   setMovementYawStrength(degrees: number): void {
     this.cameraPresentation.setMovementYawStrength(degrees);
+  }
+
+  setPlayerMovementSpeed(speed: number): void {
+    this.playerMovement.setSpeed(speed);
   }
 
   setCameraOrientationMode(mode: CameraOrientationMode): void {

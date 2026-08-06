@@ -12,6 +12,7 @@ import {
   TREE_TRUNK_TANGENTIAL_RETENTION,
   treeCollisionCacheDiagnostics,
 } from "./treeCollision";
+import { MAX_PLAYER_SPEED } from "../player/movement";
 import { generateLeafTrees, LEAF_TREE_TRUNK_RADIUS } from "./vegetation";
 
 describe("resolveTreeTrunkMovement", () => {
@@ -29,6 +30,17 @@ describe("resolveTreeTrunkMovement", () => {
     const resolved = resolveTreeTrunkMovement(seed, from, to);
     expect(resolved.x).toBeCloseTo(tree.x - radius - TREE_TRUNK_SEPARATION_EPSILON, 3);
     expect(resolved.z).toBeCloseTo(tree.z, 1);
+  });
+
+  it("blocks a maximum-speed fixed step through a tree trunk", () => {
+    const radius = PLAYER_COLLISION_RADIUS + TREE_TRUNK_RADIUS * tree.scale;
+    const from: TransformComponent = { x: tree.x - radius - 0.04, y: tree.y + 0.76, z: tree.z, yaw: 0 };
+    const resolved = resolveTreeTrunkMovement(seed, from, {
+      ...from,
+      x: from.x + MAX_PLAYER_SPEED / 60,
+    });
+
+    expect(resolved.x).toBeLessThan(tree.x - radius);
   });
 
   it("blocks movement into a generated leaf tree trunk", () => {
