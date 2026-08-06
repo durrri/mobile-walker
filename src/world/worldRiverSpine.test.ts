@@ -40,7 +40,7 @@ describe("world-owned river spine", () => {
 
   it("has bounded overshoot and no sampled self-intersection", () => {
     const samples=Array.from({length:201},(_,i)=>worldRiverSpine.samplePosition(i/200));
-    for(const point of samples){expect(point.x).toBeGreaterThanOrEqual(-160);expect(point.x).toBeLessThanOrEqual(160);expect(point.z).toBeGreaterThanOrEqual(-3001);expect(point.z).toBeLessThanOrEqual(1);}
+    for(const point of samples){expect(point.x).toBeGreaterThanOrEqual(-2000);expect(point.x).toBeLessThanOrEqual(2000);expect(point.z).toBeGreaterThanOrEqual(-10001);expect(point.z).toBeLessThanOrEqual(1);}
     for(let a=0;a<samples.length-1;a+=1)for(let b=a+2;b<samples.length-1;b+=1)expect(intersects(samples[a]!,samples[a+1]!,samples[b]!,samples[b+1]!)).toBe(false);
   });
 

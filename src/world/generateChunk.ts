@@ -251,10 +251,21 @@ export function generateChunk(
     const offsets = worldRiverTerrainStripOffsets();
     const globalFrames = worldRiverTerrainStripFrames(riverOwner.spine, riverOwner.identity);
     const frameCount = globalFrames.length - 1;
+    // Convert the bounded spine-index query into the small set of global strip
+    // lattice intervals that can actually touch this chunk. Previously every
+    // river chunk rebuilt every offset across the complete 10 km spine.
+    const activeFrameStarts=new Set<number>();
+    const stripMargin=Math.max(...offsets.map(Math.abs))+8;
+    for(const segment of riverOwner.spine.queryRiverSegments({minX,maxX:minX+CHUNK_SIZE,minZ,maxZ:minZ+CHUNK_SIZE},stripMargin)){
+      const first=Math.max(0,Math.floor(segment.start.distance/WORLD_RIVER_TERRAIN_STRIP_SAMPLE_SPACING)-8);
+      const last=Math.min(frameCount-1,Math.ceil(segment.end.distance/WORLD_RIVER_TERRAIN_STRIP_SAMPLE_SPACING)+8);
+      for(let frame=first;frame<=last;frame++)activeFrameStarts.add(frame);
+    }
+    const activeFrames=[...new Set([...activeFrameStarts].flatMap(frame=>[frame,frame+1]))].sort((a,b)=>a-b);
     const guides = new Map<number, { x: number; z: number }[]>();
     for (const offset of offsets) {
       const guide: { x: number; z: number }[] = [];
-      for (let frameIndex = 0; frameIndex <= frameCount; frameIndex++) {
+      for (const frameIndex of activeFrames) {
         const frame = globalFrames[frameIndex]!;
         const localHalf = sampleRiverWidth(riverOwner.widthProfile,
           Math.min(frameIndex * WORLD_RIVER_TERRAIN_STRIP_SAMPLE_SPACING, riverOwner.spine.totalLength),riverOwner.spine).halfWidth;
@@ -264,7 +275,7 @@ export function generateChunk(
         const localOffset = Math.sign(offset) * magnitude;
         const point = { x: frame.position.x + frame.normal.x * localOffset,
           z: frame.position.z + frame.normal.z * localOffset };
-        guide.push(point);
+        guide[frameIndex]=point;
         addVertex(point.x, point.z, localOffset);
       }
       guides.set(offset, guide);
@@ -321,7 +332,7 @@ export function generateChunk(
     for (let cross = 0; cross < offsets.length - 1; cross++) {
       const aOffset = offsets[cross]!, bOffset = offsets[cross + 1]!;
       const aGuide = guides.get(aOffset)!, bGuide = guides.get(bOffset)!;
-      for (let frame = 0; frame < frameCount; frame++) {
+      for (const frame of activeFrameStarts) {
         const a = { ...aGuide[frame]!, offset: aOffset }, b = { ...aGuide[frame + 1]!, offset: aOffset };
         const c = { ...bGuide[frame]!, offset: bOffset }, d = { ...bGuide[frame + 1]!, offset: bOffset };
         const xs = [a.x, b.x, c.x, d.x], zs = [a.z, b.z, c.z, d.z];

@@ -83,12 +83,38 @@ describe("world-river terrain landmark strips", () => {
   });
 
   it("keeps coarser bank triangle interiors close to the authoritative movement field", () => {
+    const ordinarySeed="strip-interiors-ordinary",ordinaryOwner=getWorldRiverOwner(ordinarySeed);
+    const ordinaryCandidate=Array.from({length:361},(_,index)=>(index+20)/400).map(progress=>{
+      const frame=ordinaryOwner.spine.sampleFrame(progress),half=ordinaryOwner.widthProfile.sampleAtProgress(progress).halfWidth;
+      const heights=[-1,1].flatMap(side=>[1.1,2,4].map(offset=>sampleNaturalTerrainHeight(ordinaryOwner.seed,
+        frame.position.x+frame.normal.x*side*(half+offset),frame.position.z+frame.normal.z*side*(half+offset))));
+      return{progress,relief:Math.max(...heights)-Math.min(...heights)};
+    }).sort((a,b)=>a.relief-b.relief)[0]!;
+    expect(ordinaryCandidate.relief,"derived ordinary fixture must have a moderate local natural-terrain relief").toBeLessThan(1.5);
+    const canyonSeed="strip-interiors-canyon",canyonOwner=getWorldRiverOwner(canyonSeed),canyonContext=createWorldRiverCarvingContext(canyonOwner.spine.bounds,canyonOwner.spine,canyonOwner.widthProfile);
+    const canyonCandidate=Array.from({length:361},(_,index)=>(index+20)/400).map(progress=>{
+      const frame=canyonOwner.spine.sampleFrame(progress),half=canyonOwner.widthProfile.sampleAtProgress(progress).halfWidth;
+      const samples=[-1,1].flatMap(side=>[1.1,2,4].map(offset=>{const x=frame.position.x+frame.normal.x*side*(half+offset),z=frame.position.z+frame.normal.z*side*(half+offset),carving=sampleWorldRiverCarving(x,z,canyonContext)!;
+        return{natural:sampleNaturalTerrainHeight(canyonOwner.seed,x,z),target:carving.targetBankHeight};}));
+      return{progress,relief:Math.max(...samples.map(sample=>sample.natural))-Math.min(...samples.map(sample=>sample.natural)),high:samples.some(sample=>sample.natural>sample.target+.5)};
+    }).filter(candidate=>candidate.high).sort((a,b)=>a.relief-b.relief)[0];
+    expect(canyonCandidate,"derived canyon fixture must contain terrain above its target bank").toBeDefined();
+    if(!canyonCandidate)throw new Error("missing derived canyon fixture");
+    const lowSeed="wetland",lowOwner=getWorldRiverOwner(lowSeed),lowContext=createWorldRiverCarvingContext(lowOwner.spine.bounds,lowOwner.spine,lowOwner.widthProfile);
+    const lowProgress=Array.from({length:401},(_,index)=>index/400).find(progress=>{
+      const frame=lowOwner.spine.sampleFrame(progress),half=lowOwner.widthProfile.sampleAtProgress(progress).halfWidth;
+      return [-1,1].some(side=>{const x=frame.position.x+frame.normal.x*side*(half+WORLD_RIVER_CARVING.bankWidth),z=frame.position.z+frame.normal.z*side*(half+WORLD_RIVER_CARVING.bankWidth);
+        const sample=sampleWorldRiverCarving(x,z,lowContext);
+        return sample&&sampleNaturalTerrainHeight(lowOwner.seed,x,z)<sample.targetBankHeight-.05;});
+    });
+    expect(lowProgress,"derived low fixture must contain terrain below its target bank").toBeDefined();
+    if(lowProgress===undefined)throw new Error("missing derived low-bank fixture");
     const fixtures = [
-      { name: "ordinary", seed: "strip-interiors-ordinary", coordinate: riverChunkAtProgress(.5, "strip-interiors-ordinary") },
-      { name: "low", seed: "wetland", coordinate: riverChunkAtProgress(.5, "wetland") },
+      { name: "ordinary", seed: ordinarySeed, coordinate: riverChunkAtProgress(ordinaryCandidate.progress, ordinarySeed) },
+      { name: "low", seed: lowSeed, coordinate: riverChunkAtProgress(lowProgress, lowSeed) },
       { name: "curved", seed: "strip-interiors-curved", coordinate: riverChunkAtProgress(strongestCurvatureProgress("strip-interiors-curved"), "strip-interiors-curved") },
       { name: "seam", seed: "strip-interiors-seam", coordinate: riverSeamCrossing("z", 32, "strip-interiors-seam").a },
-      { name: "canyon", seed: "strip-interiors-canyon", coordinate: riverChunkAtProgress(.5, "strip-interiors-canyon") },
+      { name: "canyon", seed: canyonSeed, coordinate: riverChunkAtProgress(canyonCandidate.progress, canyonSeed) },
     ] as const;
     const barycentricSamples = [[1 / 3, 1 / 3, 1 / 3], [.6, .2, .2], [.2, .6, .2], [.2, .2, .6]] as const;
     // The handoff deliberately exposes the existing 2-wu coarse lattice in

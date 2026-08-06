@@ -18,11 +18,21 @@ const independentOrder = (coordinates: readonly { x: number; z: number }[]) => {
 
 describe("R6 extended river validation", () => {
   it("keeps smoothed macro and final topology separated across representative seeds", () => {
+    let eastRun=0,westRun=0,diagonalRun=0,downstreamRun=0,fallbacks=0;
+    const compositions=new Set<string>();
     for(const worldSeed of [1,2,3,5,8,13,21,34,55,89,144,233]){
       const generated=getWorldRiverGeneration({...DEFAULT_RIVER_GENERATION_CONFIG,worldSeed});
       expect(validateSmoothedSpineSeparation(generated.macroSpine,generated.config).valid).toBe(true);
       expect(validateSmoothedSpineSeparation(generated.meanderedSpine,generated.config).valid).toBe(true);
+      fallbacks+=Number(generated.usedFallback);compositions.add(generated.macroRoutePlan.reaches.map(reach=>reach.behavior).join(","));
+      let east=0,west=0,diagonal=0,downstream=0;
+      for(let distance=0;distance<=generated.macroSpine.totalLength;distance+=20){const tangent=generated.macroSpine.sampleTangent(generated.macroSpine.progressAtDistance(distance));
+        east=Math.abs(tangent.z)<.32&&tangent.x>.8?east+20:0;west=Math.abs(tangent.z)<.32&&tangent.x<-.8?west+20:0;
+        diagonal=Math.abs(tangent.x)>.45&&tangent.z<-.45?diagonal+20:0;downstream=Math.abs(tangent.x)<.3&&tangent.z<-.9?downstream+20:0;
+        eastRun=Math.max(eastRun,east);westRun=Math.max(westRun,west);diagonalRun=Math.max(diagonalRun,diagonal);downstreamRun=Math.max(downstreamRun,downstream);}
     }
+    expect(eastRun).toBeGreaterThan(400);expect(westRun).toBeGreaterThan(400);expect(diagonalRun).toBeGreaterThan(500);expect(downstreamRun).toBeGreaterThan(500);
+    expect(compositions.size).toBeGreaterThan(8);expect(fallbacks).toBeLessThanOrEqual(1);
   }, 120_000);
   it("compares independently generated snapshots across representative orders", () => {
     const coordinates = [...new Map(RIVER_R6_FIXTURES.map(f => [key(f.chunk), f.chunk])).values()];

@@ -1,70 +1,43 @@
 # River R7/R8 generation architecture
 
-## R7 macro route
+## Finite envelope and ownership
 
-Generation version 8 uses a bounded `[-96, 96] × [-128, 128]` corridor. The river enters the north
-boundary at `(0, 128)` and exits the south boundary at `(0, -128)`; outside that finite domain the
-existing spatial query simply reports no local segments. Equally spaced forward stations receive
-random-access, seed-hashed lateral targets. A squared-sine endpoint envelope and two deterministic
-relaxation passes retain broad direction changes while protecting endpoint headings. Monotonic station
-progress prevents reversal, loops, and control-polygon intersections by construction. There are no unbounded retries. Control-segment lengths are checked against the configured minimum/maximum and sampled curvature is checked against `macroCurvatureLimit`; rejection deterministically selects a straight boundary-to-boundary station fallback and records both the rejected guard and fallback reason.
+Generation version 12 uses the finite world envelope `[-2000, 2000] × [-10000, 0]`. The 10,000 units are the north-to-south endpoint displacement, not an arc-length cap. `WorldRiverOwner` creates one immutable seed-owned generation product per session: retained route plan, macro spine, final R8 spine, and authoritative width profile. Chunk order, caches, camera/debug state, and player movement do not enter generation. Production consumers share that owner's final-spine identity.
 
-The presentation-neutral `RiverSpine` applies centripetal Catmull–Rom smoothing, builds an arc-length
-lookup, and exposes immutable resampled points and a bounded spatial index. R7 remains available as
-`worldRiverMacroSpine`; the authored R6 route remains `authoredR6RiverSpine`.
+The complete immutable generation configuration is serialized as cache identity. `routeSegmentLength` is the nominal world-space step of the macro control polygon. `routeBoundaryMargin` is both the planner steering boundary and reserved influence clearance; the default 260 units exceeds worst configured R8 displacement, maximum water half-width, bank/falloff influence, and numerical clearance. Segment, curvature, separation, endpoint-protection, R8, resampling, and suitability fields are likewise active and cache-keyed.
 
-## Ownership and versioning
+## Procedural R7 route plan and authoritative smoothing
 
-The immutable configuration owns the seed, generation version, corridor, segment/curvature guards,
-resampling, and future meander ranges. Its complete serialized value (including explicit generation
-mode) is the generation cache key. `resetWorldRiverGenerationCaches` is diagnostic-only. Production constructs a `WorldRiverOwner` from the actual game seed. The owner retains one generation result, macro spine and final spine for that session. Chunks carry the same cache-key identity; terrain, water meshes, bridges, POIs, object exclusion, gameplay safety and debug receive the owner's final spine. Two seeds cannot share an owner or a geometry-dependent cache entry. Module-level reference aliases remain test diagnostics, not production ownership.
+R7 no longer uses fixed Z stations or a lightly perturbed anchor template. For each seed, keyed hashes of `(seed, algorithm version, reach index, local segment index, salt)` independently choose:
 
-Convenience point queries share one 256-entry LRU of chunk-bounded carving contexts keyed by the
-river-generation identity and chunk coordinate. Eviction changes lookup cost only: contexts are pure
-derivatives of an immutable spine. Streaming/chunk generation and safe-position scans instead build
-one appropriately bounded context and reuse it. Diagnostic reset and size APIs cover the LRU.
+- a reach count of 8–11;
+- each broad behavior and its direction;
+- quiet-downstream headings;
+- southeast/southwest diagonal headings;
+- occasional eastward or westward near-horizontal headings;
+- recovery and endpoint-approach reaches;
+- bounded transition rates and reach durations.
 
-## R8 meander layer
+No mutable random stream or retry loop is used. Behaviors are not compulsory per seed: composition, ordering, count, direction, duration, and heading vary. A bounded heading delta evolves the control polygon smoothly. Boundary recovery steers inward, while a deterministic smooth endpoint-budget correction distributes the remaining displacement across the route and reaches the exact south endpoint. A final deterministic lateral scale protects the configured internal margin without changing reach order.
 
-R8 first creates a seed-stable, inspectable set of regional activity belts separated by genuinely quiet
-macro reaches. Each belt records its macro-distance interval, fade lengths, strength, gentle/strong
-profile, wavelength, minimum target bend radius, and correction status. An optional suitability callback
-and stable suitability ID provide a future biome hook without coupling the domain generator to biomes.
+The retained plan's `controlPoints` are the **sole authoritative macro control polygon**. `RiverSpine` applies centripetal Catmull–Rom exactly once. There is no guide-spine/resample/second-smoothing approximation. Arc-length lookup, frame sampling, and the spatial index all derive from that one macro spine.
 
-Inside a gentle belt, a dominant sine and 16% harmonic form broad S-curves. Strong belts use a separate
-heading-controlled construction: a smooth local downstream reparameterization can briefly reverse
-heading while a larger lateral curve makes a deep bend, then both offsets return with zero-slope fades.
-`targetBendRadius` is profile intent metadata, not an acceptance guarantee. Acceptance is measured from the final one-unit resampling: sampled curvature must not exceed `curvatureGuard`, and the result reports `measuredMinimumBendRadius`. The permanent strong construction still exercises a 165-degree local heading reversal.
-The configured 48–80 unit wavelengths remain well above constant river width. A bounded global
-amplitude-reduction loop (75% per pass down to 2%) protects bounds, non-adjacent channel separation, and measured curvature deterministically. If reduction cannot satisfy a guard, the final layer falls back to a deterministic straight boundary spine; `usedFallback` and immutable correction reasons report the actual path taken. Endpoint protection is independent of every regional fade.
-After correction, a final acceptance gate deterministically resamples the actual Catmull–Rom spine at
-at most one-world-unit arc-length spacing and rechecks finite bounds, smoothed-curve separation,
-sampled curvature and finite non-zero frames. Separation uses a bounded spatial grid, ignores only
-samples within the same short local reach, and includes belt reconnections and endpoint approaches.
-A rejected product uses a deterministic straight boundary fallback, which is
-validated again before publication. `targetBendRadius` remains a per-region generation target;
-`curvatureGuard` and the reported `measuredMinimumBendRadius` are the enforced global guarantees.
-Macro and final buffers are stored directly; production carving, water, placement, bridges, POIs,
-navigation, and gameplay receive the session owner's final spine and never add local noise.
+## Meanders and enforced acceptance
 
-Detailed river debug renders the subdued grey R7 route, bright cyan R8 route, and at most 41 purple
-displacement connectors only in active belts. Orange cross-lines mark belt boundaries. Layers toggle
-independently and a compact metadata readout includes local strength/profile without exposing raw arrays.
+R8 remains a separate sparse regional layer in macro arc-length space. It adds local tangent/normal displacement only inside seed-keyed faded belts; it does not create R7's broad lateral route. Long gaps remain untouched. The longer river uses at most 18 belts with 90–180-unit wavelength configuration and bounded long-route control density.
 
-For generation version 8's reference seed, the 262.45-unit macro contains two gentle belts totaling
-111.13 units, no strong belt (strong belts are intentionally uncommon), and three quiet reaches of
-47.88, 43.66, and 59.78 units (151.32 total). The
-resulting final spine is 265.00 units. Other seeds vary belt lengths, strengths, profiles, and placement.
+Macro acceptance measures control-segment length, one-unit sampled curvature, finite endpoints/frames, bounds, and smoothed non-local separation. Final acceptance restores the previous `0.12` curvature guard and one-world-unit separation sampling. Separation and intersection checks use deterministic bounded spatial cells rather than a quadratic global scan. Bounded amplitude correction records explicit reasons. If acceptance still fails, the validated boundary-to-boundary centreline remains the deterministic emergency fallback.
 
-## Final performance validation
+Route behavior labels and regional target bend radii are planning metadata, not guarantees. Published geometry is guaranteed only by measured final acceptance.
 
-The final cache-cleared, seed-owned benchmark reports cold median/p95 milliseconds of dry
-192.50/221.23, diagonal 522.31/715.19, canyon 498.86/630.62, bridge 546.53/803.14, and
-POI-adjacent 497.17/621.44. Cached retained-data lookup remains effectively zero; gameplay queries
-are 0.059 ms median and safe-position searches 14.960 ms median. The largest median synchronous stage
-is 288.51 ms (diagonal constrained terrain triangulation). Smoothed topology validation remains a
-one-time owner-generation stage and never runs during these ordinary chunk-generation samples.
-River-owner lookup and spine generation do not run per chunk after session creation.
+## Bounded consumers and performance
 
-R6 is complete. R7 procedural macro path and R8 secondary meanders are complete, followed by R9
-variable width, R10 river-connected lakes, and R11 standalone-lake integration/final water rules.
+Water, width, carving, terrain strips, bridges, gameplay, collision, and debug operate in local tangent/normal frames. Terrain strip construction retains a global 0.5-unit lattice for seam identity, but a chunk now converts its bounded spine-index result into only the global frame intervals that can touch that chunk. The previous implementation rebuilt every offset over the complete 10 km frame array for every river chunk; that accidental full-spine work caused the reviewed multi-second constrained-chunk regression.
+
+Debug remains lazy, capped, presentation-only, and disposable. Its readout includes macro/final length, X occupancy, route/traverse counts, corrections, fallback state, and width diagnostics.
+
+## Measured behavior and limitations
+
+The default seed has meaningful lateral occupancy, sustained diagonals, and a sustained near-horizontal reach; the finite route arc length is greater than 10,000. Portfolio tests, rather than a fixed template, establish eastward and westward traverse capability, quiet/downstream and diagonal runs, varied compositions, separation, and a low fallback rate. Exact measurements are versioned test/benchmark output rather than authored coordinates.
+
+The planner deliberately favors safe, monotone-downstream topology; it can spend long distances nearly horizontal but does not currently create large upstream macro loops. Strong local reversals remain an uncommon R8 feature.

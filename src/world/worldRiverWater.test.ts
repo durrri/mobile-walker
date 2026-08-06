@@ -3,7 +3,7 @@ import { CHUNK_SIZE, worldToChunk } from "./chunkCoordinates";
 import { createWorldRiverCarvingContext, getReferenceRiverWidthProfile, WORLD_RIVER_CARVING } from "./worldRiverCarving";
 import { sampleChannelTerrainHeightInContext } from "./terrainSampling";
 import { worldRiverSpine } from "./worldRiverSpine";
-import { cornerNearRiverSeamCrossing, riverSeamCrossing } from "./riverProceduralFixtures";
+import { cornerNearRiverSeamCrossing, riverSeamCrossing, strongestCurvatureProgress } from "./riverProceduralFixtures";
 import {
   sampleWorldRiverWater, tessellateWorldRiverWater, tessellateWorldRiverWaterChunk,
   WORLD_RIVER_WATER_SAMPLE_SPACING,
@@ -143,10 +143,13 @@ describe("strongest bend geometry", () => {
   });
 
   it("keeps authoritative terrain below the water ribbon around the strongest bend", () => {
-    const carving = createWorldRiverCarvingContext(worldRiverSpine.bounds, worldRiverSpine);
-    const geometry = tessellateWorldRiverWater();
-    const start = worldRiverSpine.distanceAtProgress(0.32);
-    const end = worldRiverSpine.distanceAtProgress(0.55);
+    const progress=strongestCurvatureProgress(),frame=worldRiverSpine.sampleFrame(progress);
+    const bounds={minX:frame.position.x-48,maxX:frame.position.x+48,minZ:frame.position.z-48,maxZ:frame.position.z+48};
+    expect(worldRiverSpine.queryRiverSegments(bounds,8).length,"derived bend fixture must intersect its bounded water query").toBeGreaterThan(0);
+    const carving = createWorldRiverCarvingContext(bounds, worldRiverSpine);
+    const geometry = tessellateWorldRiverWater(bounds);
+    const start = worldRiverSpine.distanceAtProgress(Math.max(0,progress-.02));
+    const end = worldRiverSpine.distanceAtProgress(Math.min(1,progress+.02));
     let checked = 0;
     for (let index = 0; index < geometry.indices.length; index += 3) {
       const triangle = [0, 1, 2].map(offset => geometry.vertices[geometry.indices[index + offset]!]!);
