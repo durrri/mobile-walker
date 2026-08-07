@@ -10,7 +10,7 @@ export const AUTHORED_SUNRISE_END_HOURS = 6.5;
 export const AUTHORED_SOFT_MORNING_END_HOURS = 8;
 export const AUTHORED_NOON_HOURS = 12;
 export const AUTHORED_BROAD_DAYLIGHT_END_HOURS = 18;
-export const AUTHORED_LATE_EVENING_HOURS = 20;
+export const AUTHORED_SUNSET_START_HOURS = 20;
 export const AUTHORED_SUNSET_HOURS = 20.5;
 export const AUTHORED_DUSK_END_HOURS = 22;
 
@@ -57,7 +57,7 @@ const VISUAL_DAY_PHASES: readonly (readonly [number, number])[] = [
   [AUTHORED_SOFT_MORNING_END_HOURS, 0.36],
   [AUTHORED_NOON_HOURS, 0.5],
   [AUTHORED_BROAD_DAYLIGHT_END_HOURS, 0.7],
-  [AUTHORED_LATE_EVENING_HOURS, 0.8],
+  [AUTHORED_SUNSET_START_HOURS, 0.8],
   [AUTHORED_SUNSET_HOURS, 0.82],
   [AUTHORED_DUSK_END_HOURS, 0.89],
   [HOURS_PER_DAY, 1],
@@ -120,7 +120,7 @@ function phaseAt(hours: number): AuthoredDailyPhase {
   if (hours < AUTHORED_SUNRISE_END_HOURS) return "sunrise";
   if (hours < AUTHORED_SOFT_MORNING_END_HOURS) return "morning";
   if (hours < AUTHORED_BROAD_DAYLIGHT_END_HOURS) return "daylight";
-  if (hours < AUTHORED_LATE_EVENING_HOURS) return "evening";
+  if (hours < AUTHORED_SUNSET_START_HOURS) return "evening";
   if (hours < AUTHORED_SUNSET_HOURS) return "sunset";
   return "dusk";
 }
