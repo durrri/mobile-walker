@@ -47,6 +47,10 @@ describe("deriveEnvironmentLighting", () => {
     expect(sunrise.backgroundColor.red).toBeGreaterThan(midnight.backgroundColor.red);
     expect(Math.abs(noon.backgroundColor.green - noon.fogColor.green)).toBeLessThan(0.05);
     expect(Math.abs(midnight.backgroundColor.blue - midnight.fogColor.blue)).toBeLessThan(0.05);
+    expect(midnight.hemisphereIntensity).toBeCloseTo(0.39);
+    expect(midnight.hemisphereIntensity).toBeLessThan(noon.hemisphereIntensity);
+    expect(midnight.backgroundColor.red + midnight.backgroundColor.green + midnight.backgroundColor.blue)
+      .toBeLessThan(noon.backgroundColor.red + noon.backgroundColor.green + noon.backgroundColor.blue);
   });
 
   it("keeps extended evening direct light and shadows until the authored sunset", () => {
@@ -83,6 +87,20 @@ describe("deriveEnvironmentLighting", () => {
     expect(night.directLightIntensity).toBe(0);
     expect(night.solarShadowStrength).toBe(0);
     expect(night.hemisphereIntensity).toBeGreaterThan(0);
+  });
+
+  it("distinguishes violet-pink dawn from the strongly orange evening", () => {
+    const dawn = lightingAt(5.5 / 24);
+    const evening = lightingAt(20 / 24);
+    const daylight = lightingAt(12 / 24);
+
+    expect(dawn.hemisphereSkyColor.blue).toBeGreaterThan(dawn.hemisphereSkyColor.green);
+    expect(dawn.backgroundColor.blue).toBeGreaterThan(dawn.backgroundColor.green);
+    expect(evening.directLightColor.red - evening.directLightColor.blue)
+      .toBeGreaterThan(daylight.directLightColor.red - daylight.directLightColor.blue);
+    expect(evening.backgroundColor.red - evening.backgroundColor.blue)
+      .toBeGreaterThan(dawn.backgroundColor.red - dawn.backgroundColor.blue);
+    expect(evening.fogColor.red).toBeGreaterThan(evening.fogColor.blue);
   });
 
   it("keeps azimuth time-derived and noon elevation configured by EnvironmentTime", () => {

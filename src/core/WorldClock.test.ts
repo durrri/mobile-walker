@@ -43,10 +43,14 @@ describe("WorldClock", () => {
 describe("environment time model", () => {
   it("uses the configured noon maximum elevation and derives azimuth only from time", () => {
     const noon = deriveEnvironmentTime(0.5, { maximumNoonSolarElevationDegrees: 67 });
-    const afternoon = deriveEnvironmentTime(0.75, { maximumNoonSolarElevationDegrees: 67 });
+    const sunrise = deriveEnvironmentTime(AUTHORED_SUNRISE_HOURS / 24, { maximumNoonSolarElevationDegrees: 67 });
+    const sunset = deriveEnvironmentTime(AUTHORED_SUNSET_HOURS / 24, { maximumNoonSolarElevationDegrees: 67 });
     expect(noon.solarElevationDegrees).toBe(67);
     expect(noon.solarAzimuthDegrees).toBe(51);
-    expect(afternoon.solarAzimuthDegrees).toBeGreaterThan(noon.solarAzimuthDegrees);
+    expect(sunrise.solarAzimuthDegrees).toBeGreaterThan(90);
+    expect(sunrise.solarAzimuthDegrees).toBeLessThan(180);
+    expect(sunset.solarAzimuthDegrees).toBeGreaterThan(180);
+    expect(sunset.solarAzimuthDegrees).toBeLessThan(360);
   });
 
   it("is finite through the complete day and remains continuous at the wrap", () => {

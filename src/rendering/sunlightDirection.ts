@@ -17,7 +17,7 @@ export const BLOB_SHADOW_MAX_STRETCH = 2.4;
 // without allowing an unbounded blob-shadow displacement.
 export const BLOB_SHADOW_MAX_OFFSET_SCALE = 5.7;
 /** Static world shadows only need a geometry refresh once their direction visibly changes. */
-export const STATIC_SHADOW_GEOMETRY_ANGLE_THRESHOLD_DEGREES = 1.5;
+export const STATIC_SHADOW_GEOMETRY_ANGLE_THRESHOLD_DEGREES = 0.75;
 export const STATIC_SHADOW_GEOMETRY_ANGLE_THRESHOLD_RADIANS = THREE.MathUtils.degToRad(
   STATIC_SHADOW_GEOMETRY_ANGLE_THRESHOLD_DEGREES,
 );
