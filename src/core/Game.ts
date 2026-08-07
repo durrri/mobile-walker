@@ -16,6 +16,7 @@ import type { RiverSpineDebugMode, RiverSpineDebugView } from "../game/riverSpin
 import type { PlayerMovementSystem } from "../player/systems";
 import { WorldClock } from "./WorldClock";
 import type { EnvironmentTime } from "./environmentTime";
+import { deriveEnvironmentLighting } from "./environmentLighting";
 
 export class Game {
   private readonly renderer: ThreeRenderer;
@@ -41,6 +42,7 @@ export class Game {
   constructor(canvas: HTMLCanvasElement) {
     const world = createEcsWorld();
     this.renderer = new ThreeRenderer(canvas);
+    this.applyEnvironmentLighting(this.worldClock.state);
     this.systems = new SystemScheduler(world);
     const dragOrigin = document.querySelector<HTMLElement>("#drag-origin");
     if (!dragOrigin) throw new Error("The drag indicator could not be found.");
@@ -156,7 +158,13 @@ export class Game {
 
   private readonly saveProgress = (): void => { this.persistence.flush(); };
   private publishEnvironmentTime(): void {
-    this.environmentTimeListener?.(this.worldClock.state);
+    const environment = this.worldClock.state;
+    this.applyEnvironmentLighting(environment);
+    this.environmentTimeListener?.(environment);
+  }
+
+  private applyEnvironmentLighting(environment: EnvironmentTime): void {
+    this.renderer.setEnvironmentLighting(deriveEnvironmentLighting(environment));
   }
 
   private updateDebugReadouts(deltaSeconds: number): void {

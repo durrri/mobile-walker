@@ -46,11 +46,15 @@ through GitHub Actions.
 - `src/game/` composes the demo entities and presentation systems.
 
 `Game` owns the session's sole `WorldClock`. It advances only from game-loop
-deltas, so backgrounding pauses world time without catch-up. The pure
-environment-time model derives normalized phase, hours, solar phase, azimuth,
-and elevation; future lighting work consumes that model. The configurable noon
-maximum solar elevation is temporary lighting tuning, while azimuth comes only
-from world time.
+deltas, so backgrounding pauses world time without catch-up. `EnvironmentTime`
+is the pure time/solar-geometry model; `EnvironmentLightingModel` is the pure
+authored time-to-global-light conversion; and `ThreeRenderer` owns the mutable
+Three.js directional and hemisphere lights. `SunlightDirection` remains the
+shared solar direction for blob-shadow consumers. Night removes direct solar
+light and solar blob shadows while retaining authored cool ambient illumination.
+Sky, fog, and palette cycling remain deferred to N3. The configurable noon
+maximum solar elevation is the only solar-angle tuning, while azimuth comes
+only from world time.
 
 Player position, heading, and collected waypoints are restored from browser `localStorage`
 when the same generated world is opened again. A versioned, world-seed-scoped

@@ -23,8 +23,11 @@ const HORIZONTAL_EPSILON = 1e-6;
 export class SunlightDirection {
   private readonly value = new THREE.Vector3(-4, 8, 5).normalize();
   private readonly listeners = new Set<() => void>();
+  private readonly shadowStrengthListeners = new Set<() => void>();
+  private shadowStrength = 1;
 
   get direction(): THREE.Vector3 { return this.value; }
+  get solarShadowStrength(): number { return this.shadowStrength; }
 
   set(direction: THREE.Vector3): boolean {
     const normalized = direction.clone().normalize();
@@ -37,6 +40,19 @@ export class SunlightDirection {
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+
+  setSolarShadowStrength(strength: number): boolean {
+    const next = Number.isFinite(strength) ? THREE.MathUtils.clamp(strength, 0, 1) : 0;
+    if (Math.abs(next - this.shadowStrength) <= CHANGE_THRESHOLD) return false;
+    this.shadowStrength = next;
+    for (const listener of this.shadowStrengthListeners) listener();
+    return true;
+  }
+
+  subscribeSolarShadowStrength(listener: () => void): () => void {
+    this.shadowStrengthListeners.add(listener);
+    return () => this.shadowStrengthListeners.delete(listener);
   }
 }
 

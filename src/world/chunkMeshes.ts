@@ -113,6 +113,7 @@ export class ChunkMeshFactory {
   private readonly bridgeMeshes = new BridgeMeshFactory();
   private readonly sunlight: SunlightDirection;
   private readonly unsubscribeSunlight: () => void;
+  private readonly unsubscribeSolarShadowStrength: () => void;
   private readonly groups = new Set<THREE.Group>();
   private readonly disposedGeometries = new WeakSet<THREE.BufferGeometry>();
   private readonly terrainMaterial = new THREE.MeshStandardMaterial({
@@ -152,6 +153,10 @@ export class ChunkMeshFactory {
   constructor(sunlight = new SunlightDirection()) {
     this.sunlight = sunlight;
     this.unsubscribeSunlight = sunlight.subscribe(() => this.updateShadowBatches());
+    this.unsubscribeSolarShadowStrength = sunlight.subscribeSolarShadowStrength(() => {
+      this.blobShadowMaterial.opacity = 0.3 * sunlight.solarShadowStrength;
+    });
+    this.blobShadowMaterial.opacity = 0.3 * sunlight.solarShadowStrength;
   }
 
   create(data: GeneratedChunkData): THREE.Group {
@@ -217,6 +222,7 @@ export class ChunkMeshFactory {
 
   dispose(): void {
     this.unsubscribeSunlight();
+    this.unsubscribeSolarShadowStrength();
     this.poiMeshes.dispose();
     this.bridgeMeshes.dispose();
     this.terrainMaterial.dispose();

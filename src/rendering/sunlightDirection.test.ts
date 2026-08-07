@@ -76,6 +76,19 @@ describe("directional blob-shadow projection", () => {
     sunlight.set(new THREE.Vector3(4, 8, -5));
     expect(changed).toHaveBeenCalledTimes(1);
   });
+
+  it("publishes a bounded solar-shadow strength independently of direction", () => {
+    const sunlight = new SunlightDirection();
+    const changed = vi.fn();
+    sunlight.subscribeSolarShadowStrength(changed);
+
+    sunlight.setSolarShadowStrength(0);
+    sunlight.setSolarShadowStrength(-1);
+    sunlight.setSolarShadowStrength(2);
+
+    expect(sunlight.solarShadowStrength).toBe(1);
+    expect(changed).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("caster blob projection",()=>{

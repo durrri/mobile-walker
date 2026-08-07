@@ -4,7 +4,7 @@ import type { GameLoopCallbacks } from "./GameLoop";
 
 const fixtures = vi.hoisted(() => ({
   render: undefined as GameLoopCallbacks["render"] | undefined,
-  renderer: undefined as { render: ReturnType<typeof vi.fn>; setEnvironmentTime: ReturnType<typeof vi.fn> } | undefined,
+  renderer: undefined as { render: ReturnType<typeof vi.fn>; setEnvironmentLighting: ReturnType<typeof vi.fn> } | undefined,
 }));
 
 vi.mock("../ecs/createEcsWorld", () => ({ createEcsWorld: vi.fn(() => ({})) }));
@@ -32,7 +32,7 @@ vi.mock("../game/createGameplay", () => ({
 vi.mock("../rendering/ThreeRenderer", () => ({
   ThreeRenderer: class {
     readonly render = vi.fn();
-    readonly setEnvironmentTime = vi.fn();
+    readonly setEnvironmentLighting = vi.fn();
 
     constructor() {
       fixtures.renderer = this;
@@ -80,7 +80,7 @@ describe("Game world time", () => {
 
   afterEach(() => vi.unstubAllGlobals());
 
-  it("advances EnvironmentTime without driving the production renderer", () => {
+  it("applies WorldClock-derived lighting immediately and on each rendered frame", () => {
     const game = new Game({} as HTMLCanvasElement);
     const listener = vi.fn();
     game.setEnvironmentTimeListener(listener);
@@ -89,6 +89,6 @@ describe("Game world time", () => {
 
     expect(listener).toHaveBeenCalledTimes(2);
     expect(listener.mock.calls[1][0].timeOfDayHours).toBeGreaterThan(listener.mock.calls[0][0].timeOfDayHours);
-    expect(fixtures.renderer!.setEnvironmentTime).not.toHaveBeenCalled();
+    expect(fixtures.renderer!.setEnvironmentLighting).toHaveBeenCalledTimes(2);
   });
 });
