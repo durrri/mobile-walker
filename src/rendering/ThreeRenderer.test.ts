@@ -34,6 +34,13 @@ import { deriveEnvironmentLighting } from "../core/environmentLighting";
 import { deriveEnvironmentTime } from "../core/environmentTime";
 import { FOG_FAR_DISTANCE, FOG_NEAR_DISTANCE, MAX_DRAW_DISTANCE, sunlightPosition, ThreeRenderer } from "./ThreeRenderer";
 
+function expectColorToMatchHex(actual: THREE.Color, hex: number): void {
+  const expected = new THREE.Color(hex);
+  expect(actual.r).toBeCloseTo(expected.r);
+  expect(actual.g).toBeCloseTo(expected.g);
+  expect(actual.b).toBeCloseTo(expected.b);
+}
+
 class ResizeObserverStub {
   static instances: ResizeObserverStub[] = [];
   readonly disconnect = vi.fn();
@@ -127,12 +134,33 @@ describe("derived sunlight", () => {
     renderer.setEnvironmentLighting(lighting);
     expect(sunlight.position).toEqual(sunlightPosition(lighting));
     expect(sunlight.intensity).toBe(lighting.directLightIntensity);
-    expect(sunlight.color.r).toBeCloseTo(lighting.directLightColor.red);
+    expectColorToMatchHex(sunlight.color, 0xfff3dc);
     expect(hemisphere.intensity).toBe(lighting.hemisphereIntensity);
-    expect(hemisphere.color.b).toBeCloseTo(lighting.hemisphereSkyColor.blue);
-    expect(hemisphere.groundColor.g).toBeCloseTo(lighting.hemisphereGroundColor.green);
+    expectColorToMatchHex(hemisphere.color, 0xe0edf5);
+    expectColorToMatchHex(hemisphere.groundColor, 0x91a47c);
+    expectColorToMatchHex(renderer.scene.background as THREE.Color, 0xd9ead8);
+    expectColorToMatchHex((renderer.scene.fog as THREE.Fog).color, 0xd4e4d4);
     expect(renderer.sunlightDirection.direction).toEqual(sunlight.position.clone().normalize());
 
+    renderer.dispose();
+    vi.unstubAllGlobals();
+  });
+
+  it("retains background and fog instances while updating their colors", () => {
+    vi.stubGlobal("window", new EventTarget());
+    vi.stubGlobal("devicePixelRatio", 1);
+    vi.stubGlobal("ResizeObserver", undefined);
+    vi.stubGlobal("requestAnimationFrame", vi.fn(() => 1));
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    const renderer = new ThreeRenderer({ clientWidth: 320, clientHeight: 180, width: 0, height: 0 } as HTMLCanvasElement);
+    const background = renderer.scene.background;
+    const fog = renderer.scene.fog;
+
+    renderer.setEnvironmentLighting(deriveEnvironmentLighting(deriveEnvironmentTime(0, { maximumNoonSolarElevationDegrees: 51 })));
+
+    expect(renderer.scene.background).toBe(background);
+    expect(renderer.scene.fog).toBe(fog);
+    expect((background as THREE.Color).b).toBeGreaterThan((background as THREE.Color).r);
     renderer.dispose();
     vi.unstubAllGlobals();
   });

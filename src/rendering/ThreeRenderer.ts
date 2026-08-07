@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { getBlobShadowStats } from "./blobShadows";
 import { SunlightDirection } from "./sunlightDirection";
 import { createPlayerCentredFogController } from "./playerCentredFog";
-import type { EnvironmentLightingState } from "../core/environmentLighting";
+import type { EnvironmentColor, EnvironmentLightingState } from "../core/environmentLighting";
 
 const MAX_PIXEL_RATIO = 2;
 export const MAX_DRAW_DISTANCE = 225;
@@ -25,6 +25,10 @@ export function sunlightPosition(
   );
 }
 
+function setAuthoredColor(target: THREE.Color, color: EnvironmentColor): void {
+  target.setRGB(color.red, color.green, color.blue, THREE.SRGBColorSpace);
+}
+
 export class ThreeRenderer {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly resizeObserver: ResizeObserver | undefined;
@@ -37,15 +41,17 @@ export class ThreeRenderer {
   private readonly hemisphere = new THREE.HemisphereLight(0xffffff, 0xffffff, 0);
   readonly sunlightDirection = new SunlightDirection();
   readonly playerCentredFog;
+  private readonly backgroundColor = new THREE.Color(FOG_COLOR);
+  private readonly fog = new THREE.Fog(FOG_COLOR, FOG_NEAR_DISTANCE, FOG_FAR_DISTANCE);
   private submission = { currentMs: 0, maximumMs: 0, rollingMaximumMs: 0, samples: [] as { at: number; ms: number }[] };
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, MAX_PIXEL_RATIO));
-    this.scene.background = new THREE.Color(FOG_COLOR);
-    this.scene.fog = new THREE.Fog(FOG_COLOR, FOG_NEAR_DISTANCE, FOG_FAR_DISTANCE);
-    this.playerCentredFog = createPlayerCentredFogController(this.scene.fog);
+    this.scene.background = this.backgroundColor;
+    this.scene.fog = this.fog;
+    this.playerCentredFog = createPlayerCentredFogController(this.fog);
 
     this.camera.position.set(6, 5, 8);
     this.camera.lookAt(0, 0, 0);
@@ -79,22 +85,12 @@ export class ThreeRenderer {
   setEnvironmentLighting(lighting: EnvironmentLightingState): void {
     sunlightPosition(lighting, this.sunlight.position);
     this.sunlight.intensity = lighting.directLightIntensity;
-    this.sunlight.color.setRGB(
-      lighting.directLightColor.red,
-      lighting.directLightColor.green,
-      lighting.directLightColor.blue,
-    );
+    setAuthoredColor(this.sunlight.color, lighting.directLightColor);
     this.hemisphere.intensity = lighting.hemisphereIntensity;
-    this.hemisphere.color.setRGB(
-      lighting.hemisphereSkyColor.red,
-      lighting.hemisphereSkyColor.green,
-      lighting.hemisphereSkyColor.blue,
-    );
-    this.hemisphere.groundColor.setRGB(
-      lighting.hemisphereGroundColor.red,
-      lighting.hemisphereGroundColor.green,
-      lighting.hemisphereGroundColor.blue,
-    );
+    setAuthoredColor(this.hemisphere.color, lighting.hemisphereSkyColor);
+    setAuthoredColor(this.hemisphere.groundColor, lighting.hemisphereGroundColor);
+    setAuthoredColor(this.backgroundColor, lighting.backgroundColor);
+    setAuthoredColor(this.fog.color, lighting.fogColor);
     this.sunlightDirection.set(this.sunlight.position);
     this.sunlightDirection.setSolarShadowStrength(lighting.solarShadowStrength);
   }
