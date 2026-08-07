@@ -96,7 +96,7 @@ export function deriveEnvironmentTime(
     authoredDailyPhase: dailySolarPhase.phase,
     visualDayPhase: dailySolarPhase.visualDayPhase,
     solarPhase: dailySolarPhase.solarPhase,
-    solarAzimuthDegrees: ((AUTHORED_NOON_AZIMUTH_DEGREES - 90 + dailySolarPhase.solarCycleProgress * DEGREES_PER_TURN) % DEGREES_PER_TURN + DEGREES_PER_TURN) % DEGREES_PER_TURN,
+    solarAzimuthDegrees: ((AUTHORED_NOON_AZIMUTH_DEGREES - 90 + dailySolarPhase.solarCycleProgress * DEGREES_PER_TURN / 2) % DEGREES_PER_TURN + DEGREES_PER_TURN) % DEGREES_PER_TURN,
     solarElevationDegrees: maximumNoonSolarElevationDegrees * dailySolarPhase.solarPhase,
     maximumNoonSolarElevationDegrees,
   });
