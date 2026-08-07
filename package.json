@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:pages": "tsc && vite build --mode github-pages",
+    "build:cloudflare": "tsc && vite build --mode cloudflare",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
     "test": "vitest run --exclude '**/*.extended.test.ts' --exclude '**/*.performance.test.ts'",

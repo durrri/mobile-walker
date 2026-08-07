@@ -11,7 +11,7 @@ It runs:
 1. `npm ci`
 2. `npm run typecheck`
 3. `npm test`
-4. `npm run build`
+4. `npm run build:cloudflare`
 5. `git diff --check`
 6. informational build-size reporting
 
