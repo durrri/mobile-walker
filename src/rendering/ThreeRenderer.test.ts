@@ -110,6 +110,22 @@ describe("ThreeRenderer resize synchronization", () => {
 });
 
 describe("derived sunlight", () => {
+  it("starts with the fixed authored daylight position", () => {
+    vi.stubGlobal("window", new EventTarget());
+    vi.stubGlobal("devicePixelRatio", 1);
+    vi.stubGlobal("ResizeObserver", undefined);
+    vi.stubGlobal("requestAnimationFrame", vi.fn(() => 1));
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    const canvas = { clientWidth: 320, clientHeight: 180, width: 0, height: 0 } as HTMLCanvasElement;
+    const renderer = new ThreeRenderer(canvas);
+    const sunlight = renderer.scene.children.find((object): object is THREE.DirectionalLight => object instanceof THREE.DirectionalLight)!;
+
+    expect(sunlight.position).toEqual(sunlightPosition({ solarElevationDegrees: 51, solarAzimuthDegrees: 51 }));
+
+    renderer.dispose();
+    vi.unstubAllGlobals();
+  });
+
   it.each([
     [0, -1, 0],
     [90, 0, 1],

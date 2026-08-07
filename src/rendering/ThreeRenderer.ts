@@ -10,6 +10,7 @@ export const FOG_NEAR_DISTANCE = 130;
 export const FOG_FAR_DISTANCE = 150;
 export const FOG_COLOR = 0xd9ead8;
 const SUNLIGHT_DISTANCE = 10;
+const AUTHORED_SUNLIGHT = { solarElevationDegrees: 51, solarAzimuthDegrees: 51 };
 
 export function sunlightPosition(environment: Pick<EnvironmentTime, "solarElevationDegrees" | "solarAzimuthDegrees">): THREE.Vector3 {
   const elevation = THREE.MathUtils.degToRad(THREE.MathUtils.clamp(environment.solarElevationDegrees, 0, 90));
@@ -46,6 +47,8 @@ export class ThreeRenderer {
     this.camera.position.set(6, 5, 8);
     this.camera.lookAt(0, 0, 0);
 
+    this.sunlight.position.copy(sunlightPosition(AUTHORED_SUNLIGHT));
+    this.sunlightDirection.set(this.sunlight.position);
     this.scene.add(new THREE.HemisphereLight(0xfff8e8, 0x9ebba5, 2.4));
     this.scene.add(this.sunlight);
 
