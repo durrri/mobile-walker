@@ -30,6 +30,8 @@ vi.mock("three", async (importOriginal) => {
   return { ...actual, WebGLRenderer };
 });
 
+import { deriveEnvironmentLighting } from "../core/environmentLighting";
+import { deriveEnvironmentTime } from "../core/environmentTime";
 import { FOG_FAR_DISTANCE, FOG_NEAR_DISTANCE, MAX_DRAW_DISTANCE, sunlightPosition, ThreeRenderer } from "./ThreeRenderer";
 
 class ResizeObserverStub {
@@ -110,7 +112,7 @@ describe("ThreeRenderer resize synchronization", () => {
 });
 
 describe("derived sunlight", () => {
-  it("starts with the fixed authored daylight position", () => {
+  it("applies global lights and shared sunlight direction from EnvironmentLightingState", () => {
     vi.stubGlobal("window", new EventTarget());
     vi.stubGlobal("devicePixelRatio", 1);
     vi.stubGlobal("ResizeObserver", undefined);
@@ -119,8 +121,17 @@ describe("derived sunlight", () => {
     const canvas = { clientWidth: 320, clientHeight: 180, width: 0, height: 0 } as HTMLCanvasElement;
     const renderer = new ThreeRenderer(canvas);
     const sunlight = renderer.scene.children.find((object): object is THREE.DirectionalLight => object instanceof THREE.DirectionalLight)!;
+    const hemisphere = renderer.scene.children.find((object): object is THREE.HemisphereLight => object instanceof THREE.HemisphereLight)!;
+    const lighting = deriveEnvironmentLighting(deriveEnvironmentTime(0.5, { maximumNoonSolarElevationDegrees: 51 }));
 
-    expect(sunlight.position).toEqual(sunlightPosition({ solarElevationDegrees: 51, solarAzimuthDegrees: 51 }));
+    renderer.setEnvironmentLighting(lighting);
+    expect(sunlight.position).toEqual(sunlightPosition(lighting));
+    expect(sunlight.intensity).toBe(lighting.directLightIntensity);
+    expect(sunlight.color.r).toBeCloseTo(lighting.directLightColor.red);
+    expect(hemisphere.intensity).toBe(lighting.hemisphereIntensity);
+    expect(hemisphere.color.b).toBeCloseTo(lighting.hemisphereSkyColor.blue);
+    expect(hemisphere.groundColor.g).toBeCloseTo(lighting.hemisphereGroundColor.green);
+    expect(renderer.sunlightDirection.direction).toEqual(sunlight.position.clone().normalize());
 
     renderer.dispose();
     vi.unstubAllGlobals();
@@ -137,6 +148,24 @@ describe("derived sunlight", () => {
 
     expect(position.x / Math.cos(THREE.MathUtils.degToRad(10))).toBeCloseTo(expectedX);
     expect(position.z / Math.cos(THREE.MathUtils.degToRad(10))).toBeCloseTo(expectedZ);
+  });
+
+  it("removes direct solar light and blob-shadow strength at night", () => {
+    vi.stubGlobal("window", new EventTarget());
+    vi.stubGlobal("devicePixelRatio", 1);
+    vi.stubGlobal("ResizeObserver", undefined);
+    vi.stubGlobal("requestAnimationFrame", vi.fn(() => 1));
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    const canvas = { clientWidth: 320, clientHeight: 180, width: 0, height: 0 } as HTMLCanvasElement;
+    const renderer = new ThreeRenderer(canvas);
+    const sunlight = renderer.scene.children.find((object): object is THREE.DirectionalLight => object instanceof THREE.DirectionalLight)!;
+
+    renderer.setEnvironmentLighting(deriveEnvironmentLighting(deriveEnvironmentTime(0, { maximumNoonSolarElevationDegrees: 51 })));
+
+    expect(sunlight.intensity).toBe(0);
+    expect(renderer.sunlightDirection.solarShadowStrength).toBe(0);
+    renderer.dispose();
+    vi.unstubAllGlobals();
   });
 
   it("uses elevation above the horizon and clamps it to 0–90°", () => {

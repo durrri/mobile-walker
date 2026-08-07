@@ -6,6 +6,7 @@ import {
 } from "./chunkMeshes";
 import { generateChunk } from "./generateChunk";
 import { SunlightDirection } from "../rendering/sunlightDirection";
+import { STATIC_SHADOW_GEOMETRY_ANGLE_THRESHOLD_DEGREES } from "../rendering/sunlightDirection";
 import { bridgeFixture, dryChunkOutsideRiverInfluence, riverChunkAtProgress, riverReachOutsideLegacyColumn, riverSeamCrossing } from "./riverProceduralFixtures";
 
 describe("river ribbon geometry", () => {
@@ -117,7 +118,7 @@ describe("pine tree geometry", () => {
     factory.dispose();
   });
 
-  it("does not rebuild resident instance matrices while sunlight is unchanged", () => {
+  it("only rebuilds resident instance matrices when visible sunlight crosses the static-shadow threshold", () => {
     const sunlight = new SunlightDirection();
     const factory = new ChunkMeshFactory(sunlight);
     const group = factory.create(generateChunk("forest-biomes", { x: -4, z: -4 }));
@@ -125,11 +126,37 @@ describe("pine tree geometry", () => {
     const shadows = group.getObjectByName("tree-shadows") as THREE.InstancedMesh;
     const setMatrixAt = vi.spyOn(shadows, "setMatrixAt");
 
-    sunlight.set(new THREE.Vector3(-4, 8, 5));
-    sunlight.set(new THREE.Vector3(-4, 8, 5));
+    sunlight.set(new THREE.Vector3(0, 1, 0));
+    setMatrixAt.mockClear();
+    const subThreshold = THREE.MathUtils.degToRad(STATIC_SHADOW_GEOMETRY_ANGLE_THRESHOLD_DEGREES / 2);
+    sunlight.set(new THREE.Vector3(Math.sin(subThreshold), Math.cos(subThreshold), 0));
     expect(setMatrixAt).not.toHaveBeenCalled();
-    sunlight.set(new THREE.Vector3(4, 8, -5));
+    const crossedThreshold = THREE.MathUtils.degToRad(STATIC_SHADOW_GEOMETRY_ANGLE_THRESHOLD_DEGREES + 0.1);
+    sunlight.set(new THREE.Vector3(Math.sin(crossedThreshold), Math.cos(crossedThreshold), 0));
     expect(setMatrixAt).toHaveBeenCalledTimes(shadows.count);
+
+    factory.disposeChunk(group);
+    factory.dispose();
+  });
+
+  it("does not rebuild static geometry at night and refreshes it with the sunrise direction", () => {
+    const sunlight = new SunlightDirection();
+    const factory = new ChunkMeshFactory(sunlight);
+    const group = factory.create(generateChunk("forest-biomes", { x: -4, z: -4 }));
+    factory.registerGroup(group);
+    const shadows = group.getObjectByName("tree-shadows") as THREE.InstancedMesh;
+    const setMatrixAt = vi.spyOn(shadows, "setMatrixAt");
+
+    sunlight.setSolarShadowStrength(0);
+    sunlight.set(new THREE.Vector3(1, 0.1, 0));
+    sunlight.set(new THREE.Vector3(-1, 0.1, 0));
+    expect(setMatrixAt).not.toHaveBeenCalled();
+
+    sunlight.setSolarShadowStrength(0.1);
+    expect(setMatrixAt).toHaveBeenCalledTimes(shadows.count);
+    setMatrixAt.mockClear();
+    sunlight.set(new THREE.Vector3(-1, 0.1, 0.01));
+    expect(setMatrixAt).not.toHaveBeenCalled();
 
     factory.disposeChunk(group);
     factory.dispose();

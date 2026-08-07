@@ -1,7 +1,7 @@
 import * as THREE from "three";
 
 import { createBlobShadowGeometry, createBlobShadowMaterial, createBuildingShadowGeometry, markBlobShadow, updateBuildingShadowGeometry } from "../rendering/blobShadows";
-import { blobShadowProjectionForCaster, SunlightDirection } from "../rendering/sunlightDirection";
+import { blobShadowProjectionForCaster, StaticShadowGeometryRefreshPolicy, SunlightDirection } from "../rendering/sunlightDirection";
 
 import { BIOME_DEBUG_COLORS, type BiomeId, type BiomeWeights } from "./biomes";
 import { TREE_TRUNK_RADIUS } from "./forest";
@@ -112,7 +112,9 @@ export class ChunkMeshFactory {
   private readonly poiMeshes = new PoiMeshFactory();
   private readonly bridgeMeshes = new BridgeMeshFactory();
   private readonly sunlight: SunlightDirection;
+  private readonly staticShadowRefresh: StaticShadowGeometryRefreshPolicy;
   private readonly unsubscribeSunlight: () => void;
+  private readonly unsubscribeSolarShadowStrength: () => void;
   private readonly groups = new Set<THREE.Group>();
   private readonly disposedGeometries = new WeakSet<THREE.BufferGeometry>();
   private readonly terrainMaterial = new THREE.MeshStandardMaterial({
@@ -151,7 +153,19 @@ export class ChunkMeshFactory {
 
   constructor(sunlight = new SunlightDirection()) {
     this.sunlight = sunlight;
-    this.unsubscribeSunlight = sunlight.subscribe(() => this.updateShadowBatches());
+    this.staticShadowRefresh = new StaticShadowGeometryRefreshPolicy(
+      sunlight.direction, sunlight.solarShadowStrength,
+    );
+    this.unsubscribeSunlight = sunlight.subscribe(() => {
+      if (this.staticShadowRefresh.shouldRefreshForDirection(sunlight.direction)) this.updateShadowBatches();
+    });
+    this.unsubscribeSolarShadowStrength = sunlight.subscribeSolarShadowStrength(() => {
+      if (this.staticShadowRefresh.shouldRefreshForShadowStrength(
+        sunlight.solarShadowStrength, sunlight.direction,
+      )) this.updateShadowBatches();
+      this.blobShadowMaterial.opacity = 0.3 * sunlight.solarShadowStrength;
+    });
+    this.blobShadowMaterial.opacity = 0.3 * sunlight.solarShadowStrength;
   }
 
   create(data: GeneratedChunkData): THREE.Group {
@@ -217,6 +231,7 @@ export class ChunkMeshFactory {
 
   dispose(): void {
     this.unsubscribeSunlight();
+    this.unsubscribeSolarShadowStrength();
     this.poiMeshes.dispose();
     this.bridgeMeshes.dispose();
     this.terrainMaterial.dispose();

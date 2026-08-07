@@ -11,6 +11,7 @@ export interface EnvironmentTime {
   /** -1 at local midnight, 0 at the horizon, and 1 at local noon. */
   readonly solarPhase: number;
   readonly solarAzimuthDegrees: number;
+  /** Signed authored solar elevation: negative values are below the horizon. */
   readonly solarElevationDegrees: number;
   readonly maximumNoonSolarElevationDegrees: number;
 }
@@ -37,7 +38,7 @@ export function deriveEnvironmentTime(
     timeOfDayHours: phase * HOURS_PER_DAY,
     solarPhase,
     solarAzimuthDegrees: ((AUTHORED_NOON_AZIMUTH_DEGREES + (phase - 0.5) * DEGREES_PER_TURN) % DEGREES_PER_TURN + DEGREES_PER_TURN) % DEGREES_PER_TURN,
-    solarElevationDegrees: maximumNoonSolarElevationDegrees * Math.max(0, solarPhase),
+    solarElevationDegrees: maximumNoonSolarElevationDegrees * solarPhase,
     maximumNoonSolarElevationDegrees,
   });
 }

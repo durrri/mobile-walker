@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { getBlobShadowStats } from "./blobShadows";
 import { SunlightDirection } from "./sunlightDirection";
 import { createPlayerCentredFogController } from "./playerCentredFog";
-import type { EnvironmentTime } from "../core/environmentTime";
+import type { EnvironmentLightingState } from "../core/environmentLighting";
 
 const MAX_PIXEL_RATIO = 2;
 export const MAX_DRAW_DISTANCE = 225;
@@ -10,13 +10,15 @@ export const FOG_NEAR_DISTANCE = 130;
 export const FOG_FAR_DISTANCE = 150;
 export const FOG_COLOR = 0xd9ead8;
 const SUNLIGHT_DISTANCE = 10;
-const AUTHORED_SUNLIGHT = { solarElevationDegrees: 51, solarAzimuthDegrees: 51 };
 
-export function sunlightPosition(environment: Pick<EnvironmentTime, "solarElevationDegrees" | "solarAzimuthDegrees">): THREE.Vector3 {
+export function sunlightPosition(
+  environment: Pick<EnvironmentLightingState, "solarElevationDegrees" | "solarAzimuthDegrees">,
+  target = new THREE.Vector3(),
+): THREE.Vector3 {
   const elevation = THREE.MathUtils.degToRad(THREE.MathUtils.clamp(environment.solarElevationDegrees, 0, 90));
   const azimuth = THREE.MathUtils.degToRad(THREE.MathUtils.euclideanModulo(environment.solarAzimuthDegrees, 360));
   const horizontalDistance = Math.cos(elevation) * SUNLIGHT_DISTANCE;
-  return new THREE.Vector3(
+  return target.set(
     -Math.cos(azimuth) * horizontalDistance,
     Math.sin(elevation) * SUNLIGHT_DISTANCE,
     Math.sin(azimuth) * horizontalDistance,
@@ -31,7 +33,8 @@ export class ThreeRenderer {
   private appliedHeight = -1;
   readonly scene = new THREE.Scene();
   readonly camera = new THREE.PerspectiveCamera(45, 1, 0.1, MAX_DRAW_DISTANCE);
-  private readonly sunlight = new THREE.DirectionalLight(0xfff1d6, 2.2);
+  private readonly sunlight = new THREE.DirectionalLight(0xffffff, 0);
+  private readonly hemisphere = new THREE.HemisphereLight(0xffffff, 0xffffff, 0);
   readonly sunlightDirection = new SunlightDirection();
   readonly playerCentredFog;
   private submission = { currentMs: 0, maximumMs: 0, rollingMaximumMs: 0, samples: [] as { at: number; ms: number }[] };
@@ -47,9 +50,9 @@ export class ThreeRenderer {
     this.camera.position.set(6, 5, 8);
     this.camera.lookAt(0, 0, 0);
 
-    this.sunlight.position.copy(sunlightPosition(AUTHORED_SUNLIGHT));
+    this.sunlight.position.set(0, SUNLIGHT_DISTANCE, 0);
     this.sunlightDirection.set(this.sunlight.position);
-    this.scene.add(new THREE.HemisphereLight(0xfff8e8, 0x9ebba5, 2.4));
+    this.scene.add(this.hemisphere);
     this.scene.add(this.sunlight);
 
     this.resizeObserver = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(this.resize);
@@ -73,9 +76,27 @@ export class ThreeRenderer {
 
   prepareWorldObject(object: THREE.Object3D): void { this.playerCentredFog.applyObject(object); }
 
-  setEnvironmentTime(environment: Pick<EnvironmentTime, "solarElevationDegrees" | "solarAzimuthDegrees">): void {
-    this.sunlight.position.copy(sunlightPosition(environment));
+  setEnvironmentLighting(lighting: EnvironmentLightingState): void {
+    sunlightPosition(lighting, this.sunlight.position);
+    this.sunlight.intensity = lighting.directLightIntensity;
+    this.sunlight.color.setRGB(
+      lighting.directLightColor.red,
+      lighting.directLightColor.green,
+      lighting.directLightColor.blue,
+    );
+    this.hemisphere.intensity = lighting.hemisphereIntensity;
+    this.hemisphere.color.setRGB(
+      lighting.hemisphereSkyColor.red,
+      lighting.hemisphereSkyColor.green,
+      lighting.hemisphereSkyColor.blue,
+    );
+    this.hemisphere.groundColor.setRGB(
+      lighting.hemisphereGroundColor.red,
+      lighting.hemisphereGroundColor.green,
+      lighting.hemisphereGroundColor.blue,
+    );
     this.sunlightDirection.set(this.sunlight.position);
+    this.sunlightDirection.setSolarShadowStrength(lighting.solarShadowStrength);
   }
 
   getPerformanceDetails(): { drawCalls: number; triangles: number; shadowDrawCalls: number; shadowTriangles: number } {

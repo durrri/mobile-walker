@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { createEcsWorld } from "../ecs/createEcsWorld";
 import { CHUNK_SIZE } from "../world/chunkCoordinates";
-import { CameraPresentationSystem } from "./presentationSystems";
+import { CameraPresentationSystem, PlayerShadowPresentationSystem } from "./presentationSystems";
 import { dampAngle, normalizeAngle, shortestAngleDifference } from "./cameraOrientation";
 
 function fixture(aspect = 16 / 9) {
@@ -28,6 +28,30 @@ describe("CameraPresentationSystem", () => {
     expect(system.getEffectiveYaw()).toBeCloseTo(heading);
     system.setCameraOrientationMode("follow-movement");
     expect(system.getMovementReferenceYaw()).toBeCloseTo(heading);
+  });
+
+  describe("PlayerShadowPresentationSystem", () => {
+    it("uses the current sunlight direction and shared solar-shadow strength every frame", () => {
+      const world = createEcsWorld();
+      const renderable = new THREE.Group();
+      renderable.position.set(2, 0, 4);
+      world.add({ renderable, playerControl: { moveX: 0, moveZ: 0, active: false, jump: false } });
+      const shadow = new THREE.Mesh(
+        new THREE.CircleGeometry(1, 8),
+        new THREE.MeshBasicMaterial({ transparent: true }),
+      );
+      const sunlight = { direction: new THREE.Vector3(0, 1, 0), solarShadowStrength: 1 };
+      const system = new PlayerShadowPresentationSystem("player-shadow-test", shadow, sunlight);
+
+      system.prepareRender(world);
+      const overheadX = shadow.position.x;
+      sunlight.direction.set(1, 1, 0).normalize();
+      sunlight.solarShadowStrength = 0.25;
+      system.prepareRender(world);
+
+      expect(shadow.position.x).toBeLessThan(overheadX);
+      expect((shadow.material as THREE.MeshBasicMaterial).opacity).toBeCloseTo(0.09);
+    });
   });
 
   it("starts at the configured default angle and zoom and smooths subsequent changes", () => {

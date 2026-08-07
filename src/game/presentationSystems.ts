@@ -42,8 +42,8 @@ export class PlayerShadowPresentationSystem implements RenderSystem {
   constructor(
     private readonly seed: number | string,
     private readonly shadow: THREE.Mesh,
-    private readonly sunlight: Pick<SunlightDirection, "direction"> =
-      { direction: new THREE.Vector3(-4, 8, 5).normalize() },
+    private readonly sunlight: Pick<SunlightDirection, "direction" | "solarShadowStrength"> =
+      { direction: new THREE.Vector3(-4, 8, 5).normalize(), solarShadowStrength: 1 },
   ) {}
 
   prepareRender(world: Parameters<RenderSystem["prepareRender"]>[0]): void {
@@ -55,6 +55,8 @@ export class PlayerShadowPresentationSystem implements RenderSystem {
     this.shadow.position.set(x + projection.directionX * offset, 0, z + projection.directionZ * offset);
     this.shadow.rotation.y = projection.rotationY;
     this.shadow.scale.set(0.58 * projection.stretch, 1, 0.43);
+    const material = this.shadow.material;
+    if (material instanceof THREE.MeshBasicMaterial) material.opacity = 0.36 * this.sunlight.solarShadowStrength;
     conformBlobShadowToTerrain(
       this.shadow,
       (sampleX, sampleZ) => sampleTerrainHeight(this.seed, sampleX, sampleZ),
