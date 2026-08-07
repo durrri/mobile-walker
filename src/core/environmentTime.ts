@@ -1,9 +1,11 @@
 /** Temporary day-length tuning for the authored lighting roadmap, not a gameplay decision. */
 export const WORLD_DAY_DURATION_SECONDS = 20 * 60;
 export const INITIAL_DAY_PHASE = 0.5;
+export const DEFAULT_MAXIMUM_NOON_SOLAR_ELEVATION_DEGREES = 45;
 const HOURS_PER_DAY = 24;
 const DEGREES_PER_TURN = 360;
-const AUTHORED_NOON_AZIMUTH_DEGREES = 51;
+/** Renderer/world-space angle: 90° places the sun at world +Z (south), not a compass bearing. */
+export const AUTHORED_NOON_AZIMUTH_DEGREES = 90;
 export const AUTHORED_PRE_DAWN_START_HOURS = 4.5;
 export const AUTHORED_SUNRISE_HOURS = 6;
 export const AUTHORED_SUNRISE_END_HOURS = 6.5;
@@ -35,6 +37,7 @@ export interface EnvironmentTime {
   readonly visualDayPhase: number;
   /** Negative below the horizon, zero at authored sunrise/sunset, and 1 at noon. */
   readonly solarPhase: number;
+  /** Game-native renderer/world-space angle, not a conventional compass bearing. */
   readonly solarAzimuthDegrees: number;
   /** Signed authored solar elevation: negative values are below the horizon. */
   readonly solarElevationDegrees: number;
@@ -42,7 +45,7 @@ export interface EnvironmentTime {
 }
 
 export interface EnvironmentTimeOptions {
-  readonly maximumNoonSolarElevationDegrees: number;
+  readonly maximumNoonSolarElevationDegrees?: number;
 }
 
 export function normalizeDayPhase(phase: number): number {
@@ -82,14 +85,14 @@ export function deriveAuthoredDailySolarPhase(timeOfDayHours: number): DailySola
   });
 }
 
-/** Pure authored time model; it deliberately contains no geographic astronomy. */
+/** Pure authored time model; its azimuth is a game-native world-space angle, not geographic astronomy. */
 export function deriveEnvironmentTime(
   normalizedDayPhase: number,
-  options: EnvironmentTimeOptions,
+  options: EnvironmentTimeOptions = {},
 ): EnvironmentTime {
   const phase = normalizeDayPhase(normalizedDayPhase);
   const timeOfDayHours = phase * HOURS_PER_DAY;
-  const maximumNoonSolarElevationDegrees = Math.min(90, Math.max(0, options.maximumNoonSolarElevationDegrees));
+  const maximumNoonSolarElevationDegrees = Math.min(90, Math.max(0, options.maximumNoonSolarElevationDegrees ?? DEFAULT_MAXIMUM_NOON_SOLAR_ELEVATION_DEGREES));
   const dailySolarPhase = deriveAuthoredDailySolarPhase(timeOfDayHours);
   return Object.freeze({
     normalizedDayPhase: phase,

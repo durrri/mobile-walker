@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import { WorldClock } from "./WorldClock";
 import {
+  AUTHORED_NOON_AZIMUTH_DEGREES,
   AUTHORED_SUNRISE_HOURS,
   AUTHORED_SUNSET_HOURS,
+  DEFAULT_MAXIMUM_NOON_SOLAR_ELEVATION_DEGREES,
   deriveAuthoredDailySolarPhase,
   deriveEnvironmentTime,
 } from "./environmentTime";
@@ -41,16 +43,22 @@ describe("WorldClock", () => {
 });
 
 describe("environment time model", () => {
-  it("uses the configured noon maximum elevation and derives azimuth only from time", () => {
+  it("uses the configured noon maximum elevation and derives the native world-space azimuth only from time", () => {
     const noon = deriveEnvironmentTime(0.5, { maximumNoonSolarElevationDegrees: 67 });
     const sunrise = deriveEnvironmentTime(AUTHORED_SUNRISE_HOURS / 24, { maximumNoonSolarElevationDegrees: 67 });
     const sunset = deriveEnvironmentTime(AUTHORED_SUNSET_HOURS / 24, { maximumNoonSolarElevationDegrees: 67 });
     expect(noon.solarElevationDegrees).toBe(67);
-    expect(noon.solarAzimuthDegrees).toBe(51);
-    expect(sunrise.solarAzimuthDegrees).toBeGreaterThan(90);
-    expect(sunrise.solarAzimuthDegrees).toBeLessThan(180);
-    expect(sunset.solarAzimuthDegrees).toBeGreaterThan(180);
-    expect(sunset.solarAzimuthDegrees).toBeLessThan(360);
+    expect(noon.solarAzimuthDegrees).toBe(AUTHORED_NOON_AZIMUTH_DEGREES);
+    expect(noon.solarAzimuthDegrees).toBe(90);
+    expect(sunrise.solarAzimuthDegrees).not.toBe(sunset.solarAzimuthDegrees);
+  });
+
+  it("uses a 45° maximum noon elevation by default", () => {
+    const clock = new WorldClock();
+
+    expect(clock.state.maximumNoonSolarElevationDegrees).toBe(DEFAULT_MAXIMUM_NOON_SOLAR_ELEVATION_DEGREES);
+    expect(clock.state.maximumNoonSolarElevationDegrees).toBe(45);
+    expect(clock.state.solarElevationDegrees).toBe(45);
   });
 
   it("is finite through the complete day and remains continuous at the wrap", () => {
