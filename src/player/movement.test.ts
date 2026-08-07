@@ -4,9 +4,12 @@ import {
   DEFAULT_MOVEMENT_SPEED_MULTIPLIER,
   MAX_MOVEMENT_SPEED_MULTIPLIER,
   MAX_PLAYER_SPEED,
+  MIN_MOVEMENT_SPEED_MULTIPLIER,
+  MOVEMENT_SPEED_MULTIPLIER_STEP,
   PLAYER_SPEED,
   constrainPlayerSpeed,
   integrateMovement,
+  normalizeMovementSpeedMultiplier,
   normalizeInput,
   playerSpeedForMultiplier,
   restoreMovementSpeedMultiplier,
@@ -45,10 +48,24 @@ describe("integrateMovement", () => {
   });
 
   it("restores only valid stored movement speed preferences", () => {
-    expect(restoreMovementSpeedMultiplier(String(MAX_MOVEMENT_SPEED_MULTIPLIER))).toBe(MAX_MOVEMENT_SPEED_MULTIPLIER);
-    for (const value of [null, "not-a-number", "1.5", "0", "9", "Infinity"]) {
+    for (const value of ["1", "2", "3", "4", "1.25", "2.5", "3.75"]) {
+      expect(restoreMovementSpeedMultiplier(value)).toBe(Number(value));
+    }
+    for (const value of [null, "not-a-number", "1.1", "0", "5", "Infinity"]) {
       expect(restoreMovementSpeedMultiplier(value)).toBe(DEFAULT_MOVEMENT_SPEED_MULTIPLIER);
     }
+  });
+
+  it("normalizes movement-speed multipliers to stable quarter steps", () => {
+    expect(MIN_MOVEMENT_SPEED_MULTIPLIER).toBe(1);
+    expect(MAX_MOVEMENT_SPEED_MULTIPLIER).toBe(4);
+    expect(MOVEMENT_SPEED_MULTIPLIER_STEP).toBe(0.25);
+    expect(normalizeMovementSpeedMultiplier(1.13)).toBe(1.25);
+    expect(normalizeMovementSpeedMultiplier(2.62)).toBe(2.5);
+    expect(normalizeMovementSpeedMultiplier(3.63)).toBe(3.75);
+    expect(normalizeMovementSpeedMultiplier(0)).toBe(1);
+    expect(normalizeMovementSpeedMultiplier(5)).toBe(4);
+    expect(normalizeMovementSpeedMultiplier(Number.NaN)).toBe(DEFAULT_MOVEMENT_SPEED_MULTIPLIER);
   });
 
   it("keeps the movement-speed API finite and within collision-safe bounds", () => {

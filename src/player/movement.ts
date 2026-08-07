@@ -1,9 +1,10 @@
 import type { PlayerControlComponent, TransformComponent, VelocityComponent } from "../ecs/Entity";
 
 export const PLAYER_SPEED = 4;
-export const MAX_PLAYER_SPEED = 32;
+export const MAX_PLAYER_SPEED = 16;
 export const MIN_MOVEMENT_SPEED_MULTIPLIER = 1;
 export const MAX_MOVEMENT_SPEED_MULTIPLIER = MAX_PLAYER_SPEED / PLAYER_SPEED;
+export const MOVEMENT_SPEED_MULTIPLIER_STEP = 0.25;
 export const DEFAULT_MOVEMENT_SPEED_MULTIPLIER = 1;
 export const JUMP_SPEED = 5.5;
 export const GRAVITY = 14;
@@ -16,18 +17,20 @@ export function constrainPlayerSpeed(speed: number): number {
 
 export function normalizeMovementSpeedMultiplier(multiplier: number): number {
   if (!Number.isFinite(multiplier)) return DEFAULT_MOVEMENT_SPEED_MULTIPLIER;
-  return Math.min(MAX_MOVEMENT_SPEED_MULTIPLIER, Math.max(
+  const constrained = Math.min(MAX_MOVEMENT_SPEED_MULTIPLIER, Math.max(
     MIN_MOVEMENT_SPEED_MULTIPLIER,
-    Math.round(multiplier),
+    multiplier,
   ));
+  return Math.round(constrained / MOVEMENT_SPEED_MULTIPLIER_STEP) * MOVEMENT_SPEED_MULTIPLIER_STEP;
 }
 
 /** Treat malformed or out-of-range persisted values as an unset preference. */
 export function restoreMovementSpeedMultiplier(value: string | null): number {
   const multiplier = Number(value);
-  return Number.isInteger(multiplier)
+  return Number.isFinite(multiplier)
     && multiplier >= MIN_MOVEMENT_SPEED_MULTIPLIER
     && multiplier <= MAX_MOVEMENT_SPEED_MULTIPLIER
+    && Number.isInteger(multiplier / MOVEMENT_SPEED_MULTIPLIER_STEP)
     ? multiplier
     : DEFAULT_MOVEMENT_SPEED_MULTIPLIER;
 }
