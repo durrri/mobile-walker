@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { getBlobShadowStats } from "./blobShadows";
 import { SunlightDirection } from "./sunlightDirection";
 import { createPlayerCentredFogController } from "./playerCentredFog";
-import type { EnvironmentLightingState } from "../core/environmentLighting";
+import type { EnvironmentColor, EnvironmentLightingState } from "../core/environmentLighting";
 
 const MAX_PIXEL_RATIO = 2;
 export const MAX_DRAW_DISTANCE = 225;
@@ -23,6 +23,10 @@ export function sunlightPosition(
     Math.sin(elevation) * SUNLIGHT_DISTANCE,
     Math.sin(azimuth) * horizontalDistance,
   );
+}
+
+function setAuthoredColor(target: THREE.Color, color: EnvironmentColor): void {
+  target.setRGB(color.red, color.green, color.blue, THREE.SRGBColorSpace);
 }
 
 export class ThreeRenderer {
@@ -81,32 +85,12 @@ export class ThreeRenderer {
   setEnvironmentLighting(lighting: EnvironmentLightingState): void {
     sunlightPosition(lighting, this.sunlight.position);
     this.sunlight.intensity = lighting.directLightIntensity;
-    this.sunlight.color.setRGB(
-      lighting.directLightColor.red,
-      lighting.directLightColor.green,
-      lighting.directLightColor.blue,
-    );
+    setAuthoredColor(this.sunlight.color, lighting.directLightColor);
     this.hemisphere.intensity = lighting.hemisphereIntensity;
-    this.hemisphere.color.setRGB(
-      lighting.hemisphereSkyColor.red,
-      lighting.hemisphereSkyColor.green,
-      lighting.hemisphereSkyColor.blue,
-    );
-    this.hemisphere.groundColor.setRGB(
-      lighting.hemisphereGroundColor.red,
-      lighting.hemisphereGroundColor.green,
-      lighting.hemisphereGroundColor.blue,
-    );
-    this.backgroundColor.setRGB(
-      lighting.backgroundColor.red,
-      lighting.backgroundColor.green,
-      lighting.backgroundColor.blue,
-    );
-    this.fog.color.setRGB(
-      lighting.fogColor.red,
-      lighting.fogColor.green,
-      lighting.fogColor.blue,
-    );
+    setAuthoredColor(this.hemisphere.color, lighting.hemisphereSkyColor);
+    setAuthoredColor(this.hemisphere.groundColor, lighting.hemisphereGroundColor);
+    setAuthoredColor(this.backgroundColor, lighting.backgroundColor);
+    setAuthoredColor(this.fog.color, lighting.fogColor);
     this.sunlightDirection.set(this.sunlight.position);
     this.sunlightDirection.setSolarShadowStrength(lighting.solarShadowStrength);
   }

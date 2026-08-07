@@ -1,6 +1,7 @@
 import type { EnvironmentTime } from "./environmentTime";
 
 export interface EnvironmentColor {
+  /** Normalized sRGB-authored channels; renderer consumers convert them to their working space. */
   readonly red: number;
   readonly green: number;
   readonly blue: number;
