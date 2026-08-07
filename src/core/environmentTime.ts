@@ -6,6 +6,7 @@ const DEGREES_PER_TURN = 360;
 const AUTHORED_NOON_AZIMUTH_DEGREES = 51;
 export const AUTHORED_PRE_DAWN_START_HOURS = 4.5;
 export const AUTHORED_SUNRISE_HOURS = 6;
+export const AUTHORED_SUNRISE_END_HOURS = 6.5;
 export const AUTHORED_SOFT_MORNING_END_HOURS = 8;
 export const AUTHORED_NOON_HOURS = 12;
 export const AUTHORED_BROAD_DAYLIGHT_END_HOURS = 18;
@@ -110,12 +111,13 @@ function interpolateVisualDayPhase(hours: number): number {
       return previousPhase + (nextPhase - previousPhase) * (hours - previousHours) / (nextHours - previousHours);
     }
   }
-  return 0;
+  return VISUAL_DAY_PHASES[VISUAL_DAY_PHASES.length - 1]![1];
 }
 
 function phaseAt(hours: number): AuthoredDailyPhase {
   if (hours < AUTHORED_PRE_DAWN_START_HOURS || hours >= AUTHORED_DUSK_END_HOURS) return "true-night";
   if (hours < AUTHORED_SUNRISE_HOURS) return "pre-dawn";
+  if (hours < AUTHORED_SUNRISE_END_HOURS) return "sunrise";
   if (hours < AUTHORED_SOFT_MORNING_END_HOURS) return "morning";
   if (hours < AUTHORED_BROAD_DAYLIGHT_END_HOURS) return "daylight";
   if (hours < AUTHORED_LATE_EVENING_HOURS) return "evening";

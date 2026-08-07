@@ -66,6 +66,7 @@ describe("environment time model", () => {
 
   it("uses one deterministic authored phase mapping with extended evening daylight", () => {
     expect(deriveAuthoredDailySolarPhase(18)).toEqual(deriveAuthoredDailySolarPhase(18));
+    expect(deriveAuthoredDailySolarPhase(6.25).phase).toBe("sunrise");
     const evening = deriveEnvironmentTime(18 / 24, { maximumNoonSolarElevationDegrees: 51 });
     const sunset = deriveEnvironmentTime(AUTHORED_SUNSET_HOURS / 24, { maximumNoonSolarElevationDegrees: 51 });
     const beforeSunset = deriveEnvironmentTime((AUTHORED_SUNSET_HOURS - 0.01) / 24, { maximumNoonSolarElevationDegrees: 51 });
