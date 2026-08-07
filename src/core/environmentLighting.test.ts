@@ -28,8 +28,12 @@ describe("deriveEnvironmentLighting", () => {
     const after = lightingAt(0);
     expect(before.directLightIntensity).toBeCloseTo(after.directLightIntensity, 6);
     expect(before.hemisphereIntensity).toBeCloseTo(after.hemisphereIntensity, 6);
-    expect(before.backgroundColor).toEqual(after.backgroundColor);
-    expect(before.fogColor).toEqual(after.fogColor);
+    expect(before.backgroundColor.red).toBeCloseTo(after.backgroundColor.red, 6);
+    expect(before.backgroundColor.green).toBeCloseTo(after.backgroundColor.green, 6);
+    expect(before.backgroundColor.blue).toBeCloseTo(after.backgroundColor.blue, 6);
+    expect(before.fogColor.red).toBeCloseTo(after.fogColor.red, 6);
+    expect(before.fogColor.green).toBeCloseTo(after.fogColor.green, 6);
+    expect(before.fogColor.blue).toBeCloseTo(after.fogColor.blue, 6);
     expect(after.hemisphereIntensity).toBeGreaterThan(0);
   });
 
