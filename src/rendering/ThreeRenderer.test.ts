@@ -123,7 +123,7 @@ describe("derived sunlight", () => {
     expect(position.z / Math.cos(THREE.MathUtils.degToRad(10))).toBeCloseTo(expectedZ);
   });
 
-  it("uses elevation above the horizon and clamps it to 10–90°", () => {
+  it("uses elevation above the horizon and clamps it to 0–90°", () => {
     expect(sunlightPosition({ solarElevationDegrees: 10, solarAzimuthDegrees: 0 }).normalize().y).toBeCloseTo(Math.sin(THREE.MathUtils.degToRad(10)));
     const overhead = sunlightPosition({ solarElevationDegrees: 90, solarAzimuthDegrees: 123 }).normalize();
     expect(overhead.x).toBeCloseTo(0);
