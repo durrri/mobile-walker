@@ -1,7 +1,8 @@
 import * as THREE from "three";
 import { getBlobShadowStats } from "./blobShadows";
-import { SunlightDirection, type SunlightAngles } from "./sunlightDirection";
+import { SunlightDirection } from "./sunlightDirection";
 import { createPlayerCentredFogController } from "./playerCentredFog";
+import type { EnvironmentTime } from "../core/environmentTime";
 
 const MAX_PIXEL_RATIO = 2;
 export const MAX_DRAW_DISTANCE = 225;
@@ -10,11 +11,9 @@ export const FOG_FAR_DISTANCE = 150;
 export const FOG_COLOR = 0xd9ead8;
 const SUNLIGHT_DISTANCE = 10;
 
-export type { SunlightAngles } from "./sunlightDirection";
-
-export function sunlightPosition({ vertical, horizontal }: SunlightAngles): THREE.Vector3 {
-  const elevation = THREE.MathUtils.degToRad(THREE.MathUtils.clamp(vertical, 10, 90));
-  const azimuth = THREE.MathUtils.degToRad(THREE.MathUtils.euclideanModulo(horizontal, 360));
+export function sunlightPosition(environment: Pick<EnvironmentTime, "solarElevationDegrees" | "solarAzimuthDegrees">): THREE.Vector3 {
+  const elevation = THREE.MathUtils.degToRad(THREE.MathUtils.clamp(environment.solarElevationDegrees, 0, 90));
+  const azimuth = THREE.MathUtils.degToRad(THREE.MathUtils.euclideanModulo(environment.solarAzimuthDegrees, 360));
   const horizontalDistance = Math.cos(elevation) * SUNLIGHT_DISTANCE;
   return new THREE.Vector3(
     -Math.cos(azimuth) * horizontalDistance,
@@ -48,7 +47,6 @@ export class ThreeRenderer {
     this.camera.lookAt(0, 0, 0);
 
     this.scene.add(new THREE.HemisphereLight(0xfff8e8, 0x9ebba5, 2.4));
-    this.setSunlightAngles({ vertical: 51, horizontal: 51 });
     this.scene.add(this.sunlight);
 
     this.resizeObserver = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(this.resize);
@@ -72,8 +70,8 @@ export class ThreeRenderer {
 
   prepareWorldObject(object: THREE.Object3D): void { this.playerCentredFog.applyObject(object); }
 
-  setSunlightAngles(angles: SunlightAngles): void {
-    this.sunlight.position.copy(sunlightPosition(angles));
+  setEnvironmentTime(environment: Pick<EnvironmentTime, "solarElevationDegrees" | "solarAzimuthDegrees">): void {
+    this.sunlight.position.copy(sunlightPosition(environment));
     this.sunlightDirection.set(this.sunlight.position);
   }
 

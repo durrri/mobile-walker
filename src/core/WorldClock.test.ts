@@ -1,0 +1,57 @@
+import { describe, expect, it } from "vitest";
+
+import { WorldClock } from "./WorldClock";
+import { deriveEnvironmentTime } from "./environmentTime";
+
+const clockOptions = { dayDurationSeconds: 120, initialDayPhase: 0.5, maximumNoonSolarElevationDegrees: 60 };
+
+describe("WorldClock", () => {
+  it("has identical state for identical initial configuration", () => {
+    expect(new WorldClock(clockOptions).state).toEqual(new WorldClock(clockOptions).state);
+  });
+
+  it("advances deterministically and wraps at the configured day duration", () => {
+    const clock = new WorldClock({ ...clockOptions, initialDayPhase: 0.9 });
+    clock.advance(24);
+    expect(clock.state.normalizedDayPhase).toBeCloseTo(0.1);
+    expect(clock.state.timeOfDayHours).toBeCloseTo(2.4);
+  });
+
+  it("has equivalent state for equivalent elapsed time partitioned into reasonable deltas", () => {
+    const oneStep = new WorldClock(clockOptions);
+    const manySteps = new WorldClock(clockOptions);
+    oneStep.advance(10);
+    for (let index = 0; index < 100; index += 1) manySteps.advance(0.1);
+    expect(manySteps.state.normalizedDayPhase).toBeCloseTo(oneStep.state.normalizedDayPhase, 12);
+  });
+
+  it("does not advance while paused and allows direct time scrubbing", () => {
+    const clock = new WorldClock(clockOptions);
+    clock.setPaused(true);
+    clock.advance(30);
+    expect(clock.state.normalizedDayPhase).toBeCloseTo(0.5);
+    clock.setTimeOfDayHours(18);
+    expect(clock.state).toMatchObject({ normalizedDayPhase: 0.75, timeOfDayHours: 18 });
+  });
+});
+
+describe("environment time model", () => {
+  it("uses the configured noon maximum elevation and derives azimuth only from time", () => {
+    const noon = deriveEnvironmentTime(0.5, { maximumNoonSolarElevationDegrees: 67, localNoonAzimuthDegrees: 51 });
+    const afternoon = deriveEnvironmentTime(0.75, { maximumNoonSolarElevationDegrees: 67, localNoonAzimuthDegrees: 51 });
+    expect(noon.solarElevationDegrees).toBe(67);
+    expect(afternoon.solarAzimuthDegrees).toBe(141);
+    expect(afternoon.solarAzimuthDegrees).not.toBe(noon.solarAzimuthDegrees);
+  });
+
+  it("is finite through the complete day and remains continuous at the wrap", () => {
+    for (let phase = 0; phase <= 1; phase += 0.01) {
+      const environment = deriveEnvironmentTime(phase, { maximumNoonSolarElevationDegrees: 51 });
+      expect(Object.values(environment).every(Number.isFinite)).toBe(true);
+    }
+    const before = deriveEnvironmentTime(1 - 1e-9, { maximumNoonSolarElevationDegrees: 51 });
+    const after = deriveEnvironmentTime(0, { maximumNoonSolarElevationDegrees: 51 });
+    expect(before.solarElevationDegrees).toBeCloseTo(after.solarElevationDegrees, 6);
+    expect(before.solarAzimuthDegrees).toBeCloseTo(after.solarAzimuthDegrees, 6);
+  });
+});

@@ -9,7 +9,7 @@ describe("settings panel markup", () => {
     for (const id of [
       "movement-speed", "offset-north", "offset-west", "offset-east", "offset-south",
       "camera-orientation", "movement-yaw", "follow-responsiveness",
-      "sunlight-vertical", "sunlight-horizontal", "restart-button", "reset-progress-button",
+      "restart-button", "reset-progress-button",
     ]) expect(settingsPanel).toContain(`id="${id}"`);
   });
 

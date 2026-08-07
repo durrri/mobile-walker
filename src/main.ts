@@ -46,20 +46,24 @@ const responsivenessControl = document.querySelector<HTMLElement>("#follow-respo
 const movementYawSettings = document.querySelector<HTMLElement>("#movement-yaw-settings");
 const responsivenessSettings = document.querySelector<HTMLElement>("#follow-responsiveness-settings");
 const sunlightVerticalInput = document.querySelector<HTMLInputElement>("#sunlight-vertical");
-const sunlightHorizontalInput = document.querySelector<HTMLInputElement>("#sunlight-horizontal");
 const sunlightVerticalValue = document.querySelector<HTMLOutputElement>("#sunlight-vertical-value");
-const sunlightHorizontalValue = document.querySelector<HTMLOutputElement>("#sunlight-horizontal-value");
+const worldTimeValue = document.querySelector<HTMLOutputElement>("#world-time-value");
+const worldTimePausedInput = document.querySelector<HTMLInputElement>("#world-time-paused");
+const worldTimeHoursInput = document.querySelector<HTMLInputElement>("#world-time-hours");
+const worldTimeHoursValue = document.querySelector<HTMLOutputElement>("#world-time-hours-value");
+const worldTimeSpeedInput = document.querySelector<HTMLInputElement>("#world-time-speed");
+const worldTimeSpeedValue = document.querySelector<HTMLOutputElement>("#world-time-speed-value");
 const offsetOutputs = Object.fromEntries(["west", "east", "north", "south"].map((direction) => [
   direction, document.querySelector<HTMLOutputElement>(`#offset-${direction}`),
 ])) as Record<keyof ChunkNeighborhoodOffsets, HTMLOutputElement | null>;
 const offsetButtons = [...document.querySelectorAll<HTMLButtonElement>("[data-offset-direction][data-offset-change]")];
 
-if (!canvas || !restartButton || !resetProgressButton || !settingsButton || !settingsPanel || !debugButton || !debugPanel || !wireframeInput || !biomesInput || !poiDirectionsInput || !terrainOcclusionInput || !occlusionMapInput || !poisInput || !riverSpineInput || !cameraInput || !performanceInput || !shadowsInput || !movementYawInput || !movementYawValue || !movementSpeedInput || !movementSpeedValue || !orientationControl || !responsivenessControl || !movementYawSettings || !responsivenessSettings || !sunlightVerticalInput || !sunlightHorizontalInput || !sunlightVerticalValue || !sunlightHorizontalValue || Object.values(offsetOutputs).some((output) => !output) || offsetButtons.length !== 8) {
+if (!canvas || !restartButton || !resetProgressButton || !settingsButton || !settingsPanel || !debugButton || !debugPanel || !wireframeInput || !biomesInput || !poiDirectionsInput || !terrainOcclusionInput || !occlusionMapInput || !poisInput || !riverSpineInput || !cameraInput || !performanceInput || !shadowsInput || !movementYawInput || !movementYawValue || !movementSpeedInput || !movementSpeedValue || !orientationControl || !responsivenessControl || !movementYawSettings || !responsivenessSettings || !sunlightVerticalInput || !sunlightVerticalValue || !worldTimeValue || !worldTimePausedInput || !worldTimeHoursInput || !worldTimeHoursValue || !worldTimeSpeedInput || !worldTimeSpeedValue || Object.values(offsetOutputs).some((output) => !output) || offsetButtons.length !== 8) {
   throw new Error("The game interface could not be found.");
 }
 
 const NEIGHBORHOOD_STORAGE_KEY = "mobile-walker:neighborhood-offsets";
-const SUNLIGHT_STORAGE_KEY = "mobile-walker:sunlight-angles";
+const NOON_ELEVATION_STORAGE_KEY = "mobile-walker:noon-solar-elevation";
 const MOVEMENT_YAW_STORAGE_KEY = "mobile-walker:movement-yaw";
 const MOVEMENT_SPEED_STORAGE_KEY = "mobile-walker:movement-speed";
 const storage = getBrowserStorage();
@@ -91,12 +95,21 @@ try {
   }
 } catch { /* Invalid or unavailable settings fall back to the values in the interface. */ }
 try {
-  const savedAngles = JSON.parse(storage.getItem(SUNLIGHT_STORAGE_KEY) ?? "null") as { vertical?: unknown; horizontal?: unknown } | null;
-  if (typeof savedAngles?.vertical === "number" && Number.isFinite(savedAngles.vertical)) sunlightVerticalInput.value = String(Math.min(90, Math.max(10, savedAngles.vertical)));
-  if (typeof savedAngles?.horizontal === "number" && Number.isFinite(savedAngles.horizontal)) sunlightHorizontalInput.value = String(Math.min(360, Math.max(0, savedAngles.horizontal)));
+  const savedElevation = Number(storage.getItem(NOON_ELEVATION_STORAGE_KEY));
+  if (Number.isFinite(savedElevation)) sunlightVerticalInput.value = String(Math.min(90, Math.max(0, savedElevation)));
 } catch { /* Invalid or unavailable settings fall back to the values in the interface. */ }
 
 const game = new Game(canvas);
+const formatWorldTime = (hours: number): string => {
+  const totalMinutes = Math.round(hours * 60) % (24 * 60);
+  return `${String(Math.floor(totalMinutes / 60)).padStart(2, "0")}:${String(totalMinutes % 60).padStart(2, "0")}`;
+};
+game.setEnvironmentTimeListener((environment) => {
+  const formatted = formatWorldTime(environment.timeOfDayHours);
+  worldTimeValue.value = formatted;
+  worldTimeHoursValue.value = formatted;
+  worldTimeHoursInput.value = String(environment.timeOfDayHours);
+});
 const removeGameGestureProtection = installGameGestureProtection(canvas);
 const selectSegment = (control: HTMLElement, value: string): void => {
   for (const button of control.querySelectorAll<HTMLButtonElement>("button[role=radio]")) {
@@ -182,12 +195,20 @@ const updateMovementSpeed = (): void => {
   game.setPlayerMovementSpeed(playerSpeedForMultiplier(multiplier));
   try { storage.setItem(MOVEMENT_SPEED_STORAGE_KEY, String(multiplier)); } catch { /* Gameplay remains live without storage. */ }
 };
-const updateSunlight = (): void => {
-  const angles = { vertical: Number(sunlightVerticalInput.value), horizontal: Number(sunlightHorizontalInput.value) };
-  sunlightVerticalValue.value = `${angles.vertical}°`;
-  sunlightHorizontalValue.value = `${angles.horizontal}°`;
-  game.setSunlightAngles(angles);
-  try { storage.setItem(SUNLIGHT_STORAGE_KEY, JSON.stringify(angles)); } catch { /* Gameplay remains live without storage. */ }
+const updateNoonElevation = (): void => {
+  const elevation = Math.min(90, Math.max(0, Number(sunlightVerticalInput.value)));
+  sunlightVerticalInput.value = String(elevation);
+  sunlightVerticalValue.value = `${elevation}°`;
+  game.setMaximumNoonSolarElevationDegrees(elevation);
+  try { storage.setItem(NOON_ELEVATION_STORAGE_KEY, String(elevation)); } catch { /* Gameplay remains live without storage. */ }
+};
+const updateWorldTimePaused = (): void => game.setWorldTimePaused(worldTimePausedInput.checked);
+const updateWorldTimeHours = (): void => game.setWorldTimeOfDayHours(Number(worldTimeHoursInput.value));
+const updateWorldTimeSpeed = (): void => {
+  const speed = Math.min(100, Math.max(0, Number(worldTimeSpeedInput.value)));
+  worldTimeSpeedInput.value = String(speed);
+  worldTimeSpeedValue.value = `${speed}×`;
+  game.setWorldTimeSpeed(speed);
 };
 const updateNeighborhood = (): void => {
   const offsets = Object.fromEntries(Object.entries(offsetOutputs).map(([direction, output]) => {
@@ -228,8 +249,10 @@ orientationControl.addEventListener("click", activateSegment);
 orientationControl.addEventListener("keydown", navigateSegment);
 responsivenessControl.addEventListener("click", activateSegment);
 responsivenessControl.addEventListener("keydown", navigateSegment);
-sunlightVerticalInput.addEventListener("input", updateSunlight);
-sunlightHorizontalInput.addEventListener("input", updateSunlight);
+sunlightVerticalInput.addEventListener("input", updateNoonElevation);
+worldTimePausedInput.addEventListener("change", updateWorldTimePaused);
+worldTimeHoursInput.addEventListener("input", updateWorldTimeHours);
+worldTimeSpeedInput.addEventListener("input", updateWorldTimeSpeed);
 for (const button of offsetButtons) button.addEventListener("click", changeNeighborhoodOffset);
 updateNeighborhood();
 updateResponsiveness(followResponsiveness);
@@ -238,7 +261,10 @@ game.start();
 updateShadows();
 updateMovementSpeed();
 updateMovementYaw();
-updateSunlight();
+updateNoonElevation();
+updateWorldTimePaused();
+updateWorldTimeHours();
+updateWorldTimeSpeed();
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
@@ -258,8 +284,10 @@ if (import.meta.hot) {
     orientationControl.removeEventListener("keydown", navigateSegment);
     responsivenessControl.removeEventListener("click", activateSegment);
     responsivenessControl.removeEventListener("keydown", navigateSegment);
-    sunlightVerticalInput.removeEventListener("input", updateSunlight);
-    sunlightHorizontalInput.removeEventListener("input", updateSunlight);
+    sunlightVerticalInput.removeEventListener("input", updateNoonElevation);
+    worldTimePausedInput.removeEventListener("change", updateWorldTimePaused);
+    worldTimeHoursInput.removeEventListener("input", updateWorldTimeHours);
+    worldTimeSpeedInput.removeEventListener("input", updateWorldTimeSpeed);
     for (const button of offsetButtons) button.removeEventListener("click", changeNeighborhoodOffset);
     removeGameGestureProtection();
     game.dispose();

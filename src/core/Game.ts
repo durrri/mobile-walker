@@ -10,16 +10,18 @@ import type { CameraPresentationSystem } from "../game/presentationSystems";
 import type { PersistenceSystem } from "../game/persistence";
 import type { ExplorationPresentationSystem } from "../game/exploration";
 import type { ChunkNeighborhoodOffsets } from "../world/chunkCoordinates";
-import type { SunlightAngles } from "../rendering/ThreeRenderer";
 import type { PoiDebugPresentationSystem } from "../game/poiDebug";
 import type { CameraOrientationMode, FollowResponsiveness } from "../game/cameraOrientation";
 import type { RiverSpineDebugMode, RiverSpineDebugView } from "../game/riverSpineDebug";
 import type { PlayerMovementSystem } from "../player/systems";
+import { WorldClock } from "./WorldClock";
+import type { EnvironmentTime } from "./environmentTime";
 
 export class Game {
   private readonly renderer: ThreeRenderer;
   private readonly systems: SystemScheduler;
   private readonly loop: GameLoop;
+  private readonly worldClock = new WorldClock({ maximumNoonSolarElevationDegrees: 51 });
   private running = false;
   private readonly chunks: ChunkStreamingSystem;
   private readonly biomeDebug: BiomeDebugPresentationSystem;
@@ -34,6 +36,7 @@ export class Game {
   private readonly performanceView: HTMLOutputElement;
   private smoothedFrameSeconds = 1 / 60;
   private readonly frameSamples: { at: number; ms: number }[] = [];
+  private environmentTimeListener?: (environment: EnvironmentTime) => void;
 
   constructor(canvas: HTMLCanvasElement) {
     const world = createEcsWorld();
@@ -59,6 +62,8 @@ export class Game {
     this.loop = new GameLoop({
       fixedUpdate: (deltaSeconds) => this.systems.fixedUpdate(deltaSeconds),
       render: (interpolation, deltaSeconds) => {
+        this.worldClock.advance(deltaSeconds);
+        this.applyEnvironmentTime();
         this.systems.prepareRender(interpolation, deltaSeconds);
         this.renderer.render(deltaSeconds);
         this.updateDebugReadouts(deltaSeconds);
@@ -103,8 +108,16 @@ export class Game {
     this.exploration.setNeighborhoodOffsets(offsets);
   }
 
-  setSunlightAngles(angles: SunlightAngles): void {
-    this.renderer.setSunlightAngles(angles);
+  setEnvironmentTimeListener(listener: (environment: EnvironmentTime) => void): void {
+    this.environmentTimeListener = listener;
+    listener(this.worldClock.state);
+  }
+  setWorldTimePaused(paused: boolean): void { this.worldClock.setPaused(paused); }
+  setWorldTimeOfDayHours(hours: number): void { this.worldClock.setTimeOfDayHours(hours); this.applyEnvironmentTime(); }
+  setWorldTimeSpeed(multiplier: number): void { this.worldClock.setTimeSpeed(multiplier); }
+  setMaximumNoonSolarElevationDegrees(degrees: number): void {
+    this.worldClock.setMaximumNoonSolarElevationDegrees(degrees);
+    this.applyEnvironmentTime();
   }
 
   setMovementYawStrength(degrees: number): void {
@@ -142,6 +155,11 @@ export class Game {
   };
 
   private readonly saveProgress = (): void => { this.persistence.flush(); };
+  private applyEnvironmentTime(): void {
+    const environment = this.worldClock.state;
+    this.renderer.setEnvironmentTime(environment);
+    this.environmentTimeListener?.(environment);
+  }
 
   private updateDebugReadouts(deltaSeconds: number): void {
     if (deltaSeconds > 0) this.smoothedFrameSeconds += (deltaSeconds - this.smoothedFrameSeconds) * 0.1;
