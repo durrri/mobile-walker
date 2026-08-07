@@ -45,6 +45,13 @@ through GitHub Actions.
   chunk streamer/mesh factory.
 - `src/game/` composes the demo entities and presentation systems.
 
+`Game` owns the session's sole `WorldClock`. It advances only from game-loop
+deltas, so backgrounding pauses world time without catch-up. The pure
+environment-time model derives normalized phase, hours, solar phase, azimuth,
+and elevation; future lighting work consumes that model. The configurable noon
+maximum solar elevation is temporary lighting tuning, while azimuth comes only
+from world time.
+
 Player position, heading, and collected waypoints are restored from browser `localStorage`
 when the same generated world is opened again. A versioned, world-seed-scoped
 snapshot is saved once per second while playing and immediately when the page is

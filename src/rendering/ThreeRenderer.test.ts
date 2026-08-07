@@ -109,26 +109,42 @@ describe("ThreeRenderer resize synchronization", () => {
   });
 });
 
-describe("sunlight angles", () => {
+describe("derived sunlight", () => {
+  it("starts with the fixed authored daylight position", () => {
+    vi.stubGlobal("window", new EventTarget());
+    vi.stubGlobal("devicePixelRatio", 1);
+    vi.stubGlobal("ResizeObserver", undefined);
+    vi.stubGlobal("requestAnimationFrame", vi.fn(() => 1));
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    const canvas = { clientWidth: 320, clientHeight: 180, width: 0, height: 0 } as HTMLCanvasElement;
+    const renderer = new ThreeRenderer(canvas);
+    const sunlight = renderer.scene.children.find((object): object is THREE.DirectionalLight => object instanceof THREE.DirectionalLight)!;
+
+    expect(sunlight.position).toEqual(sunlightPosition({ solarElevationDegrees: 51, solarAzimuthDegrees: 51 }));
+
+    renderer.dispose();
+    vi.unstubAllGlobals();
+  });
+
   it.each([
     [0, -1, 0],
     [90, 0, 1],
     [180, 1, 0],
     [270, 0, -1],
     [360, -1, 0],
-  ])("places horizontal angle %i° toward the documented compass direction", (horizontal, expectedX, expectedZ) => {
-    const position = sunlightPosition({ vertical: 10, horizontal }).normalize();
+  ])("places derived azimuth %i° toward the documented compass direction", (solarAzimuthDegrees, expectedX, expectedZ) => {
+    const position = sunlightPosition({ solarElevationDegrees: 10, solarAzimuthDegrees }).normalize();
 
     expect(position.x / Math.cos(THREE.MathUtils.degToRad(10))).toBeCloseTo(expectedX);
     expect(position.z / Math.cos(THREE.MathUtils.degToRad(10))).toBeCloseTo(expectedZ);
   });
 
-  it("uses elevation above the horizon and clamps it to 10–90°", () => {
-    expect(sunlightPosition({ vertical: 10, horizontal: 0 }).normalize().y).toBeCloseTo(Math.sin(THREE.MathUtils.degToRad(10)));
-    const overhead = sunlightPosition({ vertical: 90, horizontal: 123 }).normalize();
+  it("uses elevation above the horizon and clamps it to 0–90°", () => {
+    expect(sunlightPosition({ solarElevationDegrees: 10, solarAzimuthDegrees: 0 }).normalize().y).toBeCloseTo(Math.sin(THREE.MathUtils.degToRad(10)));
+    const overhead = sunlightPosition({ solarElevationDegrees: 90, solarAzimuthDegrees: 123 }).normalize();
     expect(overhead.x).toBeCloseTo(0);
     expect(overhead.y).toBeCloseTo(1);
     expect(overhead.z).toBeCloseTo(0);
-    expect(sunlightPosition({ vertical: 0, horizontal: 0 })).toEqual(sunlightPosition({ vertical: 10, horizontal: 0 }));
+    expect(sunlightPosition({ solarElevationDegrees: -1, solarAzimuthDegrees: 0 })).toEqual(sunlightPosition({ solarElevationDegrees: 0, solarAzimuthDegrees: 0 }));
   });
 });
