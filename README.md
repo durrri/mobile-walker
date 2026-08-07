@@ -20,6 +20,7 @@ commit the resulting `package-lock.json` changes.
 
 - `npm run dev` starts the Vite development server.
 - `npm run build` type-checks the project and creates a root-based production build.
+  It has the same output base as `npm run build:cloudflare`.
 - `npm run build:cloudflare` creates the root-based (`/`) static build for
   Cloudflare production and preview deployments.
 - `npm run build:pages` creates the GitHub Pages build with assets under
