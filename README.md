@@ -47,14 +47,16 @@ through GitHub Actions.
 
 `Game` owns the session's sole `WorldClock`. It advances only from game-loop
 deltas, so backgrounding pauses world time without catch-up. `EnvironmentTime`
-is the pure time/solar-geometry model; `deriveEnvironmentLighting` is the pure
-authored time-to-global-light conversion; and `ThreeRenderer` owns the mutable
-Three.js directional and hemisphere lights. `SunlightDirection` remains the
-shared solar direction for blob-shadow consumers. Night removes direct solar
-light and solar blob shadows while retaining authored cool ambient illumination.
-Sky, fog, and palette cycling remain deferred to N3. The configurable noon
-maximum solar elevation is the only solar-angle tuning, while azimuth comes
-only from world time.
+maps clock time through one pure authored visual daily phase before deriving
+solar geometry. `deriveEnvironmentLighting` consumes that phase for global
+light, background, and fog; `ThreeRenderer` owns the mutable Three.js
+directional and hemisphere lights; and `SunlightDirection` remains the shared
+solar direction for blob-shadow consumers. The visual day is intentionally
+longer than astronomical daylight (sunrise at 06:00, sunset at 20:30) for calm
+exploration readability; it does not define gameplay day-length semantics.
+Night removes direct solar light and solar blob shadows while retaining authored
+cool ambient illumination. The configurable noon maximum solar elevation is the
+only solar-angle tuning, while azimuth comes only from the same authored phase.
 
 Player position, heading, and collected waypoints are restored from browser `localStorage`
 when the same generated world is opened again. A versioned, world-seed-scoped

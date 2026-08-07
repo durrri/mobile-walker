@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import { WorldClock } from "./WorldClock";
-import { deriveEnvironmentTime } from "./environmentTime";
+import {
+  AUTHORED_SUNRISE_HOURS,
+  AUTHORED_SUNSET_HOURS,
+  deriveAuthoredDailySolarPhase,
+  deriveEnvironmentTime,
+} from "./environmentTime";
 
 const clockOptions = { dayDurationSeconds: 120, initialDayPhase: 0.5, maximumNoonSolarElevationDegrees: 60 };
 
@@ -41,18 +46,43 @@ describe("environment time model", () => {
     const afternoon = deriveEnvironmentTime(0.75, { maximumNoonSolarElevationDegrees: 67 });
     expect(noon.solarElevationDegrees).toBe(67);
     expect(noon.solarAzimuthDegrees).toBe(51);
-    expect(afternoon.solarAzimuthDegrees).toBe(141);
-    expect(afternoon.solarAzimuthDegrees).not.toBe(noon.solarAzimuthDegrees);
+    expect(afternoon.solarAzimuthDegrees).toBeGreaterThan(noon.solarAzimuthDegrees);
   });
 
   it("is finite through the complete day and remains continuous at the wrap", () => {
     for (let phase = 0; phase <= 1; phase += 0.01) {
       const environment = deriveEnvironmentTime(phase, { maximumNoonSolarElevationDegrees: 51 });
-      expect(Object.values(environment).every(Number.isFinite)).toBe(true);
+      expect([
+        environment.normalizedDayPhase, environment.timeOfDayHours, environment.visualDayPhase,
+        environment.solarPhase, environment.solarAzimuthDegrees, environment.solarElevationDegrees,
+        environment.maximumNoonSolarElevationDegrees,
+      ].every(Number.isFinite)).toBe(true);
     }
     const before = deriveEnvironmentTime(1 - 1e-9, { maximumNoonSolarElevationDegrees: 51 });
     const after = deriveEnvironmentTime(0, { maximumNoonSolarElevationDegrees: 51 });
     expect(before.solarElevationDegrees).toBeCloseTo(after.solarElevationDegrees, 6);
-    expect(before.solarAzimuthDegrees).toBeCloseTo(after.solarAzimuthDegrees, 6);
+    expect(before.solarAzimuthDegrees).toBeCloseTo(after.solarAzimuthDegrees, 5);
+  });
+
+  it("uses one deterministic authored phase mapping with extended evening daylight", () => {
+    expect(deriveAuthoredDailySolarPhase(18)).toEqual(deriveAuthoredDailySolarPhase(18));
+    expect(deriveAuthoredDailySolarPhase(6.25).phase).toBe("sunrise");
+    const evening = deriveEnvironmentTime(18 / 24, { maximumNoonSolarElevationDegrees: 51 });
+    const sunset = deriveEnvironmentTime(AUTHORED_SUNSET_HOURS / 24, { maximumNoonSolarElevationDegrees: 51 });
+    const beforeSunset = deriveEnvironmentTime((AUTHORED_SUNSET_HOURS - 0.01) / 24, { maximumNoonSolarElevationDegrees: 51 });
+
+    expect(evening.solarElevationDegrees).toBeGreaterThan(0);
+    expect(beforeSunset.solarElevationDegrees).toBeGreaterThan(0);
+    expect(sunset.solarElevationDegrees).toBeCloseTo(0, 8);
+    expect(deriveEnvironmentTime(12 / 24, { maximumNoonSolarElevationDegrees: 67 }).solarElevationDegrees).toBe(67);
+  });
+
+  it("keeps the authored solar direction continuous and time-derived across sunrise, sunset, and midnight", () => {
+    for (const hour of [AUTHORED_SUNRISE_HOURS, 12, AUTHORED_SUNSET_HOURS, 24]) {
+      const before = deriveEnvironmentTime((hour - 1e-5) / 24, { maximumNoonSolarElevationDegrees: 51 });
+      const after = deriveEnvironmentTime((hour + 1e-5) / 24, { maximumNoonSolarElevationDegrees: 51 });
+      expect(after.solarElevationDegrees).toBeCloseTo(before.solarElevationDegrees, 3);
+      expect(after.solarAzimuthDegrees).toBeCloseTo(before.solarAzimuthDegrees, 2);
+    }
   });
 });

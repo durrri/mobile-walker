@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { deriveEnvironmentLighting } from "./environmentLighting";
-import { deriveEnvironmentTime } from "./environmentTime";
+import { AUTHORED_SUNSET_HOURS, deriveEnvironmentTime } from "./environmentTime";
 
 const options = { maximumNoonSolarElevationDegrees: 60 };
 const lightingAt = (phase: number) => deriveEnvironmentLighting(deriveEnvironmentTime(phase, options));
@@ -49,19 +49,40 @@ describe("deriveEnvironmentLighting", () => {
     expect(Math.abs(midnight.backgroundColor.blue - midnight.fogColor.blue)).toBeLessThan(0.05);
   });
 
-  it("uses direct light and shadows only while the sun is above the horizon", () => {
+  it("keeps extended evening direct light and shadows until the authored sunset", () => {
     const midnight = lightingAt(0);
     const sunrise = lightingAt(0.25);
     const morning = lightingAt(0.36);
     const noon = lightingAt(0.5);
-    const sunset = lightingAt(0.75);
+    const evening = lightingAt(18 / 24);
+    const lateEvening = lightingAt(20 / 24);
+    const sunset = lightingAt(AUTHORED_SUNSET_HOURS / 24);
     expect(midnight.directLightIntensity).toBe(0);
     expect(midnight.solarShadowStrength).toBe(0);
     expect(sunrise.directLightIntensity).toBe(0);
+    expect(evening.directLightIntensity).toBeGreaterThan(0);
+    expect(evening.solarShadowStrength).toBeGreaterThan(0);
+    expect(lateEvening.directLightIntensity).toBeGreaterThan(0);
+    expect(lateEvening.solarShadowStrength).toBeGreaterThan(0);
     expect(sunset.directLightIntensity).toBe(0);
+    expect(sunset.solarShadowStrength).toBe(0);
     expect(morning.directLightIntensity).toBeGreaterThan(0);
     expect(noon.directLightIntensity).toBeGreaterThan(morning.directLightIntensity);
     expect(noon.hemisphereIntensity).toBeGreaterThan(midnight.hemisphereIntensity);
+  });
+
+  it("keeps presentation synchronized with the authored phase from evening through true night", () => {
+    const evening = lightingAt(18 / 24);
+    const dusk = lightingAt(21 / 24);
+    const night = lightingAt(22 / 24);
+
+    expect(evening.phase).not.toBe("midnight");
+    expect(evening.backgroundColor.red).toBeGreaterThan(night.backgroundColor.red);
+    expect(dusk.directLightIntensity).toBe(0);
+    expect(dusk.hemisphereIntensity).toBeGreaterThan(night.hemisphereIntensity);
+    expect(night.directLightIntensity).toBe(0);
+    expect(night.solarShadowStrength).toBe(0);
+    expect(night.hemisphereIntensity).toBeGreaterThan(0);
   });
 
   it("keeps azimuth time-derived and noon elevation configured by EnvironmentTime", () => {
