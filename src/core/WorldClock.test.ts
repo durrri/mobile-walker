@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import { WorldClock } from "./WorldClock";
-import { deriveEnvironmentTime } from "./environmentTime";
+import {
+  AUTHORED_SUNRISE_HOURS,
+  AUTHORED_SUNSET_HOURS,
+  deriveAuthoredDailySolarPhase,
+  deriveEnvironmentTime,
+} from "./environmentTime";
 
 const clockOptions = { dayDurationSeconds: 120, initialDayPhase: 0.5, maximumNoonSolarElevationDegrees: 60 };
 
@@ -54,5 +59,26 @@ describe("environment time model", () => {
     const after = deriveEnvironmentTime(0, { maximumNoonSolarElevationDegrees: 51 });
     expect(before.solarElevationDegrees).toBeCloseTo(after.solarElevationDegrees, 6);
     expect(before.solarAzimuthDegrees).toBeCloseTo(after.solarAzimuthDegrees, 6);
+  });
+
+  it("uses one deterministic authored phase mapping with extended evening daylight", () => {
+    expect(deriveAuthoredDailySolarPhase(18)).toEqual(deriveAuthoredDailySolarPhase(18));
+    const evening = deriveEnvironmentTime(18 / 24, { maximumNoonSolarElevationDegrees: 51 });
+    const sunset = deriveEnvironmentTime(AUTHORED_SUNSET_HOURS / 24, { maximumNoonSolarElevationDegrees: 51 });
+    const beforeSunset = deriveEnvironmentTime((AUTHORED_SUNSET_HOURS - 0.01) / 24, { maximumNoonSolarElevationDegrees: 51 });
+
+    expect(evening.solarElevationDegrees).toBeGreaterThan(0);
+    expect(beforeSunset.solarElevationDegrees).toBeGreaterThan(0);
+    expect(sunset.solarElevationDegrees).toBeCloseTo(0, 8);
+    expect(deriveEnvironmentTime(12 / 24, { maximumNoonSolarElevationDegrees: 67 }).solarElevationDegrees).toBe(67);
+  });
+
+  it("keeps the authored solar direction continuous and time-derived across sunrise, sunset, and midnight", () => {
+    for (const hour of [AUTHORED_SUNRISE_HOURS, 12, AUTHORED_SUNSET_HOURS, 24]) {
+      const before = deriveEnvironmentTime((hour - 1e-5) / 24, { maximumNoonSolarElevationDegrees: 51 });
+      const after = deriveEnvironmentTime((hour + 1e-5) / 24, { maximumNoonSolarElevationDegrees: 51 });
+      expect(after.solarElevationDegrees).toBeCloseTo(before.solarElevationDegrees, 3);
+      expect(after.solarAzimuthDegrees).toBeCloseTo(before.solarAzimuthDegrees, 3);
+    }
   });
 });

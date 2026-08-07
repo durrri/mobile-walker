@@ -9,7 +9,7 @@ export interface EnvironmentColor {
 
 export type EnvironmentLightingPhase =
   | "midnight" | "pre-dawn" | "sunrise" | "morning"
-  | "noon" | "afternoon" | "sunset" | "dusk";
+  | "noon" | "afternoon" | "evening" | "sunset" | "dusk";
 
 export interface EnvironmentLightingState {
   readonly solarAzimuthDegrees: number;
@@ -44,16 +44,17 @@ const color = (hex: number): EnvironmentColor => ({
   blue: (hex & 0xff) / 0xff,
 });
 
-/** Centralized authored global-light controls, ordered around the full day. */
+/** Centralized global-light controls keyed only by EnvironmentTime's authored visual phase. */
 const AUTHORED_LIGHTING: readonly LightingControlPoint[] = [
   { phase: 0, lightingPhase: "midnight", directLightIntensity: 0, directLightColor: color(0x000000), hemisphereIntensity: 0.28, hemisphereSkyColor: color(0x23334f), hemisphereGroundColor: color(0x182019), backgroundColor: color(0x1e2b45), fogColor: color(0x202d42) },
   { phase: 0.18, lightingPhase: "pre-dawn", directLightIntensity: 0, directLightColor: color(0x000000), hemisphereIntensity: 0.34, hemisphereSkyColor: color(0x3d4d6c), hemisphereGroundColor: color(0x243025), backgroundColor: color(0x40546f), fogColor: color(0x43546a) },
   { phase: 0.25, lightingPhase: "sunrise", directLightIntensity: 0.32, directLightColor: color(0xffb06a), hemisphereIntensity: 0.54, hemisphereSkyColor: color(0x8b8292), hemisphereGroundColor: color(0x4c4737), backgroundColor: color(0xb8a1a7), fogColor: color(0xa79aa0) },
   { phase: 0.36, lightingPhase: "morning", directLightIntensity: 1.45, directLightColor: color(0xffe0b0), hemisphereIntensity: 1.18, hemisphereSkyColor: color(0xc7dcf0), hemisphereGroundColor: color(0x718167), backgroundColor: color(0xcde4dc), fogColor: color(0xc8ddd3) },
   { phase: 0.5, lightingPhase: "noon", directLightIntensity: 2.2, directLightColor: color(0xfff3dc), hemisphereIntensity: 1.55, hemisphereSkyColor: color(0xe0edf5), hemisphereGroundColor: color(0x91a47c), backgroundColor: color(0xd9ead8), fogColor: color(0xd4e4d4) },
-  { phase: 0.64, lightingPhase: "afternoon", directLightIntensity: 1.45, directLightColor: color(0xffe0b0), hemisphereIntensity: 1.18, hemisphereSkyColor: color(0xc7dcf0), hemisphereGroundColor: color(0x718167), backgroundColor: color(0xdfe2cd), fogColor: color(0xd6dccb) },
-  { phase: 0.75, lightingPhase: "sunset", directLightIntensity: 0.32, directLightColor: color(0xffa45e), hemisphereIntensity: 0.54, hemisphereSkyColor: color(0x8b7888), hemisphereGroundColor: color(0x4b4034), backgroundColor: color(0xca99a0), fogColor: color(0xbf969c) },
-  { phase: 0.82, lightingPhase: "dusk", directLightIntensity: 0, directLightColor: color(0x000000), hemisphereIntensity: 0.34, hemisphereSkyColor: color(0x3d4d6c), hemisphereGroundColor: color(0x243025), backgroundColor: color(0x53627c), fogColor: color(0x516078) },
+  { phase: 0.7, lightingPhase: "afternoon", directLightIntensity: 1.45, directLightColor: color(0xffe0b0), hemisphereIntensity: 1.18, hemisphereSkyColor: color(0xc7dcf0), hemisphereGroundColor: color(0x718167), backgroundColor: color(0xdfe2cd), fogColor: color(0xd6dccb) },
+  { phase: 0.8, lightingPhase: "evening", directLightIntensity: 0.55, directLightColor: color(0xffc58d), hemisphereIntensity: 0.76, hemisphereSkyColor: color(0xa798a4), hemisphereGroundColor: color(0x5f5540), backgroundColor: color(0xc9b8ae), fogColor: color(0xbeb4b0) },
+  { phase: 0.82, lightingPhase: "sunset", directLightIntensity: 0, directLightColor: color(0xffa45e), hemisphereIntensity: 0.56, hemisphereSkyColor: color(0x8b7888), hemisphereGroundColor: color(0x4b4034), backgroundColor: color(0xb39aa2), fogColor: color(0xa99aa0) },
+  { phase: 0.89, lightingPhase: "dusk", directLightIntensity: 0, directLightColor: color(0x000000), hemisphereIntensity: 0.34, hemisphereSkyColor: color(0x3d4d6c), hemisphereGroundColor: color(0x243025), backgroundColor: color(0x53627c), fogColor: color(0x516078) },
   { phase: 1, lightingPhase: "midnight", directLightIntensity: 0, directLightColor: color(0x000000), hemisphereIntensity: 0.28, hemisphereSkyColor: color(0x23334f), hemisphereGroundColor: color(0x182019), backgroundColor: color(0x1e2b45), fogColor: color(0x202d42) },
 ];
 
@@ -78,7 +79,7 @@ function controlPointsAt(phase: number): readonly [LightingControlPoint, Lightin
 
 /** Pure authored conversion from solar geometry to global lighting values. */
 export function deriveEnvironmentLighting(environment: EnvironmentTime): EnvironmentLightingState {
-  const [previous, next, amount] = controlPointsAt(environment.normalizedDayPhase);
+  const [previous, next, amount] = controlPointsAt(environment.visualDayPhase);
   const directLightIntensity = previous.directLightIntensity
     + (next.directLightIntensity - previous.directLightIntensity) * amount;
   const isSunAboveHorizon = environment.solarPhase > 1e-6 && environment.solarElevationDegrees > 1e-6;
