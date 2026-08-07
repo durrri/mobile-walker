@@ -47,7 +47,7 @@ through GitHub Actions.
 
 `Game` owns the session's sole `WorldClock`. It advances only from game-loop
 deltas, so backgrounding pauses world time without catch-up. `EnvironmentTime`
-is the pure time/solar-geometry model; `EnvironmentLightingModel` is the pure
+is the pure time/solar-geometry model; `deriveEnvironmentLighting` is the pure
 authored time-to-global-light conversion; and `ThreeRenderer` owns the mutable
 Three.js directional and hemisphere lights. `SunlightDirection` remains the
 shared solar direction for blob-shadow consumers. Night removes direct solar

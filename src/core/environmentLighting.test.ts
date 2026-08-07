@@ -6,7 +6,7 @@ import { deriveEnvironmentTime } from "./environmentTime";
 const options = { maximumNoonSolarElevationDegrees: 60 };
 const lightingAt = (phase: number) => deriveEnvironmentLighting(deriveEnvironmentTime(phase, options));
 
-describe("EnvironmentLightingModel", () => {
+describe("deriveEnvironmentLighting", () => {
   it("is deterministic and finite through a complete day", () => {
     expect(lightingAt(0.5)).toEqual(lightingAt(0.5));
     for (let phase = 0; phase <= 1; phase += 0.01) {
