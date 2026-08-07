@@ -19,6 +19,8 @@ export interface EnvironmentLightingState {
   readonly hemisphereIntensity: number;
   readonly hemisphereSkyColor: EnvironmentColor;
   readonly hemisphereGroundColor: EnvironmentColor;
+  readonly backgroundColor: EnvironmentColor;
+  readonly fogColor: EnvironmentColor;
   readonly solarShadowStrength: number;
   readonly phase: EnvironmentLightingPhase;
 }
@@ -31,6 +33,8 @@ interface LightingControlPoint {
   readonly hemisphereIntensity: number;
   readonly hemisphereSkyColor: EnvironmentColor;
   readonly hemisphereGroundColor: EnvironmentColor;
+  readonly backgroundColor: EnvironmentColor;
+  readonly fogColor: EnvironmentColor;
 }
 
 const color = (hex: number): EnvironmentColor => ({
@@ -41,15 +45,15 @@ const color = (hex: number): EnvironmentColor => ({
 
 /** Centralized authored global-light controls, ordered around the full day. */
 const AUTHORED_LIGHTING: readonly LightingControlPoint[] = [
-  { phase: 0, lightingPhase: "midnight", directLightIntensity: 0, directLightColor: color(0x000000), hemisphereIntensity: 0.28, hemisphereSkyColor: color(0x23334f), hemisphereGroundColor: color(0x182019) },
-  { phase: 0.18, lightingPhase: "pre-dawn", directLightIntensity: 0, directLightColor: color(0x000000), hemisphereIntensity: 0.34, hemisphereSkyColor: color(0x3d4d6c), hemisphereGroundColor: color(0x243025) },
-  { phase: 0.25, lightingPhase: "sunrise", directLightIntensity: 0.32, directLightColor: color(0xffb06a), hemisphereIntensity: 0.54, hemisphereSkyColor: color(0x8b8292), hemisphereGroundColor: color(0x4c4737) },
-  { phase: 0.36, lightingPhase: "morning", directLightIntensity: 1.45, directLightColor: color(0xffe0b0), hemisphereIntensity: 1.18, hemisphereSkyColor: color(0xc7dcf0), hemisphereGroundColor: color(0x718167) },
-  { phase: 0.5, lightingPhase: "noon", directLightIntensity: 2.2, directLightColor: color(0xfff3dc), hemisphereIntensity: 1.55, hemisphereSkyColor: color(0xe0edf5), hemisphereGroundColor: color(0x91a47c) },
-  { phase: 0.64, lightingPhase: "afternoon", directLightIntensity: 1.45, directLightColor: color(0xffe0b0), hemisphereIntensity: 1.18, hemisphereSkyColor: color(0xc7dcf0), hemisphereGroundColor: color(0x718167) },
-  { phase: 0.75, lightingPhase: "sunset", directLightIntensity: 0.32, directLightColor: color(0xffa45e), hemisphereIntensity: 0.54, hemisphereSkyColor: color(0x8b7888), hemisphereGroundColor: color(0x4b4034) },
-  { phase: 0.82, lightingPhase: "dusk", directLightIntensity: 0, directLightColor: color(0x000000), hemisphereIntensity: 0.34, hemisphereSkyColor: color(0x3d4d6c), hemisphereGroundColor: color(0x243025) },
-  { phase: 1, lightingPhase: "midnight", directLightIntensity: 0, directLightColor: color(0x000000), hemisphereIntensity: 0.28, hemisphereSkyColor: color(0x23334f), hemisphereGroundColor: color(0x182019) },
+  { phase: 0, lightingPhase: "midnight", directLightIntensity: 0, directLightColor: color(0x000000), hemisphereIntensity: 0.28, hemisphereSkyColor: color(0x23334f), hemisphereGroundColor: color(0x182019), backgroundColor: color(0x1e2b45), fogColor: color(0x202d42) },
+  { phase: 0.18, lightingPhase: "pre-dawn", directLightIntensity: 0, directLightColor: color(0x000000), hemisphereIntensity: 0.34, hemisphereSkyColor: color(0x3d4d6c), hemisphereGroundColor: color(0x243025), backgroundColor: color(0x40546f), fogColor: color(0x43546a) },
+  { phase: 0.25, lightingPhase: "sunrise", directLightIntensity: 0.32, directLightColor: color(0xffb06a), hemisphereIntensity: 0.54, hemisphereSkyColor: color(0x8b8292), hemisphereGroundColor: color(0x4c4737), backgroundColor: color(0xb8a1a7), fogColor: color(0xa79aa0) },
+  { phase: 0.36, lightingPhase: "morning", directLightIntensity: 1.45, directLightColor: color(0xffe0b0), hemisphereIntensity: 1.18, hemisphereSkyColor: color(0xc7dcf0), hemisphereGroundColor: color(0x718167), backgroundColor: color(0xcde4dc), fogColor: color(0xc8ddd3) },
+  { phase: 0.5, lightingPhase: "noon", directLightIntensity: 2.2, directLightColor: color(0xfff3dc), hemisphereIntensity: 1.55, hemisphereSkyColor: color(0xe0edf5), hemisphereGroundColor: color(0x91a47c), backgroundColor: color(0xd9ead8), fogColor: color(0xd4e4d4) },
+  { phase: 0.64, lightingPhase: "afternoon", directLightIntensity: 1.45, directLightColor: color(0xffe0b0), hemisphereIntensity: 1.18, hemisphereSkyColor: color(0xc7dcf0), hemisphereGroundColor: color(0x718167), backgroundColor: color(0xdfe2cd), fogColor: color(0xd6dccb) },
+  { phase: 0.75, lightingPhase: "sunset", directLightIntensity: 0.32, directLightColor: color(0xffa45e), hemisphereIntensity: 0.54, hemisphereSkyColor: color(0x8b7888), hemisphereGroundColor: color(0x4b4034), backgroundColor: color(0xca99a0), fogColor: color(0xbf969c) },
+  { phase: 0.82, lightingPhase: "dusk", directLightIntensity: 0, directLightColor: color(0x000000), hemisphereIntensity: 0.34, hemisphereSkyColor: color(0x3d4d6c), hemisphereGroundColor: color(0x243025), backgroundColor: color(0x53627c), fogColor: color(0x516078) },
+  { phase: 1, lightingPhase: "midnight", directLightIntensity: 0, directLightColor: color(0x000000), hemisphereIntensity: 0.28, hemisphereSkyColor: color(0x23334f), hemisphereGroundColor: color(0x182019), backgroundColor: color(0x1e2b45), fogColor: color(0x202d42) },
 ];
 
 function interpolateColor(first: EnvironmentColor, second: EnvironmentColor, amount: number): EnvironmentColor {
@@ -87,6 +91,8 @@ export function deriveEnvironmentLighting(environment: EnvironmentTime): Environ
     hemisphereIntensity: previous.hemisphereIntensity + (next.hemisphereIntensity - previous.hemisphereIntensity) * amount,
     hemisphereSkyColor: interpolateColor(previous.hemisphereSkyColor, next.hemisphereSkyColor, amount),
     hemisphereGroundColor: interpolateColor(previous.hemisphereGroundColor, next.hemisphereGroundColor, amount),
+    backgroundColor: interpolateColor(previous.backgroundColor, next.backgroundColor, amount),
+    fogColor: interpolateColor(previous.fogColor, next.fogColor, amount),
     solarShadowStrength: directLightIntensity <= 0 ? 0 : daylight * Math.min(1, directLightIntensity / 1.45),
     phase: amount < 0.5 ? previous.lightingPhase : next.lightingPhase,
   });

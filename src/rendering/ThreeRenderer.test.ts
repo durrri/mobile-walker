@@ -131,8 +131,29 @@ describe("derived sunlight", () => {
     expect(hemisphere.intensity).toBe(lighting.hemisphereIntensity);
     expect(hemisphere.color.b).toBeCloseTo(lighting.hemisphereSkyColor.blue);
     expect(hemisphere.groundColor.g).toBeCloseTo(lighting.hemisphereGroundColor.green);
+    expect((renderer.scene.background as THREE.Color).r).toBeCloseTo(lighting.backgroundColor.red);
+    expect((renderer.scene.fog as THREE.Fog).color.g).toBeCloseTo(lighting.fogColor.green);
     expect(renderer.sunlightDirection.direction).toEqual(sunlight.position.clone().normalize());
 
+    renderer.dispose();
+    vi.unstubAllGlobals();
+  });
+
+  it("retains background and fog instances while updating their colors", () => {
+    vi.stubGlobal("window", new EventTarget());
+    vi.stubGlobal("devicePixelRatio", 1);
+    vi.stubGlobal("ResizeObserver", undefined);
+    vi.stubGlobal("requestAnimationFrame", vi.fn(() => 1));
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    const renderer = new ThreeRenderer({ clientWidth: 320, clientHeight: 180, width: 0, height: 0 } as HTMLCanvasElement);
+    const background = renderer.scene.background;
+    const fog = renderer.scene.fog;
+
+    renderer.setEnvironmentLighting(deriveEnvironmentLighting(deriveEnvironmentTime(0, { maximumNoonSolarElevationDegrees: 51 })));
+
+    expect(renderer.scene.background).toBe(background);
+    expect(renderer.scene.fog).toBe(fog);
+    expect((background as THREE.Color).b).toBeGreaterThan((background as THREE.Color).r);
     renderer.dispose();
     vi.unstubAllGlobals();
   });

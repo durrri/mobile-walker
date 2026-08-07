@@ -17,6 +17,8 @@ describe("deriveEnvironmentLighting", () => {
         ...Object.values(lighting.directLightColor),
         ...Object.values(lighting.hemisphereSkyColor),
         ...Object.values(lighting.hemisphereGroundColor),
+        ...Object.values(lighting.backgroundColor),
+        ...Object.values(lighting.fogColor),
       ].every(Number.isFinite)).toBe(true);
     }
   });
@@ -26,7 +28,21 @@ describe("deriveEnvironmentLighting", () => {
     const after = lightingAt(0);
     expect(before.directLightIntensity).toBeCloseTo(after.directLightIntensity, 6);
     expect(before.hemisphereIntensity).toBeCloseTo(after.hemisphereIntensity, 6);
+    expect(before.backgroundColor).toEqual(after.backgroundColor);
+    expect(before.fogColor).toEqual(after.fogColor);
     expect(after.hemisphereIntensity).toBeGreaterThan(0);
+  });
+
+  it("keeps fog close to the sky while making night substantially darker than day", () => {
+    const midnight = lightingAt(0);
+    const noon = lightingAt(0.5);
+    const sunrise = lightingAt(0.25);
+
+    expect(midnight.backgroundColor.blue).toBeGreaterThan(midnight.backgroundColor.red);
+    expect(midnight.fogColor.green).toBeLessThan(noon.fogColor.green);
+    expect(sunrise.backgroundColor.red).toBeGreaterThan(midnight.backgroundColor.red);
+    expect(Math.abs(noon.backgroundColor.green - noon.fogColor.green)).toBeLessThan(0.05);
+    expect(Math.abs(midnight.backgroundColor.blue - midnight.fogColor.blue)).toBeLessThan(0.05);
   });
 
   it("uses direct light and shadows only while the sun is above the horizon", () => {
