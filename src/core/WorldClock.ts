@@ -19,20 +19,17 @@ export class WorldClock {
   private paused = false;
   private timeSpeed = 1;
   private maximumNoonSolarElevationDegrees: number;
-  private readonly localNoonAzimuthDegrees: number | undefined;
 
   constructor(options: WorldClockOptions) {
     this.dayDurationSeconds = options.dayDurationSeconds ?? WORLD_DAY_DURATION_SECONDS;
     if (!Number.isFinite(this.dayDurationSeconds) || this.dayDurationSeconds <= 0) throw new Error("World day duration must be positive.");
     this.elapsedDaySeconds = normalizeDayPhase(options.initialDayPhase ?? INITIAL_DAY_PHASE) * this.dayDurationSeconds;
     this.maximumNoonSolarElevationDegrees = options.maximumNoonSolarElevationDegrees;
-    this.localNoonAzimuthDegrees = options.localNoonAzimuthDegrees;
   }
 
   get state(): EnvironmentTime {
     return deriveEnvironmentTime(this.elapsedDaySeconds / this.dayDurationSeconds, {
       maximumNoonSolarElevationDegrees: this.maximumNoonSolarElevationDegrees,
-      localNoonAzimuthDegrees: this.localNoonAzimuthDegrees,
     });
   }
 

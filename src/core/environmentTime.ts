@@ -3,6 +3,7 @@ export const WORLD_DAY_DURATION_SECONDS = 20 * 60;
 export const INITIAL_DAY_PHASE = 0.5;
 const HOURS_PER_DAY = 24;
 const DEGREES_PER_TURN = 360;
+const AUTHORED_NOON_AZIMUTH_DEGREES = 51;
 
 export interface EnvironmentTime {
   readonly normalizedDayPhase: number;
@@ -16,11 +17,6 @@ export interface EnvironmentTime {
 
 export interface EnvironmentTimeOptions {
   readonly maximumNoonSolarElevationDegrees: number;
-  /**
-   * Azimuth at local noon. This preserves the current authored scene direction
-   * while all horizontal motion remains derived from world time.
-   */
-  readonly localNoonAzimuthDegrees?: number;
 }
 
 export function normalizeDayPhase(phase: number): number {
@@ -36,12 +32,11 @@ export function deriveEnvironmentTime(
   const phase = normalizeDayPhase(normalizedDayPhase);
   const maximumNoonSolarElevationDegrees = Math.min(90, Math.max(0, options.maximumNoonSolarElevationDegrees));
   const solarPhase = -Math.cos(phase * Math.PI * 2);
-  const localNoonAzimuthDegrees = options.localNoonAzimuthDegrees ?? 51;
   return Object.freeze({
     normalizedDayPhase: phase,
     timeOfDayHours: phase * HOURS_PER_DAY,
     solarPhase,
-    solarAzimuthDegrees: ((localNoonAzimuthDegrees + (phase - 0.5) * DEGREES_PER_TURN) % DEGREES_PER_TURN + DEGREES_PER_TURN) % DEGREES_PER_TURN,
+    solarAzimuthDegrees: ((AUTHORED_NOON_AZIMUTH_DEGREES + (phase - 0.5) * DEGREES_PER_TURN) % DEGREES_PER_TURN + DEGREES_PER_TURN) % DEGREES_PER_TURN,
     solarElevationDegrees: maximumNoonSolarElevationDegrees * Math.max(0, solarPhase),
     maximumNoonSolarElevationDegrees,
   });

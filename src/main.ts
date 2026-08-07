@@ -104,11 +104,23 @@ const formatWorldTime = (hours: number): string => {
   const totalMinutes = Math.round(hours * 60) % (24 * 60);
   return `${String(Math.floor(totalMinutes / 60)).padStart(2, "0")}:${String(totalMinutes % 60).padStart(2, "0")}`;
 };
+const WORLD_TIME_DISPLAY_INTERVAL_MS = 250;
+let latestEnvironmentTime: Parameters<Parameters<typeof game.setEnvironmentTimeListener>[0]>[0] | undefined;
+let lastWorldTimeDisplayUpdateMs = -Infinity;
+const updateWorldTimeDisplay = (immediate = false): void => {
+  if (debugPanel.hidden || !latestEnvironmentTime) return;
+  const now = performance.now();
+  if (!immediate && now - lastWorldTimeDisplayUpdateMs < WORLD_TIME_DISPLAY_INTERVAL_MS) return;
+  lastWorldTimeDisplayUpdateMs = now;
+  const formatted = formatWorldTime(latestEnvironmentTime.timeOfDayHours);
+  const hours = String(latestEnvironmentTime.timeOfDayHours);
+  if (worldTimeValue.value !== formatted) worldTimeValue.value = formatted;
+  if (worldTimeHoursValue.value !== formatted) worldTimeHoursValue.value = formatted;
+  if (worldTimeHoursInput.value !== hours) worldTimeHoursInput.value = hours;
+};
 game.setEnvironmentTimeListener((environment) => {
-  const formatted = formatWorldTime(environment.timeOfDayHours);
-  worldTimeValue.value = formatted;
-  worldTimeHoursValue.value = formatted;
-  worldTimeHoursInput.value = String(environment.timeOfDayHours);
+  latestEnvironmentTime = environment;
+  updateWorldTimeDisplay();
 });
 const removeGameGestureProtection = installGameGestureProtection(canvas);
 const selectSegment = (control: HTMLElement, value: string): void => {
@@ -167,6 +179,7 @@ const toggleDebugPanel = (): void => {
   if (open) {
     settingsPanel.hidden = true;
     settingsButton.setAttribute("aria-expanded", "false");
+    updateWorldTimeDisplay(true);
   }
 };
 const updateDebugView = (): void => game.setDebugView({
@@ -203,7 +216,10 @@ const updateNoonElevation = (): void => {
   try { storage.setItem(NOON_ELEVATION_STORAGE_KEY, String(elevation)); } catch { /* Gameplay remains live without storage. */ }
 };
 const updateWorldTimePaused = (): void => game.setWorldTimePaused(worldTimePausedInput.checked);
-const updateWorldTimeHours = (): void => game.setWorldTimeOfDayHours(Number(worldTimeHoursInput.value));
+const updateWorldTimeHours = (): void => {
+  game.setWorldTimeOfDayHours(Number(worldTimeHoursInput.value));
+  updateWorldTimeDisplay(true);
+};
 const updateWorldTimeSpeed = (): void => {
   const speed = Math.min(100, Math.max(0, Number(worldTimeSpeedInput.value)));
   worldTimeSpeedInput.value = String(speed);

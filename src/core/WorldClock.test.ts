@@ -37,9 +37,10 @@ describe("WorldClock", () => {
 
 describe("environment time model", () => {
   it("uses the configured noon maximum elevation and derives azimuth only from time", () => {
-    const noon = deriveEnvironmentTime(0.5, { maximumNoonSolarElevationDegrees: 67, localNoonAzimuthDegrees: 51 });
-    const afternoon = deriveEnvironmentTime(0.75, { maximumNoonSolarElevationDegrees: 67, localNoonAzimuthDegrees: 51 });
+    const noon = deriveEnvironmentTime(0.5, { maximumNoonSolarElevationDegrees: 67 });
+    const afternoon = deriveEnvironmentTime(0.75, { maximumNoonSolarElevationDegrees: 67 });
     expect(noon.solarElevationDegrees).toBe(67);
+    expect(noon.solarAzimuthDegrees).toBe(51);
     expect(afternoon.solarAzimuthDegrees).toBe(141);
     expect(afternoon.solarAzimuthDegrees).not.toBe(noon.solarAzimuthDegrees);
   });

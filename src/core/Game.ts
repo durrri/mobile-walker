@@ -63,7 +63,7 @@ export class Game {
       fixedUpdate: (deltaSeconds) => this.systems.fixedUpdate(deltaSeconds),
       render: (interpolation, deltaSeconds) => {
         this.worldClock.advance(deltaSeconds);
-        this.applyEnvironmentTime();
+        this.publishEnvironmentTime();
         this.systems.prepareRender(interpolation, deltaSeconds);
         this.renderer.render(deltaSeconds);
         this.updateDebugReadouts(deltaSeconds);
@@ -113,11 +113,11 @@ export class Game {
     listener(this.worldClock.state);
   }
   setWorldTimePaused(paused: boolean): void { this.worldClock.setPaused(paused); }
-  setWorldTimeOfDayHours(hours: number): void { this.worldClock.setTimeOfDayHours(hours); this.applyEnvironmentTime(); }
+  setWorldTimeOfDayHours(hours: number): void { this.worldClock.setTimeOfDayHours(hours); this.publishEnvironmentTime(); }
   setWorldTimeSpeed(multiplier: number): void { this.worldClock.setTimeSpeed(multiplier); }
   setMaximumNoonSolarElevationDegrees(degrees: number): void {
     this.worldClock.setMaximumNoonSolarElevationDegrees(degrees);
-    this.applyEnvironmentTime();
+    this.publishEnvironmentTime();
   }
 
   setMovementYawStrength(degrees: number): void {
@@ -155,10 +155,8 @@ export class Game {
   };
 
   private readonly saveProgress = (): void => { this.persistence.flush(); };
-  private applyEnvironmentTime(): void {
-    const environment = this.worldClock.state;
-    this.renderer.setEnvironmentTime(environment);
-    this.environmentTimeListener?.(environment);
+  private publishEnvironmentTime(): void {
+    this.environmentTimeListener?.(this.worldClock.state);
   }
 
   private updateDebugReadouts(deltaSeconds: number): void {
