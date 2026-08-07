@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
+import { deploymentBase } from "./src/deploymentBase";
 
-export default defineConfig(({ command }) => ({
-  base: command === "build" ? "/mobile-walker/" : "/",
+export default defineConfig(({ mode }) => ({
+  base: deploymentBase(mode),
   resolve: { alias: { buffer: "buffer/" } },
 }));
