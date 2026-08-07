@@ -7,6 +7,8 @@ import {
   BLOB_SHADOW_MIN_STRETCH,
   blobShadowProjection,
   blobShadowProjectionForCaster,
+  STATIC_SHADOW_GEOMETRY_ANGLE_THRESHOLD_DEGREES,
+  StaticShadowGeometryRefreshPolicy,
   SunlightDirection,
 } from "./sunlightDirection";
 
@@ -88,6 +90,30 @@ describe("directional blob-shadow projection", () => {
 
     expect(sunlight.solarShadowStrength).toBe(1);
     expect(changed).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("static shadow geometry refresh policy", () => {
+  const directionAt = (degrees: number) => new THREE.Vector3(
+    Math.sin(THREE.MathUtils.degToRad(degrees)), Math.cos(THREE.MathUtils.degToRad(degrees)), 0,
+  );
+
+  it("only refreshes visible static shadows after the angular threshold", () => {
+    const policy = new StaticShadowGeometryRefreshPolicy(directionAt(0), 1);
+
+    expect(policy.shouldRefreshForDirection(directionAt(STATIC_SHADOW_GEOMETRY_ANGLE_THRESHOLD_DEGREES / 2))).toBe(false);
+    expect(policy.shouldRefreshForDirection(directionAt(STATIC_SHADOW_GEOMETRY_ANGLE_THRESHOLD_DEGREES + 0.1))).toBe(true);
+    expect(policy.shouldRefreshForDirection(directionAt(STATIC_SHADOW_GEOMETRY_ANGLE_THRESHOLD_DEGREES + 0.2))).toBe(false);
+  });
+
+  it("suppresses night movement and refreshes with the current direction at sunrise", () => {
+    const policy = new StaticShadowGeometryRefreshPolicy(directionAt(0), 1);
+
+    expect(policy.shouldRefreshForShadowStrength(0, directionAt(0))).toBe(false);
+    expect(policy.shouldRefreshForDirection(directionAt(120))).toBe(false);
+    expect(policy.shouldRefreshForDirection(directionAt(240))).toBe(false);
+    expect(policy.shouldRefreshForShadowStrength(0.1, directionAt(240))).toBe(true);
+    expect(policy.shouldRefreshForDirection(directionAt(240.1))).toBe(false);
   });
 });
 

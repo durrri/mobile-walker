@@ -16,6 +16,12 @@ export const BLOB_SHADOW_MAX_STRETCH = 2.4;
 // This keeps the physically correct cotangent projection near the horizon
 // without allowing an unbounded blob-shadow displacement.
 export const BLOB_SHADOW_MAX_OFFSET_SCALE = 5.7;
+/** Static world shadows only need a geometry refresh once their direction visibly changes. */
+export const STATIC_SHADOW_GEOMETRY_ANGLE_THRESHOLD_DEGREES = 1.5;
+export const STATIC_SHADOW_GEOMETRY_ANGLE_THRESHOLD_RADIANS = THREE.MathUtils.degToRad(
+  STATIC_SHADOW_GEOMETRY_ANGLE_THRESHOLD_DEGREES,
+);
+export const STATIC_SHADOW_VISIBILITY_EPSILON = 1e-4;
 const CHANGE_THRESHOLD = 1e-5;
 const HORIZONTAL_EPSILON = 1e-6;
 
@@ -30,9 +36,12 @@ export class SunlightDirection {
   get solarShadowStrength(): number { return this.shadowStrength; }
 
   set(direction: THREE.Vector3): boolean {
-    const normalized = direction.clone().normalize();
-    if (!Number.isFinite(normalized.x) || normalized.distanceToSquared(this.value) <= CHANGE_THRESHOLD ** 2) return false;
-    this.value.copy(normalized);
+    const lengthSquared = direction.lengthSq();
+    if (!Number.isFinite(lengthSquared) || lengthSquared <= 0) return false;
+    const inverseLength = 1 / Math.sqrt(lengthSquared);
+    const x = direction.x * inverseLength, y = direction.y * inverseLength, z = direction.z * inverseLength;
+    if (!Number.isFinite(x) || (x - this.value.x) ** 2 + (y - this.value.y) ** 2 + (z - this.value.z) ** 2 <= CHANGE_THRESHOLD ** 2) return false;
+    this.value.set(x, y, z);
     for (const listener of this.listeners) listener();
     return true;
   }
@@ -53,6 +62,35 @@ export class SunlightDirection {
   subscribeSolarShadowStrength(listener: () => void): () => void {
     this.shadowStrengthListeners.add(listener);
     return () => this.shadowStrengthListeners.delete(listener);
+  }
+}
+
+/** Decides when expensive resident static-shadow geometry needs refreshing. */
+export class StaticShadowGeometryRefreshPolicy {
+  private readonly referenceDirection = new THREE.Vector3();
+  private visible: boolean;
+
+  constructor(
+    direction: THREE.Vector3,
+    solarShadowStrength: number,
+    private readonly angularThreshold = STATIC_SHADOW_GEOMETRY_ANGLE_THRESHOLD_RADIANS,
+  ) {
+    this.referenceDirection.copy(direction);
+    this.visible = solarShadowStrength > STATIC_SHADOW_VISIBILITY_EPSILON;
+  }
+
+  shouldRefreshForDirection(direction: THREE.Vector3): boolean {
+    if (!this.visible || this.referenceDirection.angleTo(direction) < this.angularThreshold) return false;
+    this.referenceDirection.copy(direction);
+    return true;
+  }
+
+  shouldRefreshForShadowStrength(strength: number, direction: THREE.Vector3): boolean {
+    const visible = strength > STATIC_SHADOW_VISIBILITY_EPSILON;
+    const shouldRefresh = visible && !this.visible;
+    this.visible = visible;
+    if (shouldRefresh) this.referenceDirection.copy(direction);
+    return shouldRefresh;
   }
 }
 
