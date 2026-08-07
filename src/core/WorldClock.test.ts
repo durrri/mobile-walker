@@ -11,6 +11,8 @@ import {
 } from "./environmentTime";
 
 const clockOptions = { dayDurationSeconds: 120, initialDayPhase: 0.5, maximumNoonSolarElevationDegrees: 60 };
+const angularDistanceDegrees = (first: number, second: number): number =>
+  Math.abs(((second - first + 180) % 360 + 360) % 360 - 180);
 
 describe("WorldClock", () => {
   it("has identical state for identical initial configuration", () => {
@@ -94,7 +96,7 @@ describe("environment time model", () => {
       const before = deriveEnvironmentTime((hour - 1e-5) / 24, { maximumNoonSolarElevationDegrees: 51 });
       const after = deriveEnvironmentTime((hour + 1e-5) / 24, { maximumNoonSolarElevationDegrees: 51 });
       expect(after.solarElevationDegrees).toBeCloseTo(before.solarElevationDegrees, 3);
-      expect(after.solarAzimuthDegrees).toBeCloseTo(before.solarAzimuthDegrees, 2);
+      expect(angularDistanceDegrees(after.solarAzimuthDegrees, before.solarAzimuthDegrees)).toBeLessThan(0.005);
     }
   });
 });
