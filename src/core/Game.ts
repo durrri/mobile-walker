@@ -17,6 +17,11 @@ import type { PlayerMovementSystem } from "../player/systems";
 import { WorldClock } from "./WorldClock";
 import type { EnvironmentTime } from "./environmentTime";
 import { deriveEnvironmentLighting } from "./environmentLighting";
+import {
+  DEFAULT_NIGHT_BRIGHTNESS_MULTIPLIER,
+  derivePresentedEnvironmentLighting,
+  normalizeNightBrightnessMultiplier,
+} from "./nightBrightness";
 
 export class Game {
   private readonly renderer: ThreeRenderer;
@@ -38,6 +43,7 @@ export class Game {
   private smoothedFrameSeconds = 1 / 60;
   private readonly frameSamples: { at: number; ms: number }[] = [];
   private environmentTimeListener?: (environment: EnvironmentTime) => void;
+  private nightBrightnessMultiplier = DEFAULT_NIGHT_BRIGHTNESS_MULTIPLIER;
 
   constructor(canvas: HTMLCanvasElement) {
     const world = createEcsWorld();
@@ -121,6 +127,10 @@ export class Game {
     this.worldClock.setMaximumNoonSolarElevationDegrees(degrees);
     this.publishEnvironmentTime();
   }
+  setNightBrightnessMultiplier(multiplier: number): void {
+    this.nightBrightnessMultiplier = normalizeNightBrightnessMultiplier(multiplier);
+    this.applyEnvironmentLighting(this.worldClock.state);
+  }
 
   setMovementYawStrength(degrees: number): void {
     this.cameraPresentation.setMovementYawStrength(degrees);
@@ -164,7 +174,11 @@ export class Game {
   }
 
   private applyEnvironmentLighting(environment: EnvironmentTime): void {
-    this.renderer.setEnvironmentLighting(deriveEnvironmentLighting(environment));
+    this.renderer.setEnvironmentLighting(derivePresentedEnvironmentLighting(
+      deriveEnvironmentLighting(environment),
+      environment,
+      this.nightBrightnessMultiplier,
+    ));
   }
 
   private updateDebugReadouts(deltaSeconds: number): void {

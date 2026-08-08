@@ -19,6 +19,10 @@ import {
   playerSpeedForMultiplier,
   restoreMovementSpeedMultiplier,
 } from "./player/movement";
+import {
+  NIGHT_BRIGHTNESS_STORAGE_KEY,
+  restoreNightBrightnessMultiplier,
+} from "./core/nightBrightness";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#game-canvas");
 const restartButton = document.querySelector<HTMLButtonElement>("#restart-button");
@@ -41,6 +45,8 @@ const movementYawInput = document.querySelector<HTMLInputElement>("#movement-yaw
 const movementYawValue = document.querySelector<HTMLOutputElement>("#movement-yaw-value");
 const movementSpeedInput = document.querySelector<HTMLInputElement>("#movement-speed");
 const movementSpeedValue = document.querySelector<HTMLOutputElement>("#movement-speed-value");
+const nightBrightnessInput = document.querySelector<HTMLInputElement>("#night-brightness");
+const nightBrightnessValue = document.querySelector<HTMLOutputElement>("#night-brightness-value");
 const orientationControl = document.querySelector<HTMLElement>("#camera-orientation");
 const responsivenessControl = document.querySelector<HTMLElement>("#follow-responsiveness");
 const movementYawSettings = document.querySelector<HTMLElement>("#movement-yaw-settings");
@@ -58,7 +64,7 @@ const offsetOutputs = Object.fromEntries(["west", "east", "north", "south"].map(
 ])) as Record<keyof ChunkNeighborhoodOffsets, HTMLOutputElement | null>;
 const offsetButtons = [...document.querySelectorAll<HTMLButtonElement>("[data-offset-direction][data-offset-change]")];
 
-if (!canvas || !restartButton || !resetProgressButton || !settingsButton || !settingsPanel || !debugButton || !debugPanel || !wireframeInput || !biomesInput || !poiDirectionsInput || !terrainOcclusionInput || !occlusionMapInput || !poisInput || !riverSpineInput || !cameraInput || !performanceInput || !shadowsInput || !movementYawInput || !movementYawValue || !movementSpeedInput || !movementSpeedValue || !orientationControl || !responsivenessControl || !movementYawSettings || !responsivenessSettings || !sunlightVerticalInput || !sunlightVerticalValue || !worldTimeValue || !worldTimePausedInput || !worldTimeHoursInput || !worldTimeHoursValue || !worldTimeSpeedInput || !worldTimeSpeedValue || Object.values(offsetOutputs).some((output) => !output) || offsetButtons.length !== 8) {
+if (!canvas || !restartButton || !resetProgressButton || !settingsButton || !settingsPanel || !debugButton || !debugPanel || !wireframeInput || !biomesInput || !poiDirectionsInput || !terrainOcclusionInput || !occlusionMapInput || !poisInput || !riverSpineInput || !cameraInput || !performanceInput || !shadowsInput || !movementYawInput || !movementYawValue || !movementSpeedInput || !movementSpeedValue || !nightBrightnessInput || !nightBrightnessValue || !orientationControl || !responsivenessControl || !movementYawSettings || !responsivenessSettings || !sunlightVerticalInput || !sunlightVerticalValue || !worldTimeValue || !worldTimePausedInput || !worldTimeHoursInput || !worldTimeHoursValue || !worldTimeSpeedInput || !worldTimeSpeedValue || Object.values(offsetOutputs).some((output) => !output) || offsetButtons.length !== 8) {
   throw new Error("The game interface could not be found.");
 }
 
@@ -77,6 +83,9 @@ try {
 } catch { /* Invalid or unavailable settings retain safe defaults. */ }
 try {
   movementSpeedInput.value = String(restoreMovementSpeedMultiplier(storage.getItem(MOVEMENT_SPEED_STORAGE_KEY)));
+} catch { /* Invalid or unavailable settings fall back to the value in the interface. */ }
+try {
+  nightBrightnessInput.value = String(restoreNightBrightnessMultiplier(storage.getItem(NIGHT_BRIGHTNESS_STORAGE_KEY)));
 } catch { /* Invalid or unavailable settings fall back to the value in the interface. */ }
 try {
   const savedMovementYawSetting = storage.getItem(MOVEMENT_YAW_STORAGE_KEY);
@@ -208,6 +217,13 @@ const updateMovementSpeed = (): void => {
   game.setPlayerMovementSpeed(playerSpeedForMultiplier(multiplier));
   try { storage.setItem(MOVEMENT_SPEED_STORAGE_KEY, String(multiplier)); } catch { /* Gameplay remains live without storage. */ }
 };
+const updateNightBrightness = (): void => {
+  const multiplier = restoreNightBrightnessMultiplier(nightBrightnessInput.value);
+  nightBrightnessInput.value = String(multiplier);
+  nightBrightnessValue.value = `${multiplier.toFixed(2)}×`;
+  game.setNightBrightnessMultiplier(multiplier);
+  try { storage.setItem(NIGHT_BRIGHTNESS_STORAGE_KEY, String(multiplier)); } catch { /* Presentation remains live without storage. */ }
+};
 const updateNoonElevation = (): void => {
   const elevation = Math.min(90, Math.max(0, Number(sunlightVerticalInput.value)));
   sunlightVerticalInput.value = String(elevation);
@@ -261,6 +277,7 @@ performanceInput.addEventListener("change", updatePerformanceView);
 shadowsInput.addEventListener("change", updateShadows);
 movementYawInput.addEventListener("input", updateMovementYaw);
 movementSpeedInput.addEventListener("input", updateMovementSpeed);
+nightBrightnessInput.addEventListener("input", updateNightBrightness);
 orientationControl.addEventListener("click", activateSegment);
 orientationControl.addEventListener("keydown", navigateSegment);
 responsivenessControl.addEventListener("click", activateSegment);
@@ -276,6 +293,7 @@ updateOrientation(orientationMode);
 game.start();
 updateShadows();
 updateMovementSpeed();
+updateNightBrightness();
 updateMovementYaw();
 updateNoonElevation();
 updateWorldTimePaused();
@@ -296,6 +314,7 @@ if (import.meta.hot) {
     shadowsInput.removeEventListener("change", updateShadows);
     movementYawInput.removeEventListener("input", updateMovementYaw);
     movementSpeedInput.removeEventListener("input", updateMovementSpeed);
+    nightBrightnessInput.removeEventListener("input", updateNightBrightness);
     orientationControl.removeEventListener("click", activateSegment);
     orientationControl.removeEventListener("keydown", navigateSegment);
     responsivenessControl.removeEventListener("click", activateSegment);
