@@ -17,8 +17,24 @@ import {
 } from "./poi";
 import { poiFixture } from "./riverProceduralFixtures";
 import { getWorldRiverOwner } from "./worldRiverOwner";
+import { createPoiBeaconDefinition } from "./poiStructures";
 
 describe("deterministic POI generation", () => {
+  it("owns deterministic semantic beacon capabilities and world-space anchors", () => {
+    const types = ["plains-farmhouse", "lake-house", "forest-cabin", "highland-watchtower"] as const;
+    const generated = poiFixture(0, poi => poi.typeId === "plains-farmhouse");
+    const repeated = generatePois(0, generated.chunk).pois.find(candidate => candidate.id === generated.poi.id);
+    expect(repeated?.id).toBe(generated.poi.id);
+    expect(repeated?.beacon).toEqual(generated.poi.beacon);
+    const definitions = types.map(typeId => createPoiBeaconDefinition({ ...generated.poi, typeId }));
+    for (const beacon of definitions) {
+      expect(beacon?.fixtures.map(fixture => fixture.kind)).toEqual(["fire", "lantern"]);
+      expect(beacon?.fixtures.every(fixture => Object.values(fixture.anchor).every(Number.isFinite))).toBe(true);
+    }
+    expect(definitions[2]?.profile).toBe("cabin");
+    expect(definitions[3]?.profile).toBe("regional-watchtower");
+  });
+
   it("registers cabins and watchtowers as data-driven POI definitions", () => {
     const definitions = getPoiDefinitions();
     const cabin = definitions.find(definition => definition.id === "forest-cabin")!;

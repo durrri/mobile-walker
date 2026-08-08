@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { createEcsWorld } from "../ecs/createEcsWorld";
 import { GAME_STATE_STORAGE_KEY, loadGameState, PersistenceSystem, resetGameState } from "./persistence";
+import { PoiBeaconState } from "./poiBeaconState";
 
 class MemoryStorage {
   readonly values = new Map<string, string>();
@@ -27,15 +28,20 @@ describe("game persistence", () => {
     });
     world.add({ collectionState: { collectedIds: new Set(["b", "a"]), discovered: 2 } });
 
-    const persistence = new PersistenceSystem(storage, "seed", 1, () => -0.75);
+    const beacons = new PoiBeaconState([{ poiId: "poi-z", litFixtures: ["lantern"] }, { poiId: "poi-a", litFixtures: ["fire"] }]);
+    const persistence = new PersistenceSystem(storage, "seed", beacons, 1, () => -0.75);
     persistence.fixedUpdate(world, 1);
 
     expect(loadGameState(storage, "seed")).toEqual({
-      version: 2,
+      version: 3,
       worldSeed: "seed",
       player: { x: 12, y: 3, z: -8, yaw: 1.5 },
       playerHeading: -0.75,
       collectedIds: ["a", "b"],
+      poiBeacons: [
+        { poiId: "poi-a", litFixtures: ["fire"] },
+        { poiId: "poi-z", litFixtures: ["lantern"] },
+      ],
     });
   });
 
@@ -48,7 +54,19 @@ describe("game persistence", () => {
       collectedIds: [],
     }));
 
-    expect(loadGameState(storage, "seed")?.playerHeading).toBe(1.25);
+    expect(loadGameState(storage, "seed")).toMatchObject({ playerHeading: 1.25, poiBeacons: [] });
+  });
+
+  it("migrates the previous version 2 schema with beacon fixtures all off", () => {
+    const storage = new MemoryStorage();
+    storage.values.set(GAME_STATE_STORAGE_KEY, JSON.stringify({
+      version: 2, worldSeed: "seed", player: { x: 9, y: 2, z: -3, yaw: 1.25 },
+      playerHeading: -.4, collectedIds: ["collection-kept"],
+    }));
+    expect(loadGameState(storage, "seed")).toEqual({
+      version: 3, worldSeed: "seed", player: { x: 9, y: 2, z: -3, yaw: 1.25 },
+      playerHeading: -.4, collectedIds: ["collection-kept"], poiBeacons: [],
+    });
   });
 
   it("ignores corrupt, incompatible, and other-world state", () => {
@@ -73,7 +91,28 @@ describe("game persistence", () => {
     });
     world.add({ collectionState: { collectedIds: new Set(), discovered: 0 } });
     const storage = { getItem: () => null, setItem: () => { throw new Error("denied"); } };
-    const persistence = new PersistenceSystem(storage, "seed");
+    const persistence = new PersistenceSystem(storage, "seed", new PoiBeaconState());
     expect(() => persistence.fixedUpdate(world, 1)).not.toThrow();
+  });
+
+  it("preserves valid progress while discarding malformed beacon records", () => {
+    const storage = new MemoryStorage();
+    storage.values.set(GAME_STATE_STORAGE_KEY, JSON.stringify({
+      version: 3, worldSeed: "seed", player: { x: 4, y: 2, z: 7, yaw: 1 }, playerHeading: .5,
+      collectedIds: ["kept"], poiBeacons: [null, { poiId: 7, litFixtures: ["fire"] },
+        { poiId: "valid", litFixtures: ["unknown", "lantern", "lantern"] }, { poiId: "broken" }],
+    }));
+    expect(loadGameState(storage, "seed")).toMatchObject({
+      collectedIds: ["kept"], poiBeacons: [{ poiId: "valid", litFixtures: ["lantern"] }],
+    });
+  });
+
+  it("does not load beacon state from another world seed", () => {
+    const storage = new MemoryStorage();
+    storage.values.set(GAME_STATE_STORAGE_KEY, JSON.stringify({
+      version: 3, worldSeed: "other", player: { x: 0, y: 1, z: 0, yaw: 0 }, playerHeading: 0,
+      collectedIds: [], poiBeacons: [{ poiId: "poi", litFixtures: ["fire"] }],
+    }));
+    expect(loadGameState(storage, "seed")).toBeUndefined();
   });
 });
