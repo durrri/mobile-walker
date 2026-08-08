@@ -37,9 +37,11 @@ describe("Night Brightness presentation", () => {
     expect(normalizeNightBrightnessMultiplier(4.1)).toBe(MAX_NIGHT_BRIGHTNESS_MULTIPLIER);
   });
 
-  it("maps the rebased scale to its equivalent old nighttime presentation", () => {
-    for (const [rebased, oldScale] of [[0.5, 4], [1, 8], [2, 16], [4, 32]]) {
-      expect(presentedAt(0, rebased).hemisphereIntensity).toBe(oldScalePresentationAt(0, oldScale));
+  it("maps the rebased scale to its equivalent old presentation", () => {
+    for (const hours of [0, 5.9, 6.1, 12, 20.4, 20.6]) {
+      for (const [rebased, oldScale] of [[0.5, 4], [1, 8], [2, 16], [4, 32]]) {
+        expect(presentedAt(hours, rebased).hemisphereIntensity).toBe(oldScalePresentationAt(hours, oldScale));
+      }
     }
   });
 
