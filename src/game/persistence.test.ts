@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import { createEcsWorld } from "../ecs/createEcsWorld";
+import {
+  NOON_ELEVATION_STORAGE_KEY,
+  restoreNoonElevation,
+} from "./noonElevation";
 import { GAME_STATE_STORAGE_KEY, loadGameState, PersistenceSystem, resetGameState } from "./persistence";
 
 class MemoryStorage {
@@ -14,8 +18,22 @@ describe("game persistence", () => {
   it("resets saved progress", () => {
     const storage = new MemoryStorage();
     storage.setItem(GAME_STATE_STORAGE_KEY, "saved");
+    storage.setItem(NOON_ELEVATION_STORAGE_KEY, "70");
     resetGameState(storage);
     expect(storage.getItem(GAME_STATE_STORAGE_KEY)).toBeNull();
+    expect(storage.getItem(NOON_ELEVATION_STORAGE_KEY)).toBeNull();
+    expect(restoreNoonElevation(storage.getItem(NOON_ELEVATION_STORAGE_KEY))).toBe(45);
+  });
+
+  it.each([
+    [null, 45],
+    ["0", 0],
+    ["45", 45],
+    ["70", 70],
+    ["not a number", 45],
+    ["Infinity", 45],
+  ])("restores noon elevation %s as %s", (storedValue, expected) => {
+    expect(restoreNoonElevation(storedValue)).toBe(expected);
   });
 
   it("round-trips player progress and collected waypoint ids", () => {

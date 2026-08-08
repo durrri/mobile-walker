@@ -1,6 +1,7 @@
 import type { TransformComponent } from "../ecs/Entity";
 import type { EcsWorld } from "../ecs/createEcsWorld";
 import type { FixedSystem } from "../ecs/System";
+import { NOON_ELEVATION_STORAGE_KEY } from "./noonElevation";
 
 export const GAME_STATE_STORAGE_KEY = "mobile-walker:game-state";
 
@@ -11,7 +12,10 @@ interface StorageAdapter {
 }
 
 export function resetGameState(storage: StorageAdapter): void {
-  try { storage.removeItem?.(GAME_STATE_STORAGE_KEY); } catch { /* Reset remains safe when storage is denied. */ }
+  try {
+    storage.removeItem?.(GAME_STATE_STORAGE_KEY);
+    storage.removeItem?.(NOON_ELEVATION_STORAGE_KEY);
+  } catch { /* Reset remains safe when storage is denied. */ }
 }
 
 const unavailableStorage: StorageAdapter = {

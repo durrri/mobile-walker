@@ -2,6 +2,7 @@ import "./style.css";
 
 import { Game } from "./core/Game";
 import { getBrowserStorage, resetGameState } from "./game/persistence";
+import { NOON_ELEVATION_STORAGE_KEY, restoreNoonElevation } from "./game/noonElevation";
 import { installGameGestureProtection } from "./game/gameGestureProtection";
 import {
   clampNeighborhoodOffset,
@@ -63,7 +64,6 @@ if (!canvas || !restartButton || !resetProgressButton || !settingsButton || !set
 }
 
 const NEIGHBORHOOD_STORAGE_KEY = "mobile-walker:neighborhood-offsets";
-const NOON_ELEVATION_STORAGE_KEY = "mobile-walker:noon-solar-elevation";
 const MOVEMENT_YAW_STORAGE_KEY = "mobile-walker:movement-yaw";
 const MOVEMENT_SPEED_STORAGE_KEY = "mobile-walker:movement-speed";
 const storage = getBrowserStorage();
@@ -95,8 +95,7 @@ try {
   }
 } catch { /* Invalid or unavailable settings fall back to the values in the interface. */ }
 try {
-  const savedElevation = Number(storage.getItem(NOON_ELEVATION_STORAGE_KEY));
-  if (Number.isFinite(savedElevation)) sunlightVerticalInput.value = String(Math.min(90, Math.max(0, savedElevation)));
+  sunlightVerticalInput.value = String(restoreNoonElevation(storage.getItem(NOON_ELEVATION_STORAGE_KEY)));
 } catch { /* Invalid or unavailable settings fall back to the values in the interface. */ }
 
 const game = new Game(canvas);
