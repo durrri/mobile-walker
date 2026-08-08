@@ -1,5 +1,6 @@
 import {
   deriveEnvironmentTime,
+  DEFAULT_MAXIMUM_NOON_SOLAR_ELEVATION_DEGREES,
   INITIAL_DAY_PHASE,
   normalizeDayPhase,
   type EnvironmentTime,
@@ -20,11 +21,11 @@ export class WorldClock {
   private timeSpeed = 1;
   private maximumNoonSolarElevationDegrees: number;
 
-  constructor(options: WorldClockOptions) {
+  constructor(options: WorldClockOptions = {}) {
     this.dayDurationSeconds = options.dayDurationSeconds ?? WORLD_DAY_DURATION_SECONDS;
     if (!Number.isFinite(this.dayDurationSeconds) || this.dayDurationSeconds <= 0) throw new Error("World day duration must be positive.");
     this.elapsedDaySeconds = normalizeDayPhase(options.initialDayPhase ?? INITIAL_DAY_PHASE) * this.dayDurationSeconds;
-    this.maximumNoonSolarElevationDegrees = options.maximumNoonSolarElevationDegrees;
+    this.maximumNoonSolarElevationDegrees = options.maximumNoonSolarElevationDegrees ?? DEFAULT_MAXIMUM_NOON_SOLAR_ELEVATION_DEGREES;
   }
 
   get state(): EnvironmentTime {

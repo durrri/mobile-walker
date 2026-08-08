@@ -91,4 +91,13 @@ describe("Game world time", () => {
     expect(listener.mock.calls[1][0].timeOfDayHours).toBeGreaterThan(listener.mock.calls[0][0].timeOfDayHours);
     expect(fixtures.renderer!.setEnvironmentLighting).toHaveBeenCalledTimes(2);
   });
+
+  it("initializes the runtime world clock with the 45° default noon elevation", () => {
+    const game = new Game({} as HTMLCanvasElement);
+    const listener = vi.fn();
+
+    game.setEnvironmentTimeListener(listener);
+
+    expect(listener.mock.calls[0][0].maximumNoonSolarElevationDegrees).toBe(45);
+  });
 });

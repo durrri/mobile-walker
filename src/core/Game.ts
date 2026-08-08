@@ -22,7 +22,7 @@ export class Game {
   private readonly renderer: ThreeRenderer;
   private readonly systems: SystemScheduler;
   private readonly loop: GameLoop;
-  private readonly worldClock = new WorldClock({ maximumNoonSolarElevationDegrees: 51 });
+  private readonly worldClock = new WorldClock();
   private running = false;
   private readonly chunks: ChunkStreamingSystem;
   private readonly biomeDebug: BiomeDebugPresentationSystem;

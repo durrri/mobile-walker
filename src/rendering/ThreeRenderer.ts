@@ -15,6 +15,7 @@ export function sunlightPosition(
   environment: Pick<EnvironmentLightingState, "solarElevationDegrees" | "solarAzimuthDegrees">,
   target = new THREE.Vector3(),
 ): THREE.Vector3 {
+  // solarAzimuthDegrees is the game's world-space angle: 90° is world +Z (south).
   const elevation = THREE.MathUtils.degToRad(THREE.MathUtils.clamp(environment.solarElevationDegrees, 0, 90));
   const azimuth = THREE.MathUtils.degToRad(THREE.MathUtils.euclideanModulo(environment.solarAzimuthDegrees, 360));
   const horizontalDistance = Math.cos(elevation) * SUNLIGHT_DISTANCE;

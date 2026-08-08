@@ -31,7 +31,7 @@ vi.mock("three", async (importOriginal) => {
 });
 
 import { deriveEnvironmentLighting } from "../core/environmentLighting";
-import { deriveEnvironmentTime } from "../core/environmentTime";
+import { AUTHORED_SUNRISE_HOURS, AUTHORED_SUNSET_HOURS, deriveEnvironmentTime } from "../core/environmentTime";
 import { FOG_FAR_DISTANCE, FOG_NEAR_DISTANCE, MAX_DRAW_DISTANCE, sunlightPosition, ThreeRenderer } from "./ThreeRenderer";
 
 function expectColorToMatchHex(actual: THREE.Color, hex: number): void {
@@ -119,6 +119,23 @@ describe("ThreeRenderer resize synchronization", () => {
 });
 
 describe("derived sunlight", () => {
+  it("uses the game-native azimuth convention for an east-to-south-to-west solar path", () => {
+    const at = (hours: number, maximumNoonSolarElevationDegrees = 45) => sunlightPosition(
+      deriveEnvironmentTime(hours / 24, { maximumNoonSolarElevationDegrees }),
+    ).normalize();
+    const sunrise = at(AUTHORED_SUNRISE_HOURS);
+    const noon = at(12);
+    const sunset = at(AUTHORED_SUNSET_HOURS);
+    const noonAtAnotherElevation = at(12, 70);
+
+    expect(sunrise.x).toBeGreaterThan(0);
+    expect(noon.x).toBeCloseTo(0, 8);
+    expect(noon.z).toBeGreaterThan(0);
+    expect(sunset.x).toBeLessThan(0);
+    expect(noonAtAnotherElevation.x).toBeCloseTo(0, 8);
+    expect(noonAtAnotherElevation.z).toBeGreaterThan(0);
+  });
+
   it("applies global lights and shared sunlight direction from EnvironmentLightingState", () => {
     vi.stubGlobal("window", new EventTarget());
     vi.stubGlobal("devicePixelRatio", 1);
