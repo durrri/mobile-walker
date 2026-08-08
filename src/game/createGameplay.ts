@@ -17,6 +17,7 @@ import { PoiDebugPresentationSystem } from "./poiDebug";
 import { RiverSpineDebugView } from "./riverSpineDebug";
 import { sampleTerrainHeight } from "../world/terrainSampling";
 import { getWorldRiverOwner } from "../world/worldRiverOwner";
+import { PoiBeaconState } from "./poiBeaconState";
 
 export interface GameplayControllers {
   readonly chunks: ChunkStreamingSystem;
@@ -28,6 +29,8 @@ export interface GameplayControllers {
   readonly playerShadow: THREE.Mesh;
   readonly playerMovement: PlayerMovementSystem;
   readonly riverSpineDebug: RiverSpineDebugView;
+  /** Gameplay-owned beacon truth; rendering and chunk streaming may only consume it. */
+  readonly poiBeacons: PoiBeaconState;
 }
 
 export function createGameplay(
@@ -41,6 +44,7 @@ export function createGameplay(
   const riverOwner = getWorldRiverOwner(worldSeed);
   const storage = getBrowserStorage();
   const savedState = loadGameState(storage, worldSeed);
+  const poiBeacons = new PoiBeaconState(savedState?.poiBeacons);
   // Restoration precedes chunk streaming, so query canonical deterministic
   // collision records rather than depending on rendered/resident chunks.
   const initialTransform = findSafeRestoredTransformFromCanonicalWorld(
@@ -98,7 +102,7 @@ export function createGameplay(
   systems.addFixedSystem(new InputSnapshotSystem(input, () => camera.getMovementReferenceYaw()));
   const playerMovement = new PlayerMovementSystem(worldSeed);
   systems.addFixedSystem(playerMovement);
-  const persistence = new PersistenceSystem(storage, worldSeed, 1, () => camera.getEffectiveYaw());
+  const persistence = new PersistenceSystem(storage, worldSeed, poiBeacons, 1, () => camera.getEffectiveYaw());
   // Generate data before constructing meshes; then interpolate visuals and derive the camera pose.
   // The camera remains south of the player and looks north (negative world Z),
   // so spend the additional streaming row where it expands the visible view.
@@ -140,5 +144,5 @@ export function createGameplay(
     riverOwner.generation,
     riverOwner.widthProfile,
   );
-  return { chunks, biomeDebug, poiDebug, camera, persistence, exploration, playerShadow, playerMovement, riverSpineDebug };
+  return { chunks, biomeDebug, poiDebug, camera, persistence, exploration, playerShadow, playerMovement, riverSpineDebug, poiBeacons };
 }

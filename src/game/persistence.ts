@@ -1,6 +1,7 @@
 import type { TransformComponent } from "../ecs/Entity";
 import type { EcsWorld } from "../ecs/createEcsWorld";
 import type { FixedSystem } from "../ecs/System";
+import { PoiBeaconState, type PersistedPoiBeaconState } from "./poiBeaconState";
 
 export const GAME_STATE_STORAGE_KEY = "mobile-walker:game-state";
 
@@ -29,11 +30,12 @@ export function getBrowserStorage(): StorageAdapter {
 }
 
 export interface PersistedGameState {
-  readonly version: 2;
+  readonly version: 3;
   readonly worldSeed: string;
   readonly player: TransformComponent;
   readonly playerHeading: number;
   readonly collectedIds: readonly string[];
+  readonly poiBeacons: readonly PersistedPoiBeaconState[];
 }
 
 function isFiniteNumber(value: unknown): value is number {
@@ -46,18 +48,30 @@ function parseGameState(value: unknown, worldSeed: string): PersistedGameState |
   const player = candidate.player as Partial<TransformComponent> | undefined;
   const version = (candidate as { version?: unknown }).version;
   const heading = version === 1 ? player?.yaw : candidate.playerHeading;
-  if ((version !== 1 && version !== 2) || candidate.worldSeed !== worldSeed || !player
+  if ((version !== 1 && version !== 2 && version !== 3) || candidate.worldSeed !== worldSeed || !player
     || !isFiniteNumber(player.x) || !isFiniteNumber(player.y)
     || !isFiniteNumber(player.z) || !isFiniteNumber(player.yaw)
     || !isFiniteNumber(heading)
     || !Array.isArray(candidate.collectedIds)
     || candidate.collectedIds.some((id) => typeof id !== "string")) return undefined;
+  const beacons = new Map<string, Set<"fire" | "lantern">>();
+  if (version === 3 && Array.isArray(candidate.poiBeacons)) for (const value of candidate.poiBeacons) {
+    if (!value || typeof value !== "object") continue;
+    const entry = value as { poiId?: unknown; litFixtures?: unknown };
+    if (typeof entry.poiId !== "string" || !entry.poiId || !Array.isArray(entry.litFixtures)) continue;
+    const fixtures = beacons.get(entry.poiId) ?? new Set<"fire" | "lantern">();
+    for (const fixture of entry.litFixtures) if (fixture === "fire" || fixture === "lantern") fixtures.add(fixture);
+    if (fixtures.size) beacons.set(entry.poiId, fixtures);
+  }
   return {
-    version: 2,
+    version: 3,
     worldSeed,
     player: { x: player.x, y: player.y, z: player.z, yaw: player.yaw },
     playerHeading: heading,
     collectedIds: [...new Set(candidate.collectedIds)],
+    poiBeacons: [...beacons.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([poiId, fixtures]) => ({
+      poiId, litFixtures: (["fire", "lantern"] as const).filter(fixture => fixtures.has(fixture)),
+    })),
   };
 }
 
@@ -71,16 +85,17 @@ export function loadGameState(storage: StorageAdapter, worldSeed: string): Persi
   }
 }
 
-function snapshotGameState(world: EcsWorld, worldSeed: string, playerHeading: number): PersistedGameState | undefined {
+function snapshotGameState(world: EcsWorld, worldSeed: string, playerHeading: number, beacons: PoiBeaconState): PersistedGameState | undefined {
   const player = world.entities.find((entity) => entity.playerControl && entity.transform)?.transform;
   const collection = world.entities.find((entity) => entity.collectionState)?.collectionState;
   if (!player || !collection) return undefined;
   return {
-    version: 2,
+    version: 3,
     worldSeed,
     player: { x: player.x, y: player.y, z: player.z, yaw: player.yaw },
     playerHeading,
     collectedIds: [...collection.collectedIds].sort(),
+    poiBeacons: beacons.serialize(),
   };
 }
 
@@ -93,6 +108,7 @@ export class PersistenceSystem implements FixedSystem {
   constructor(
     private readonly storage: StorageAdapter,
     private readonly worldSeed: string,
+    private readonly beacons: PoiBeaconState,
     private readonly intervalSeconds = 1,
     private readonly getPlayerHeading: () => number = () => 0,
   ) {}
@@ -109,7 +125,7 @@ export class PersistenceSystem implements FixedSystem {
     if (!this.world) return;
     const playerHeading = this.getPlayerHeading();
     if (!isFiniteNumber(playerHeading)) return;
-    const state = snapshotGameState(this.world, this.worldSeed, playerHeading);
+    const state = snapshotGameState(this.world, this.worldSeed, playerHeading, this.beacons);
     if (!state) return;
     const serialized = JSON.stringify(state);
     if (serialized === this.lastSerialized) return;

@@ -1,4 +1,4 @@
-import type { GeneratedPoi } from "./poi";
+import type { GeneratedPoi, PoiBeaconDefinition, PoiBeaconProfile } from "./poi";
 import type { StructureBoxCollider, StructureCircularCollider, StructureCollisionDefinition, StructureComponent, StructureComponentCategory, StructureMaterialKey, StructureSegmentCollider, StructureSurfaceRecord } from "./structureTypes";
 import { validateStructureDefinition } from "./structureTypes";
 
@@ -13,7 +13,24 @@ export const POI_DIMENSIONS=Object.freeze({
 });
 
 export function foundationDepth(poi:GeneratedPoi,minimumDepth=.12):number{const minimum=poi.metadata?.terrain?.minimumHeight;return Number.isFinite(minimum)?Math.max(minimumDepth,poi.position.y-minimum+FOUNDATION_GROUND_EMBED):minimumDepth;}
-function world(poi:GeneratedPoi,x:number,y:number,z:number){const c=Math.cos(poi.rotation),s=Math.sin(poi.rotation);return{x:poi.position.x+c*x+s*z,y:poi.position.y+y,z:poi.position.z-s*x+c*z};}
+/** The shared structure-local to world-space convention used by geometry and semantic anchors. */
+export function poiLocalToWorld(poi:GeneratedPoi,x:number,y:number,z:number):Readonly<{x:number;y:number;z:number}>{const c=Math.cos(poi.rotation),s=Math.sin(poi.rotation);return{x:poi.position.x+c*x+s*z,y:poi.position.y+y,z:poi.position.z-s*x+c*z};}
+const world=poiLocalToWorld;
+
+/** Presentation-neutral beacon capability and placement, derived once with the POI structure. */
+export function createPoiBeaconDefinition(poi:GeneratedPoi):PoiBeaconDefinition|undefined {
+ const configurations:Partial<Record<string,Readonly<{profile:PoiBeaconProfile;fire:readonly[number,number,number];lantern:readonly[number,number,number]}>>>={
+  "plains-farmhouse":{profile:"homestead",fire:[-1.65,5.1,-.5],lantern:[0,2.15,2.5]},
+  "lake-house":{profile:"waterside",fire:[-1.65,5.1,-.5],lantern:[0,2.15,2.5]},
+  "forest-cabin":{profile:"cabin",fire:[-2.8,.25,1.5],lantern:[0,1.8,1.98]},
+  "highland-watchtower":{profile:"regional-watchtower",fire:[-1.15,6.85,0],lantern:[0,8.35,1.82]},
+ };
+ const configuration=configurations[poi.typeId];if(!configuration)return undefined;
+ return Object.freeze({profile:configuration.profile,fixtures:Object.freeze([
+  Object.freeze({id:"fire" as const,kind:"fire" as const,anchor:Object.freeze(world(poi,...configuration.fire))}),
+  Object.freeze({id:"lantern" as const,kind:"lantern" as const,anchor:Object.freeze(world(poi,...configuration.lantern))}),
+ ])});
+}
 
 /** Authoritative, presentation-neutral inventory. Ordinary rigid components are
  * solid by default; every visual-only component explicitly opts out. */
