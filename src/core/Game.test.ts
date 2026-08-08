@@ -100,4 +100,17 @@ describe("Game world time", () => {
 
     expect(listener.mock.calls[0][0].maximumNoonSolarElevationDegrees).toBe(45);
   });
+
+  it("applies Night Brightness through the Game presentation API", () => {
+    const game = new Game({} as HTMLCanvasElement);
+    game.setWorldTimeOfDayHours(0);
+    const baseline = fixtures.renderer!.setEnvironmentLighting.mock.calls.at(-1)![0];
+
+    game.setNightBrightnessMultiplier(1.5);
+    const adjusted = fixtures.renderer!.setEnvironmentLighting.mock.calls.at(-1)![0];
+
+    expect(adjusted.hemisphereIntensity).toBeGreaterThan(baseline.hemisphereIntensity);
+    expect(adjusted.directLightIntensity).toBe(0);
+    expect(adjusted.solarShadowStrength).toBe(0);
+  });
 });
