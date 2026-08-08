@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { PoiBeaconState } from "../game/poiBeaconState";
 import { generateChunk } from "../world/generateChunk";
 import { poiFixture } from "../world/riverProceduralFixtures";
@@ -25,10 +25,30 @@ describe("POI beacon presentation consumer",()=>{
     presentation.dispose();presentation.dispose();expect(state.getState(poi.id)).toEqual({fireLit:true,lanternLit:false});expect(scene.children).not.toContain(presentation.root);
   });
 
-  it("shows lantern glow even when another candidate receives the only real light",()=>{
+  it("keeps a lantern visibly luminous with zero PointLight slots",()=>{
     const poi=generatedPoi(),state=new PoiBeaconState();state.light(poi,"lantern");
     const presentation=new PoiBeaconPresentation(new THREE.Scene(),state,0),lantern=presentation.activatePoi(poi).find(value=>value.kind==="lantern")!;
     expect(lantern.glow).toBeDefined();expect(presentation.lightManager.lights).toHaveLength(0);presentation.dispose();
+  });
+
+  it("keeps both fixture visuals when only one of two lit fixtures receives a PointLight",()=>{
+    const poi=generatedPoi(),state=new PoiBeaconState();state.light(poi,"lantern");state.light(poi,"fire");
+    const presentation=new PoiBeaconPresentation(new THREE.Scene(),state,1),fixtures=presentation.activatePoi(poi);
+    presentation.update({x:poi.position.x,y:poi.position.y,z:poi.position.z});
+    expect(presentation.lightManager.selectedIds).toHaveLength(1);
+    expect(fixtures.find(value=>value.kind==="lantern")?.glow).toBeDefined();
+    expect(fixtures.find(value=>value.kind==="fire")?.flame).toBeDefined();
+    expect(fixtures.find(value=>value.kind==="fire")?.smoke).toBeDefined();presentation.dispose();
+  });
+
+  it("passes every fixture group through renderer-owned world preparation",()=>{
+    const poi=generatedPoi(),state=new PoiBeaconState();state.light(poi,"lantern");state.light(poi,"fire");
+    const prepareWorldObject=vi.fn(),presentation=new PoiBeaconPresentation(new THREE.Scene(),state,0,prepareWorldObject);
+    const fixtures=presentation.activatePoi(poi);
+    expect(prepareWorldObject.mock.calls.map(([object])=>object)).toEqual(fixtures.map(fixture=>fixture.group));
+    expect(prepareWorldObject.mock.calls.every(([object])=>{
+      let meshes=0;object.traverse((child:THREE.Object3D)=>{if(child instanceof THREE.Mesh)meshes++;});return meshes>0;
+    })).toBe(true);presentation.dispose();
   });
 });
 

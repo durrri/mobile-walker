@@ -6,6 +6,9 @@ import { CHUNK_SIZE } from "./chunkCoordinates";
 import { ChunkStreamingSystem } from "./ChunkStreamingSystem";
 import { ChunkMeshFactory } from "./chunkMeshes";
 import { generateChunk } from "./generateChunk";
+import { PoiBeaconState } from "../game/poiBeaconState";
+import { PoiBeaconPresentation } from "../rendering/poiBeaconPresentation";
+import { poiFixture } from "./riverProceduralFixtures";
 
 function createPlayerWorld() {
   const world = createEcsWorld();
@@ -19,6 +22,37 @@ function createPlayerWorld() {
 }
 
 describe("loaded neighborhood boundary", () => {
+  it("drives beacon activation, retirement, cache reload, and disposal exactly once per lifecycle", () => {
+    const seed=0,fixture=poiFixture(seed,candidate=>candidate.typeId==="plains-farmhouse");
+    const data=generateChunk(seed,fixture.chunk),poi=data.pois.find(candidate=>candidate.id===fixture.poi.id);
+    if(!poi)throw new Error("Expected generated beacon POI fixture");
+    const scene=new THREE.Scene(),state=new PoiBeaconState();state.light(poi,"fire");
+    const presentation=new PoiBeaconPresentation(scene,state),presented:string[]=[],retired:string[]=[];
+    const world=createEcsWorld(),player={transform:{x:fixture.chunk.x*CHUNK_SIZE+1,y:0,z:fixture.chunk.z*CHUNK_SIZE+1,yaw:0},velocity:{x:0,y:0,z:0},playerControl:{moveX:0,moveZ:0,active:false,jump:false}};world.add(player);
+    const chunks=new ChunkStreamingSystem(scene,seed,0,{generator:generateChunk,generationWorkPerFrame:1,meshWorkPerFrame:1,cacheSize:2,
+      onChunkPresented:chunk=>{presented.push(chunk.id);for(const candidate of chunk.pois)presentation.activatePoi(candidate);},
+      onChunkRetired:chunk=>{retired.push(chunk.id);for(const candidate of chunk.pois)presentation.retirePoi(candidate.id);},
+    });
+
+    chunks.prepareRender(world,0,0);
+    expect(presented.filter(id=>id===data.id)).toHaveLength(1);expect(presentation.hasPoi(poi.id)).toBe(true);
+    expect(presentation.activatePoi(poi)).toHaveLength(2);expect(presentation.root.children.filter(child=>child.name===`${poi.id}:fire`)).toHaveLength(1);
+    expect(presentation.lightManager.hasCandidate(`${poi.id}:fire`)).toBe(true);
+
+    player.transform.x+=CHUNK_SIZE;chunks.prepareRender(world,0,0);
+    expect(retired.filter(id=>id===data.id)).toHaveLength(1);expect(presentation.hasPoi(poi.id)).toBe(false);
+    expect(presentation.lightManager.hasCandidate(`${poi.id}:fire`)).toBe(false);expect(state.getState(poi.id).fireLit).toBe(true);
+
+    player.transform.x-=CHUNK_SIZE;chunks.prepareRender(world,0,0);
+    expect(presented.filter(id=>id===data.id)).toHaveLength(2);expect(presentation.hasPoi(poi.id)).toBe(true);
+    expect(presentation.root.children.filter(child=>child.name===`${poi.id}:fire`)).toHaveLength(1);
+    expect(presentation.lightManager.hasCandidate(`${poi.id}:fire`)).toBe(true);
+
+    chunks.dispose();chunks.dispose();expect(retired.filter(id=>id===data.id)).toHaveLength(2);
+    expect(presentation.hasPoi(poi.id)).toBe(false);expect(presentation.lightManager.hasCandidate(`${poi.id}:fire`)).toBe(false);
+    expect(state.getState(poi.id).fireLit).toBe(true);presentation.dispose();presentation.dispose();
+  },15_000);
+
   it("supports independent streaming offsets in every direction", () => {
     const scene = new THREE.Scene();
     const { world } = createPlayerWorld();

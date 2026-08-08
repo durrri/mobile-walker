@@ -15,6 +15,11 @@ plume. Unlit fires have neither flame nor smoke. The smoke shapes are bounded,
 do not emit particles, and currently do not move or model weather. Shared
 geometry and materials avoid per-frame allocation.
 
+This N5b implementation is the near/full representation. A future distance-tier
+system may substitute cheaper mid/far representations while consuming the same
+`GeneratedPoi.beacon` and `PoiBeaconState` truth; neither the light manager nor
+current chunk distance owns those future LOD decisions.
+
 Chunk presentation activation queries the existing state and builds handles at
 the definition's anchors. Retirement removes each handle and its light
 candidate without touching gameplay state; reload reconstructs it. Duplicate
@@ -31,9 +36,10 @@ lit, while only the best candidates occupy the pool. Candidates already carry
 priority, range, and intensity, so allocation has no knowledge of cabin,
 farmhouse, waterside, or watchtower types.
 
-Ranking is deterministic: presentation priority, then camera distance, then
-stable POI identity plus fixture kind. A small retained-selection distance
-credit prevents near-boundary churn. Reconciliation occurs only after a
+Ranking is deterministic using `distance - priority * 10 - retention credit`,
+then stable POI identity plus fixture kind as the exact-score tie-break. The
+small retained-selection distance credit prevents near-boundary churn.
+Reconciliation occurs only after a
 candidate change or at least 0.25 world units of camera motion; it does not
 traverse the scene. Pool entries are repositioned/disabled and never allocated
 per frame. These lights never cast shadows.

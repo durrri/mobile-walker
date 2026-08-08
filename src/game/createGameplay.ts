@@ -110,7 +110,10 @@ export function createGameplay(
   // The camera remains south of the player and looks north (negative world Z),
   // so spend the additional streaming row where it expands the visible view.
   const streamingOffsets = { west: 1, east: 1, south: 1, north: 4 } as const;
-  const beaconPresentation = new PoiBeaconPresentation(renderer.scene, poiBeacons);
+  const beaconPresentation = new PoiBeaconPresentation(
+    renderer.scene, poiBeacons, PoiBeaconPresentation.defaultLightBudget,
+    object => renderer.prepareWorldObject(object),
+  );
   const chunks = new ChunkStreamingSystem(renderer.scene, worldSeed, 1, {
     offsets: streamingOffsets,
     sunlightDirection: renderer.sunlightDirection,
