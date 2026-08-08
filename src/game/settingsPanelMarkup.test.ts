@@ -14,7 +14,7 @@ describe("settings panel markup", () => {
   });
 
   it("keeps Night Brightness at its development tuning range", () => {
-    expect(settingsPanel).toContain('<input id="night-brightness" type="range" min="0.5" max="8" value="1" step="0.05" />');
+    expect(settingsPanel).toContain('<input id="night-brightness" type="range" min="0.5" max="4" value="1" step="0.05" />');
   });
 
   it("keeps reset progress as the final settings action", () => {

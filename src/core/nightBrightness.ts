@@ -4,8 +4,9 @@ import type { EnvironmentTime } from "./environmentTime";
 export const NIGHT_BRIGHTNESS_STORAGE_KEY = "mobile-walker:night-brightness";
 export const DEFAULT_NIGHT_BRIGHTNESS_MULTIPLIER = 1;
 export const MIN_NIGHT_BRIGHTNESS_MULTIPLIER = 0.5;
-export const MAX_NIGHT_BRIGHTNESS_MULTIPLIER = 8;
+export const MAX_NIGHT_BRIGHTNESS_MULTIPLIER = 4;
 export const NIGHT_BRIGHTNESS_STEP = 0.05;
+const BASELINE_NIGHT_BRIGHTNESS_MULTIPLIER = 8;
 
 export function normalizeNightBrightnessMultiplier(value: number): number {
   if (!Number.isFinite(value)) return DEFAULT_NIGHT_BRIGHTNESS_MULTIPLIER;
@@ -31,7 +32,8 @@ export function derivePresentedEnvironmentLighting(
   nightBrightnessMultiplier: number,
 ): EnvironmentLightingState {
   const nightInfluence = deriveNightInfluence(environment);
-  const multiplier = 1 + (normalizeNightBrightnessMultiplier(nightBrightnessMultiplier) - 1) * nightInfluence;
+  const effectiveNightPreference = BASELINE_NIGHT_BRIGHTNESS_MULTIPLIER * normalizeNightBrightnessMultiplier(nightBrightnessMultiplier);
+  const multiplier = 1 + (effectiveNightPreference - 1) * nightInfluence;
   return Object.freeze({
     ...authored,
     hemisphereIntensity: authored.hemisphereIntensity * multiplier,
