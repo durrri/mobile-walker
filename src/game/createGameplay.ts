@@ -6,6 +6,7 @@ import { InputController } from "../player/InputController";
 import { InputSnapshotSystem, PlayerMovementSystem, StructureCollisionSystem, TerrainSamplingSystem, TreeCollisionSystem } from "../player/systems";
 import type { ThreeRenderer } from "../rendering/ThreeRenderer";
 import { ChunkStreamingSystem } from "../world/ChunkStreamingSystem";
+import { PoiBeaconPresentation } from "../rendering/poiBeaconPresentation";
 import { CameraPresentationSystem, PlayerFogPresentationSystem, PlayerShadowPresentationSystem, TransformInterpolationSystem } from "./presentationSystems";
 import { createBlobShadowMaterial, createPlayerShadowGeometry, markBlobShadow } from "../rendering/blobShadows";
 import { CollectionSystem, createCollectionState, ExplorationPresentationSystem, ProximityDetectionSystem } from "./exploration";
@@ -31,6 +32,8 @@ export interface GameplayControllers {
   readonly riverSpineDebug: RiverSpineDebugView;
   /** Gameplay-owned beacon truth; rendering and chunk streaming may only consume it. */
   readonly poiBeacons: PoiBeaconState;
+  /** Targeted refresh bridge for future gameplay/UI mutations; never owns state. */
+  readonly beaconPresentation: PoiBeaconPresentation;
 }
 
 export function createGameplay(
@@ -107,10 +110,13 @@ export function createGameplay(
   // The camera remains south of the player and looks north (negative world Z),
   // so spend the additional streaming row where it expands the visible view.
   const streamingOffsets = { west: 1, east: 1, south: 1, north: 4 } as const;
+  const beaconPresentation = new PoiBeaconPresentation(renderer.scene, poiBeacons);
   const chunks = new ChunkStreamingSystem(renderer.scene, worldSeed, 1, {
     offsets: streamingOffsets,
     sunlightDirection: renderer.sunlightDirection,
     prepareWorldObject: (object) => renderer.prepareWorldObject(object),
+    onChunkPresented: data => { for (const poi of data.pois) beaconPresentation.activatePoi(poi); },
+    onChunkRetired: data => { for (const poi of data.pois) beaconPresentation.retirePoi(poi.id); },
   });
   systems.addFixedSystem(new TreeCollisionSystem(worldSeed, chunks.repository));
   systems.addFixedSystem(new StructureCollisionSystem(chunks.repository));
@@ -119,6 +125,7 @@ export function createGameplay(
   systems.addFixedSystem(new CollectionSystem());
   systems.addFixedSystem(persistence);
   systems.addRenderSystem(chunks);
+  systems.addRenderSystem({ prepareRender: () => beaconPresentation.update(renderer.camera.position), dispose: () => beaconPresentation.dispose() });
   const mushroomCount = document.querySelector<HTMLElement>("#mushroom-count");
   if (!mushroomCount) throw new Error("The mushroom counter could not be found.");
   const exploration = new ExplorationPresentationSystem(renderer.scene, worldSeed, 1, streamingOffsets, mushroomCount, chunks.repository, (object) => renderer.prepareWorldObject(object));
@@ -144,5 +151,5 @@ export function createGameplay(
     riverOwner.generation,
     riverOwner.widthProfile,
   );
-  return { chunks, biomeDebug, poiDebug, camera, persistence, exploration, playerShadow, playerMovement, riverSpineDebug, poiBeacons };
+  return { chunks, biomeDebug, poiDebug, camera, persistence, exploration, playerShadow, playerMovement, riverSpineDebug, poiBeacons, beaconPresentation };
 }
