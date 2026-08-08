@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { GeneratedPoi, PoiBeaconDefinition } from "../world/poi";
+import { clearPoiGenerationCaches, type GeneratedPoi, type PoiBeaconDefinition } from "../world/poi";
 import { GeneratedChunkRepository } from "../world/GeneratedChunkRepository";
+import { generateChunk } from "../world/generateChunk";
+import { poiFixture } from "../world/riverProceduralFixtures";
 import { PoiBeaconState } from "./poiBeaconState";
 
 const definition = (fixtures: readonly ("fire" | "lantern")[]): PoiBeaconDefinition => ({
@@ -45,11 +47,26 @@ describe("POI beacon gameplay state", () => {
   });
 
   it("is unaffected by generated chunk repository lifecycle", () => {
-    const state = new PoiBeaconState(), target = poi("resident-or-not");
-    state.light(target, "fire");
-    const chunks = new GeneratedChunkRepository();
-    chunks.clear();
-    expect(state.getState(target.id).fireLit).toBe(true);
-    expect(Object.keys(target)).toEqual(["id", "beacon"]);
+    const seed = 0;
+    const fixture = poiFixture(seed, candidate => candidate.typeId === "plains-farmhouse");
+    const repository = new GeneratedChunkRepository();
+    const generatedChunk = generateChunk(seed, fixture.chunk);
+    repository.set(generatedChunk.id, generatedChunk);
+    const target = repository.get(generatedChunk.id)?.pois.find(candidate => candidate.id === fixture.poi.id);
+    if (!target) throw new Error("Expected the fixture POI in its generated owner chunk.");
+
+    const state = new PoiBeaconState();
+    expect(state.light(target, "fire")).toBe("changed");
+    repository.delete(generatedChunk.id);
+    expect(repository.get(generatedChunk.id)).toBeUndefined();
+
+    clearPoiGenerationCaches();
+    const regeneratedChunk = generateChunk(seed, fixture.chunk);
+    repository.set(regeneratedChunk.id, regeneratedChunk);
+    const reacquired = repository.get(regeneratedChunk.id)?.pois.find(candidate => candidate.id === fixture.poi.id);
+    expect(reacquired).not.toBe(target);
+    expect(reacquired?.id).toBe(target.id);
+    if (!reacquired) throw new Error("Expected the deterministic POI after chunk regeneration.");
+    expect(state.getState(reacquired.id).fireLit).toBe(true);
   });
 });
