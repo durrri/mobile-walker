@@ -4,7 +4,7 @@ import type { EnvironmentTime } from "./environmentTime";
 export const NIGHT_BRIGHTNESS_STORAGE_KEY = "mobile-walker:night-brightness";
 export const DEFAULT_NIGHT_BRIGHTNESS_MULTIPLIER = 1;
 export const MIN_NIGHT_BRIGHTNESS_MULTIPLIER = 0.5;
-export const MAX_NIGHT_BRIGHTNESS_MULTIPLIER = 2;
+export const MAX_NIGHT_BRIGHTNESS_MULTIPLIER = 8;
 export const NIGHT_BRIGHTNESS_STEP = 0.05;
 
 export function normalizeNightBrightnessMultiplier(value: number): number {

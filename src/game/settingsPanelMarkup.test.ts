@@ -13,6 +13,10 @@ describe("settings panel markup", () => {
     ]) expect(settingsPanel).toContain(`id="${id}"`);
   });
 
+  it("keeps Night Brightness at its development tuning range", () => {
+    expect(settingsPanel).toContain('<input id="night-brightness" type="range" min="0.5" max="8" value="1" step="0.05" />');
+  });
+
   it("keeps reset progress as the final settings action", () => {
     const actions = [...settingsPanel.matchAll(/<button[^>]*id="([^"]+)"[^>]*>/g)].map((match) => match[1]);
     expect(actions.slice(-2)).toEqual(["restart-button", "reset-progress-button"]);

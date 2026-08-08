@@ -6,6 +6,9 @@ import {
   DEFAULT_NIGHT_BRIGHTNESS_MULTIPLIER,
   deriveNightInfluence,
   derivePresentedEnvironmentLighting,
+  MAX_NIGHT_BRIGHTNESS_MULTIPLIER,
+  MIN_NIGHT_BRIGHTNESS_MULTIPLIER,
+  normalizeNightBrightnessMultiplier,
   restoreNightBrightnessMultiplier,
 } from "./nightBrightness";
 
@@ -23,25 +26,28 @@ describe("Night Brightness presentation", () => {
 
   it("restores valid values and clamps saved values to the development range", () => {
     expect(restoreNightBrightnessMultiplier("1.25")).toBe(1.25);
-    expect(restoreNightBrightnessMultiplier("0")).toBe(0.5);
-    expect(restoreNightBrightnessMultiplier("3")).toBe(2);
+    expect(restoreNightBrightnessMultiplier("8")).toBe(MAX_NIGHT_BRIGHTNESS_MULTIPLIER);
+    expect(restoreNightBrightnessMultiplier("0")).toBe(MIN_NIGHT_BRIGHTNESS_MULTIPLIER);
+    expect(restoreNightBrightnessMultiplier("9")).toBe(MAX_NIGHT_BRIGHTNESS_MULTIPLIER);
+    expect(normalizeNightBrightnessMultiplier(8.1)).toBe(MAX_NIGHT_BRIGHTNESS_MULTIPLIER);
   });
 
-  it("adjusts only nighttime hemisphere ambient without changing direct light, shadows, or sky", () => {
+  it("increases midnight ambient at 8× without changing direct light, shadows, or sky", () => {
     const authored = presentedAt(0, 1);
     const dim = presentedAt(0, 0.5);
-    const bright = presentedAt(0, 2);
+    const brightAtTwo = presentedAt(0, 2);
+    const brightAtEight = presentedAt(0, 8);
 
     expect(dim.hemisphereIntensity).toBeLessThan(authored.hemisphereIntensity);
-    expect(bright.hemisphereIntensity).toBeGreaterThan(authored.hemisphereIntensity);
-    expect(bright.directLightIntensity).toBe(0);
-    expect(bright.solarShadowStrength).toBe(0);
-    expect(bright.backgroundColor).toEqual(authored.backgroundColor);
-    expect(bright.fogColor).toEqual(authored.fogColor);
+    expect(brightAtEight.hemisphereIntensity).toBeGreaterThan(brightAtTwo.hemisphereIntensity);
+    expect(brightAtEight.directLightIntensity).toBe(authored.directLightIntensity);
+    expect(brightAtEight.solarShadowStrength).toBe(authored.solarShadowStrength);
+    expect(brightAtEight.backgroundColor).toEqual(authored.backgroundColor);
+    expect(brightAtEight.fogColor).toEqual(authored.fogColor);
   });
 
   it("has no noon effect and fades continuously through dawn and dusk", () => {
-    expect(presentedAt(12, 2).hemisphereIntensity).toBe(presentedAt(12, 1).hemisphereIntensity);
+    expect(presentedAt(12, 8).hemisphereIntensity).toBe(presentedAt(12, 1).hemisphereIntensity);
     const beforeDawn = deriveNightInfluence(deriveEnvironmentTime(5.9 / 24));
     const afterDawn = deriveNightInfluence(deriveEnvironmentTime(6.1 / 24));
     const beforeDusk = deriveNightInfluence(deriveEnvironmentTime(20.4 / 24));
